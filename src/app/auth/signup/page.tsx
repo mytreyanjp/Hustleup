@@ -48,8 +48,11 @@ export default function SignupPage() {
 
    // Check Firebase services availability on mount
    useEffect(() => {
+     // This effect primarily checks for the *initial* configuration state
      if (!auth || !db) {
-       setFirebaseError("Firebase is not configured correctly. Please check the setup.");
+       setFirebaseError("Firebase is not configured correctly. Please check setup and environment variables.");
+     } else {
+       setFirebaseError(null); // Clear error if services seem available initially
      }
    }, []);
 
@@ -67,12 +70,13 @@ export default function SignupPage() {
     setIsLoading(true);
     setFirebaseError(null); // Clear previous errors
 
-    // Explicitly check if auth and db are available before proceeding
+    // Explicitly check if auth and db are available *before* proceeding with the API call
     if (!auth || !db) {
-       setFirebaseError("Signup cannot proceed: Firebase is not configured correctly.");
+       const configError = "Signup cannot proceed: Firebase is not properly initialized.";
+       setFirebaseError(configError);
        toast({
          title: 'Signup Failed',
-         description: "System configuration error. Please contact support.",
+         description: configError + " Please check console or contact support.",
          variant: 'destructive',
        });
        setIsLoading(false);
@@ -93,13 +97,13 @@ export default function SignupPage() {
         username: data.username || user.email?.split('@')[0] || `user_${user.uid.substring(0, 5)}`, // Default username logic
         createdAt: serverTimestamp(),
         // Initialize other profile fields based on role if needed
-        ...(data.role === 'student' ? { skills: [], portfolioLinks: [], bio: '' } : {}),
+        ...(data.role === 'student' ? { skills: [], portfolioLinks: [], bio: '', profilePictureUrl: '' } : {}),
         ...(data.role === 'client' ? { companyName: '', website: '' } : {}), // Example client fields
       });
 
       toast({
         title: 'Account Created Successfully!',
-        description: `Welcome to HustleUp as a ${data.role}.`,
+        description: `Welcome to HustleUp as a ${data.role}. Redirecting...`,
       });
 
       // Redirect based on role
@@ -119,17 +123,22 @@ export default function SignupPage() {
           case 'auth/weak-password':
             errorMessage = 'Password is too weak. Please choose a stronger password.';
             break;
-           case 'auth/operation-not-allowed': // Possible if email/password auth is disabled
+          case 'auth/operation-not-allowed': // Possible if email/password auth is disabled
              errorMessage = 'Email/Password sign-up is currently disabled.';
              break;
+          case 'auth/configuration-not-found': // Specific error
+             errorMessage = 'Firebase Authentication configuration is missing or incomplete. Please ensure Email/Password sign-in is enabled in your Firebase project.';
+             setFirebaseError(errorMessage); // Set specific state for config errors
+             break;
           case 'auth/invalid-api-key': // Added from previous errors
-           case 'auth/app-deleted':
-           case 'auth/app-not-authorized':
-             errorMessage = 'Firebase configuration error. Please contact support.';
+          case 'auth/api-key-not-valid':
+          case 'auth/app-deleted':
+          case 'auth/app-not-authorized':
+             errorMessage = 'Firebase configuration error (API Key or App setup). Please check your .env.local file and Firebase project settings.';
              setFirebaseError(errorMessage); // Set specific state for config errors
              break;
           default:
-            errorMessage = `Signup failed: ${error.message}`;
+            errorMessage = `Signup failed: ${error.message} (Code: ${error.code})`;
         }
       }
       toast({
