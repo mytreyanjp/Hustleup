@@ -12,13 +12,15 @@ export default function Home() {
         The platform where ambitious students connect with clients needing freelance talent. Post gigs, find talent, get paid.
       </p>
       <div className="flex flex-col sm:flex-row gap-4 mb-12">
+        {/* Link for clients remains signup */}
         <Button asChild size="lg">
           <Link href="/auth/signup?role=client">
             <Briefcase className="mr-2 h-5 w-5" /> Post a Gig
           </Link>
         </Button>
+        {/* Link for students/finding work now goes to browse page */}
         <Button asChild variant="secondary" size="lg">
-          <Link href="/auth/signup?role=student">
+          <Link href="/gigs/browse">
             <GraduationCap className="mr-2 h-5 w-5" /> Find Work
           </Link>
         </Button>
