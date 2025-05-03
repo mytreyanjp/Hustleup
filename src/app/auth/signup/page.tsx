@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/config/firebase';
+import { auth, db } from '@/config/firebase'; // Import potentially null auth/db
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +16,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Briefcase } from 'lucide-react';
+import { Loader2, User, Briefcase, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const signupSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
@@ -32,6 +33,7 @@ export default function SignupPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const initialRole = searchParams.get('role') === 'client' ? 'client' : 'student'; // Default to student if param missing/invalid
 
   const form = useForm<SignupFormValues>({
@@ -44,6 +46,14 @@ export default function SignupPage() {
     },
   });
 
+   // Check Firebase services availability on mount
+   useEffect(() => {
+     if (!auth || !db) {
+       setFirebaseError("Firebase is not configured correctly. Please check the setup.");
+     }
+   }, []);
+
+
    // Update default role if search param changes after initial load
    useEffect(() => {
      const roleParam = searchParams.get('role');
@@ -55,6 +65,20 @@ export default function SignupPage() {
 
   const onSubmit = async (data: SignupFormValues) => {
     setIsLoading(true);
+    setFirebaseError(null); // Clear previous errors
+
+    // Explicitly check if auth and db are available before proceeding
+    if (!auth || !db) {
+       setFirebaseError("Signup cannot proceed: Firebase is not configured correctly.");
+       toast({
+         title: 'Signup Failed',
+         description: "System configuration error. Please contact support.",
+         variant: 'destructive',
+       });
+       setIsLoading(false);
+       return;
+    }
+
     try {
       // 1. Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
@@ -95,6 +119,15 @@ export default function SignupPage() {
           case 'auth/weak-password':
             errorMessage = 'Password is too weak. Please choose a stronger password.';
             break;
+           case 'auth/operation-not-allowed': // Possible if email/password auth is disabled
+             errorMessage = 'Email/Password sign-up is currently disabled.';
+             break;
+          case 'auth/invalid-api-key': // Added from previous errors
+           case 'auth/app-deleted':
+           case 'auth/app-not-authorized':
+             errorMessage = 'Firebase configuration error. Please contact support.';
+             setFirebaseError(errorMessage); // Set specific state for config errors
+             break;
           default:
             errorMessage = `Signup failed: ${error.message}`;
         }
@@ -116,6 +149,13 @@ export default function SignupPage() {
           <CardDescription>Join as a Student or Client to get started.</CardDescription>
         </CardHeader>
         <CardContent>
+           {firebaseError && (
+               <Alert variant="destructive" className="mb-4">
+                 <AlertTriangle className="h-4 w-4" />
+                 <AlertTitle>Configuration Error</AlertTitle>
+                 <AlertDescription>{firebaseError}</AlertDescription>
+               </Alert>
+             )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                <FormField
@@ -199,7 +239,7 @@ export default function SignupPage() {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || !!firebaseError}>
                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Create Account
               </Button>
