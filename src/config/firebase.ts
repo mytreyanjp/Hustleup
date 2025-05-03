@@ -5,39 +5,27 @@ import { getFirestore, Firestore } from "firebase/firestore";
 import { getFunctions, Functions } from "firebase/functions";
 import { getDatabase, Database } from "firebase/database"; // If using Realtime DB for chat
 
-// Define the configuration structure
+// --- User Provided Configuration ---
+// IMPORTANT: For production, move these values to a .env.local file
+// and use process.env.NEXT_PUBLIC_FIREBASE_* variables instead.
 const firebaseConfig: FirebaseOptions = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyCAW-Fm9vI1P5SwA7Zhfuf426A6l8Zrwp0", // process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: "hustleup-ntp15.firebaseapp.com", // process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: "hustleup-ntp15", // process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: "hustleup-ntp15.appspot.com", // Corrected storage bucket domain // process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: "992524001569", // process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: "1:992524001569:web:58e8b945cfb34000f41e60" // process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
   // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
   // databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL, // Optional (Realtime DB)
 };
+// --- End User Provided Configuration ---
+
 
 // Helper function to check if the config is valid
 const isConfigValid = (config: FirebaseOptions): boolean => {
-    return !!(config.apiKey && config.authDomain && config.projectId && config.storageBucket && config.messagingSenderId && config.appId);
+    // Basic check for essential fields
+    return !!(config.apiKey && config.authDomain && config.projectId && config.appId);
 };
-
-// Client-side check for missing variables during development
-if (typeof window !== 'undefined' && !isConfigValid(firebaseConfig)) {
-    const requiredEnvVars = [
-        'NEXT_PUBLIC_FIREBASE_API_KEY',
-        'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
-        'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
-        'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
-        'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
-        'NEXT_PUBLIC_FIREBASE_APP_ID',
-    ];
-    const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-    const errorMessage = `Missing Firebase configuration environment variables: ${missingEnvVars.join(', ')}. Please ensure they are set in your .env.local file and the Next.js development server is restarted.`;
-    console.error(errorMessage);
-    // You might want to throw an error or display a message to the user here
-    // depending on how critical Firebase is at startup.
-}
 
 // Initialize Firebase App (conditionally)
 let app: FirebaseApp | null = null;
@@ -50,7 +38,7 @@ try {
     if (isConfigValid(firebaseConfig)) {
         if (!getApps().length) {
             app = initializeApp(firebaseConfig);
-            console.log("Firebase initialized successfully.");
+            console.log("Firebase initialized successfully with provided config.");
         } else {
             app = getApp();
              console.log("Firebase app already initialized.");
@@ -60,9 +48,9 @@ try {
         functions = getFunctions(app);
         // realtimeDb = getDatabase(app); // Uncomment if using Realtime DB
     } else {
-        // Log error only if on client, as server might lack env vars during build
+        // This block might be less relevant now with hardcoded values, but kept for structure
         if (typeof window !== 'undefined') {
-            console.error("Firebase configuration is incomplete. Firebase services will not be available.");
+            console.error("Firebase configuration is incomplete or invalid (using hardcoded values). Firebase services will not be available.");
         }
     }
 } catch (error) {
@@ -77,23 +65,5 @@ try {
 
 // Export potentially null services. Components using them should handle null checks.
 export { app, auth, db, functions, realtimeDb };
-export { isConfigValid }; // Export the validation function if needed elsewhere
+export { isConfigValid, firebaseConfig }; // Export config for context if needed
 
-// Example usage in another file:
-// import { auth, db, isConfigValid } from '@/config/firebase';
-//
-// function MyComponent() {
-//   useEffect(() => {
-//     if (auth && db) {
-//       // Use Firebase services
-//       console.log("Firebase is configured and ready.");
-//     } else {
-//       // Handle the case where Firebase is not available
-//       console.warn("Firebase services are not available.");
-//       if (!isConfigValid({ apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, ... })) {
-//         // Show message about missing config
-//       }
-//     }
-//   }, []);
-//   // ...
-// }

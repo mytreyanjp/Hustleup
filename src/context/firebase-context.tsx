@@ -62,7 +62,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
            console.log("User profile loaded:", profileData);
          } else {
            console.warn("No user profile found in Firestore for UID:", currentUser.uid);
-           setUserProfile({ uid: currentUser.uid, email: currentUser.email, role: null });
+           // Create a basic profile structure if none exists - Adjust roles as needed
+           const basicProfile: UserProfile = { uid: currentUser.uid, email: currentUser.email, role: null }; // Default role might need adjustment
+           setUserProfile(basicProfile);
            setRole(null);
          }
        } catch (error) {
@@ -93,6 +95,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
         if (auth && db) { // Check if services are initialized
             setFirebaseInitialized(true);
+            setInitializationError(null); // Clear any previous error
             unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
                 console.log("Auth state changed. Current user:", currentUser?.uid || 'None');
                 setUser(currentUser);
@@ -107,24 +110,12 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
                 setLoading(false);
             });
         } else {
-            // Firebase services failed to initialize
+            // Firebase services failed to initialize or config was invalid
             console.error("Firebase auth or db is not initialized in context.");
             setFirebaseInitialized(false);
-            // Use the isConfigValid check result from firebase.ts implicitly through the error message logic
-            // The config file handles console logging the specific missing vars.
-            // Here, we just set a generic error message based on the initialization outcome.
-            if (!isConfigValid({ // Pass dummy values or check existence of required env vars again
-                apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-                authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-                projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-                storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-                messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-                appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-            })) {
-                setInitializationError("Firebase configuration is missing or invalid. Please check your .env.local file and restart the server.");
-            } else {
-                setInitializationError("Failed to initialize Firebase services. Check console for details.");
-            }
+            // Check if the config itself was the issue (less likely with hardcoded values, but good practice)
+            // We rely on the console error from firebase.ts for specifics
+            setInitializationError("Failed to initialize Firebase services. Check configuration and console for details.");
             setLoading(false);
         }
 
@@ -160,7 +151,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
        return (
            <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
                <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
-                   <h2 className="text-xl font-semibold mb-2">Configuration Error</h2>
+                   <h2 className="text-xl font-semibold mb-2">Initialization Error</h2>
                    <p className="text-sm">{initializationError}</p>
                    <p className="text-xs mt-4">Please ensure Firebase is configured correctly and restart the application.</p>
                </div>
