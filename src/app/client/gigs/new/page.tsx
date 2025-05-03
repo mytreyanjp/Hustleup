@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Import useEffect
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -37,12 +38,16 @@ export default function NewGigPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-   // Redirect if not a client or not logged in
-   useState(() => {
+   // Redirect if not a client or not logged in using useEffect
+   useEffect(() => {
+     console.log("NewGigPage useEffect: loading=", loading, "user=", !!user, "role=", role);
+     // Only redirect after loading is complete and user/role status is confirmed
      if (!loading && (!user || role !== 'client')) {
-       router.push('/auth/login');
+        console.log("Redirecting from NewGigPage: User not logged in or not a client.");
+        toast({ title: "Access Denied", description: "You must be logged in as a client to post a gig.", variant: "destructive"});
+        router.push('/auth/login?redirect=/client/gigs/new'); // Redirect to login, preserving intended destination
      }
-   });
+   }, [loading, user, role, router, toast]); // Added toast to dependency array
 
   const form = useForm<GigFormValues>({
     resolver: zodResolver(gigSchema),
@@ -61,7 +66,11 @@ export default function NewGigPage() {
    });
 
   const onSubmit = async (data: GigFormValues) => {
-    if (!user) return;
+    // Double check role before submission, although useEffect should prevent this state
+    if (!user || role !== 'client') {
+        toast({ title: "Action Failed", description: "You must be logged in as a client.", variant: "destructive"});
+        return;
+    }
     setIsLoading(true);
 
     try {
@@ -92,9 +101,26 @@ export default function NewGigPage() {
     }
   };
 
-   if (loading || !user || role !== 'client') {
-     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+   // Display loading spinner while auth context is loading or if user check hasn't completed
+   if (loading || (typeof window !== 'undefined' && !user && !loading)) { // Added client-side check to avoid rendering before context ready
+     return (
+        <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+     );
    }
+
+   // If the redirect hasn't happened yet but the user is not a client, show a message
+   // This acts as a fallback while the redirect is processing or if something goes wrong
+    if (!loading && role !== 'client') {
+        return (
+            <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center">
+                <p className="text-destructive mb-4">Access Denied.</p>
+                <p className="text-muted-foreground mb-4">You must be logged in as a client to post a gig.</p>
+                 <Button onClick={() => router.push('/auth/login?redirect=/client/gigs/new')}>Login as Client</Button>
+            </div>
+        );
+    }
 
   return (
      <div className="max-w-3xl mx-auto py-8">
@@ -258,3 +284,5 @@ export default function NewGigPage() {
     </div>
   );
 }
+
+    
