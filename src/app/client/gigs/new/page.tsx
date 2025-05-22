@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react'; // Import useEffect
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -36,27 +36,16 @@ export default function NewGigPage() {
   const { user, userProfile, loading, role } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
-
-   // Redirect if not a client or not logged in using useEffect
-   useEffect(() => {
-     console.log("NewGigPage useEffect: loading=", loading, "user=", !!user, "role=", role);
-     // Only redirect after loading is complete and user/role status is confirmed
-     if (!loading && (!user || role !== 'client')) {
-        console.log("Redirecting from NewGigPage: User not logged in or not a client.");
-        toast({ title: "Access Denied", description: "You must be logged in as a client to post a gig.", variant: "destructive"});
-        router.push('/auth/login?redirect=/client/gigs/new'); // Redirect to login, preserving intended destination
-     }
-   }, [loading, user, role, router, toast]); // Added toast to dependency array
+  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed from isLoading for clarity
 
   const form = useForm<GigFormValues>({
     resolver: zodResolver(gigSchema),
     defaultValues: {
       title: '',
       description: '',
-      budget: undefined, // Use undefined for number input to show placeholder
+      budget: undefined,
       deadline: undefined,
-      requiredSkills: [''], // Start with one empty skill input
+      requiredSkills: [''],
     },
   });
 
@@ -65,30 +54,38 @@ export default function NewGigPage() {
      name: "requiredSkills"
    });
 
+  // Effect for redirection if not authorized
+  useEffect(() => {
+    if (!loading) { // Only act once context is not loading
+      if (!user || role !== 'client') {
+        toast({ title: "Access Denied", description: "You must be logged in as a client to post a gig.", variant: "destructive"});
+        router.push('/auth/login?redirect=/client/gigs/new');
+      }
+    }
+  }, [loading, user, role, router, toast]);
+
   const onSubmit = async (data: GigFormValues) => {
-    // Double check role before submission, although useEffect should prevent this state
-    if (!user || role !== 'client') {
-        toast({ title: "Action Failed", description: "You must be logged in as a client.", variant: "destructive"});
+    if (!user || role !== 'client') { // Double check authorization before submission
+        toast({ title: "Action Failed", description: "You are not authorized to perform this action.", variant: "destructive"});
         return;
     }
-    setIsLoading(true);
-
+    setIsSubmitting(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
       await addDoc(gigsCollectionRef, {
         clientId: user.uid,
-        clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Client', // Add client username
+        clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Client',
         ...data,
-        status: 'open', // Initial status
+        status: 'open',
         createdAt: serverTimestamp(),
-        applicants: [], // Initialize applicants array
+        applicants: [],
       });
 
       toast({
         title: 'Gig Posted Successfully!',
         description: `Your gig "${data.title}" is now live.`,
       });
-      router.push('/client/dashboard'); // Redirect after successful post
+      router.push('/client/dashboard');
 
     } catch (error: any) {
       console.error('Error posting gig:', error);
@@ -97,31 +94,32 @@ export default function NewGigPage() {
         description: `An error occurred: ${error.message}`,
         variant: 'destructive',
       });
-      setIsLoading(false); // Keep user on page on error
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-   // Display loading spinner while auth context is loading or if user check hasn't completed
-   if (loading || (typeof window !== 'undefined' && !user && !loading)) { // Added client-side check to avoid rendering before context ready
-     return (
-        <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-     );
-   }
+  // Primary loading check from Firebase context
+  if (loading) {
+    return (
+       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+       </div>
+    );
+  }
 
-   // If the redirect hasn't happened yet but the user is not a client, show a message
-   // This acts as a fallback while the redirect is processing or if something goes wrong
-    if (!loading && role !== 'client') {
-        return (
-            <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center">
-                <p className="text-destructive mb-4">Access Denied.</p>
-                <p className="text-muted-foreground mb-4">You must be logged in as a client to post a gig.</p>
-                 <Button onClick={() => router.push('/auth/login?redirect=/client/gigs/new')}>Login as Client</Button>
-            </div>
-        );
-    }
+  // After context is loaded, if user is not authorized, show placeholder while redirecting.
+  // The useEffect above handles the actual redirect.
+  if (!user || role !== 'client') {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Checking authorization...</p>
+      </div>
+    );
+  }
 
+  // If all checks pass, render the form.
   return (
      <div className="max-w-3xl mx-auto py-8">
        <Card className="glass-card">
@@ -169,7 +167,6 @@ export default function NewGigPage() {
                      <FormItem>
                        <FormLabel>Budget ($)</FormLabel>
                        <FormControl>
-                          {/* Ensure type="number" and step for better UX */}
                          <Input type="number" placeholder="e.g., 150" {...field} min="1" step="any" />
                        </FormControl>
                        <FormDescription>Enter the total amount you're willing to pay.</FormDescription>
@@ -195,7 +192,7 @@ export default function NewGigPage() {
                                 )}
                               >
                                 {field.value ? (
-                                  format(field.value, "PPP") // Pretty format date
+                                  format(field.value, "PPP")
                                 ) : (
                                   <span>Pick a date</span>
                                 )}
@@ -209,7 +206,7 @@ export default function NewGigPage() {
                               selected={field.value}
                               onSelect={field.onChange}
                               disabled={(date) =>
-                                date < new Date(new Date().setHours(0, 0, 0, 0)) // Disable past dates
+                                date < new Date(new Date().setHours(0, 0, 0, 0))
                               }
                               initialFocus
                             />
@@ -222,8 +219,6 @@ export default function NewGigPage() {
                   />
               </div>
 
-
-               {/* Required Skills Section */}
                <div>
                  <FormLabel>Required Skills</FormLabel>
                  <FormDescription className="mb-2">List the skills needed for this gig (max 10).</FormDescription>
@@ -245,7 +240,7 @@ export default function NewGigPage() {
                            </FormItem>
                          )}
                        />
-                       {fields.length > 1 && ( // Only show remove button if more than one skill
+                       {fields.length > 1 && (
                          <Button
                            type="button"
                            variant="ghost"
@@ -272,9 +267,8 @@ export default function NewGigPage() {
                   <FormMessage>{form.formState.errors.requiredSkills?.message || form.formState.errors.requiredSkills?.root?.message}</FormMessage>
                </div>
 
-
-              <Button type="submit" className="w-full sm:w-auto" disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Post Gig
               </Button>
             </form>
@@ -284,5 +278,3 @@ export default function NewGigPage() {
     </div>
   );
 }
-
-    

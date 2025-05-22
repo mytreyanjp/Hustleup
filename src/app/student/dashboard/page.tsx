@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Search, Wallet, UserCircle, Edit } from 'lucide-react';
+import { FileText, Search, Wallet, UserCircle, Edit, Loader2 } from 'lucide-react'; // Added Loader2
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -12,22 +13,14 @@ export default function StudentDashboardPage() {
   const { user, userProfile, loading, role } = useFirebase();
   const router = useRouter();
 
-   // Protect route: Redirect if not loading, not logged in, or not a student
-   useEffect(() => {
-    if (!loading && (!user || role !== 'student')) {
-      router.push('/auth/login'); // Or show an unauthorized page
+  // Protect route: Redirect if not loading, not logged in, or not a student
+  useEffect(() => {
+    if (!loading) { // Only check after initial context loading is done
+      if (!user || role !== 'student') {
+        router.push('/auth/login'); // Or show an unauthorized page
+      }
     }
   }, [user, role, loading, router]);
-
-   // Show loading state or nothing until role is confirmed
-   if (loading || !user || role !== 'student') {
-     return (
-       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
-         {/* Optional: Add a spinner or skeleton loader */}
-         <p>Loading Dashboard...</p>
-       </div>
-     );
-   }
 
   // Calculate profile completion (example logic)
   const getProfileCompletion = () => {
@@ -42,7 +35,26 @@ export default function StudentDashboardPage() {
   };
   const profileCompletion = getProfileCompletion();
 
+  // Show loading state from context
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
+  // If context is loaded, but user is not a student (or not logged in), show placeholder.
+  // The useEffect above will handle the redirect.
+  if (!user || role !== 'student') {
+    return (
+      <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+        <p className="text-muted-foreground">Verifying access...</p>
+      </div>
+    );
+  }
+
+  // If all checks pass, render dashboard
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -110,8 +122,7 @@ export default function StudentDashboardPage() {
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {/* TODO: Fetch actual balance */}
-            <div className="text-2xl font-bold">$0.00</div>
+            <div className="text-2xl font-bold">$0.00</div> {/* TODO: Fetch actual balance */}
             <p className="text-xs text-muted-foreground">
               Total earnings from completed gigs.
             </p>
@@ -122,7 +133,6 @@ export default function StudentDashboardPage() {
         </Card>
       </div>
 
-       {/* Placeholder for recent messages or notifications */}
        <Card className="glass-card">
          <CardHeader>
            <CardTitle>Recent Messages</CardTitle>
@@ -133,7 +143,6 @@ export default function StudentDashboardPage() {
            {/* TODO: Implement recent messages preview */}
          </CardContent>
        </Card>
-
     </div>
   );
 }

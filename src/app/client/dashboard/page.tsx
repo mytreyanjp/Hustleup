@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, Users, CreditCard } from 'lucide-react';
+import { PlusCircle, Users, CreditCard, Briefcase, Loader2 } from 'lucide-react'; // Added Briefcase and Loader2
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -12,23 +13,35 @@ export default function ClientDashboardPage() {
   const { user, userProfile, loading, role } = useFirebase();
   const router = useRouter();
 
-   // Protect route: Redirect if not loading, not logged in, or not a client
-   useEffect(() => {
-    if (!loading && (!user || role !== 'client')) {
-      router.push('/auth/login'); // Or show an unauthorized page
+  // Protect route: Redirect if not loading, not logged in, or not a client
+  useEffect(() => {
+    if (!loading) { // Only check after initial context loading is done
+      if (!user || role !== 'client') {
+        router.push('/auth/login'); // Or show an unauthorized page
+      }
     }
   }, [user, role, loading, router]);
 
-   // Show loading state or nothing until role is confirmed
-   if (loading || !user || role !== 'client') {
+  // Show loading state from context
+  if (loading) {
     return (
-       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
-         {/* Optional: Add a spinner or skeleton loader */}
-         <p>Loading Dashboard...</p>
-       </div>
-     );
-   }
+      <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
+  // If context is loaded, but user is not a client (or not logged in), show placeholder.
+  // The useEffect above will handle the redirect.
+  if (!user || role !== 'client') {
+    return (
+      <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+        <p className="text-muted-foreground">Verifying access...</p>
+      </div>
+    );
+  }
+
+  // If all checks pass, render dashboard
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -44,7 +57,6 @@ export default function ClientDashboardPage() {
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Gigs</CardTitle>
-             {/* Placeholder Icon */}
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -80,8 +92,7 @@ export default function ClientDashboardPage() {
              <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-             {/* TODO: Fetch actual payment data */}
-            <div className="text-2xl font-bold">$0.00</div>
+            <div className="text-2xl font-bold">$0.00</div> {/* TODO: Fetch actual payment data */}
             <p className="text-xs text-muted-foreground">
               Track your spending on completed gigs.
             </p>
@@ -92,7 +103,6 @@ export default function ClientDashboardPage() {
         </Card>
       </div>
 
-       {/* Placeholder for recent activity or messages */}
        <Card className="glass-card">
          <CardHeader>
            <CardTitle>Recent Activity</CardTitle>
