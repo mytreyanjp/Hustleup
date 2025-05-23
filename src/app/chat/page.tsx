@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, UploadCloud, X } from 'lucide-react'; // Added X
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, UploadCloud, X, Smile } from 'lucide-react'; // Added Smile, X
 import { db, storage } from '@/config/firebase'; // Import storage
 import {
   collection,
@@ -34,6 +34,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
+import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
+import { useTheme } from 'next-themes';
 
 
 interface ChatMessage {
@@ -62,12 +64,14 @@ export default function ChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { theme: appTheme } = useTheme();
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
 
   const [chats, setChats] = useState<ChatMetadata[]>([]);
@@ -78,6 +82,7 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
 
 
   const scrollToBottom = useCallback(() => {
@@ -85,6 +90,20 @@ export default function ChatPage() {
   }, []);
 
   useEffect(scrollToBottom, [messages]);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [emojiPickerRef]);
+
 
   const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigId?: string) => {
     if (!user || !userProfile || !db) return null;
@@ -246,6 +265,7 @@ export default function ChatPage() {
     setSelectedChatId(chatId);
     setSelectedFile(null); // Clear any selected file when switching chats
     setUploadProgress(null);
+    setShowEmojiPicker(false);
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -260,6 +280,10 @@ export default function ChatPage() {
     }
   };
 
+  const onEmojiClick = (emojiData: EmojiClickData) => {
+    setMessage(prevMessage => prevMessage + emojiData.emoji);
+  };
+
   const handleSendMessage = async () => {
     if ((!message.trim() && !selectedFile) || !selectedChatId || !user || !userProfile || !db || !storage) {
         toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
@@ -267,6 +291,8 @@ export default function ChatPage() {
     }
     setIsSending(true);
     setUploadProgress(null);
+    setShowEmojiPicker(false);
+
 
     let mediaUrl: string | undefined = undefined;
     let mediaType: string | undefined = undefined;
@@ -329,10 +355,13 @@ export default function ChatPage() {
       if (userProfile.profilePictureUrl) {
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
-        chatUpdateData.participantProfilePictures = {
-          ...existingPictures,
-          [user.uid]: userProfile.profilePictureUrl,
-        };
+        // Only update if the URL is actually defined
+        if(userProfile.profilePictureUrl){
+           chatUpdateData.participantProfilePictures = {
+             ...existingPictures,
+             [user.uid]: userProfile.profilePictureUrl,
+           };
+        }
       }
 
       batch.update(chatDocRef, chatUpdateData);
@@ -414,7 +443,7 @@ export default function ChatPage() {
       </Card>
 
       <Card className={cn(
-        "flex-grow glass-card flex flex-col h-full",
+        "flex-grow glass-card flex flex-col h-full relative", // Added relative for emoji picker positioning
         !selectedChatId && 'hidden md:flex' 
         )}>
         {selectedChatId && selectedChatDetails ? (
@@ -479,7 +508,22 @@ export default function ChatPage() {
                 )}
               </CardContent>
             </ScrollArea>
-            <CardFooter className="p-3 border-t flex flex-col items-start"> {/* Changed to flex-col and items-start */}
+            
+            {showEmojiPicker && (
+              <div ref={emojiPickerRef} className="absolute bottom-16 right-2 z-10 md:right-auto md:left-2"> 
+                <EmojiPicker
+                  onEmojiClick={onEmojiClick}
+                  autoFocusSearch={false}
+                  height={350}
+                  width={300}
+                  theme={appTheme === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                  searchDisabled
+                  lazyLoadEmojis
+                />
+              </div>
+            )}
+
+            <CardFooter className="p-3 border-t flex flex-col items-start">
               {selectedFile && (
                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50">
                   <div className="flex items-center gap-2 overflow-hidden">
@@ -498,6 +542,15 @@ export default function ChatPage() {
                  </div>
               )}
               <div className="flex gap-2 w-full">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setShowEmojiPicker(prev => !prev)}
+                  disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
+                >
+                    <Smile className="h-5 w-5" />
+                    <span className="sr-only">Add emoji</span>
+                </Button>
                 <Input
                   type="text"
                   placeholder={selectedFile ? "Add a caption (optional)..." : "Type your message..."}
