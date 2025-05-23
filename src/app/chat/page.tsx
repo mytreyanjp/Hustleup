@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, X, Smile } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile } from 'lucide-react'; // Added ImageIconLucide, FileIcon, X
 import { db, storage } from '@/config/firebase';
 import {
   collection,
@@ -24,8 +24,8 @@ import {
   DocumentData,
   QuerySnapshot,
   writeBatch,
-  updateDoc, 
-  arrayUnion, 
+  updateDoc,
+  arrayUnion,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getChatId, cn } from '@/lib/utils';
@@ -37,12 +37,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
 import { useTheme } from 'next-themes';
-import type { ChatMessage, ChatMetadata } from '@/types/chat'; 
+import type { ChatMessage, ChatMetadata } from '@/types/chat';
 import { Progress } from '@/components/ui/progress';
 
 
 export default function ChatPage() {
-  const { user, userProfile, loading: authLoading } = useFirebase();
+  const { user, userProfile, loading: authLoading, totalUnreadChats } = useFirebase();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -107,8 +107,8 @@ export default function ChatPage() {
           },
           lastMessage: 'Chat started.',
           lastMessageTimestamp: serverTimestamp(),
-          lastMessageSenderId: user.uid, 
-          lastMessageReadBy: [user.uid], 
+          lastMessageSenderId: user.uid,
+          lastMessageReadBy: [user.uid],
           ...(gigId && { gigId }),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -118,13 +118,13 @@ export default function ChatPage() {
         if (userProfile.profilePictureUrl) {
           participantPictures[user.uid] = userProfile.profilePictureUrl;
         }
-        if (targetProfilePictureUrl) {
+        if (targetProfilePictureUrl) { // Check if targetProfilePictureUrl is defined
           participantPictures[targetUserId] = targetProfilePictureUrl;
         }
         if (Object.keys(participantPictures).length > 0) {
           newChatData.participantProfilePictures = participantPictures;
         }
-        
+
         await setDoc(chatDocRef, newChatData);
         setSelectedChatId(chatId);
         return chatId;
@@ -149,7 +149,7 @@ export default function ChatPage() {
         if (typeof window !== 'undefined') router.replace('/chat', { scroll: false });
         return;
     }
-    
+
     if (targetUserId && user.uid !== targetUserId) {
       const fetchTargetUserAndCreateChat = async () => {
         if (!db) {
@@ -229,7 +229,7 @@ export default function ChatPage() {
       toast({ title: "Message Error", description: "Could not load messages for this chat.", variant: "destructive" });
       setIsLoadingMessages(false);
     });
-    
+
     const markChatAsRead = async () => {
       const chatDocRef = doc(db, 'chats', selectedChatId);
       try {
@@ -237,14 +237,15 @@ export default function ChatPage() {
         if (chatSnap.exists()) {
           const chatData = chatSnap.data() as ChatMetadata;
           if (
-            chatData.lastMessageSenderId && 
+            chatData.lastMessageSenderId &&
             chatData.lastMessageSenderId !== user.uid &&
             (!chatData.lastMessageReadBy || !chatData.lastMessageReadBy.includes(user.uid))
           ) {
             console.log(`Marking chat ${selectedChatId} as read by ${user.uid}`);
             await updateDoc(chatDocRef, {
               lastMessageReadBy: arrayUnion(user.uid),
-              updatedAt: serverTimestamp(), 
+              // Do not update 'updatedAt' here as it might reorder chats unnecessarily.
+              // Or, if you want it to bump, keep serverTimestamp()
             });
           }
         }
@@ -256,7 +257,7 @@ export default function ChatPage() {
     if (user && selectedChatId) {
       markChatAsRead();
     }
-    
+
     return () => unsubscribeMessages();
   }, [selectedChatId, user, toast]);
 
@@ -284,7 +285,7 @@ export default function ChatPage() {
         return;
       }
       setSelectedFile(file);
-      setMessage(''); 
+      setMessage('');
     }
   };
 
@@ -298,7 +299,8 @@ export default function ChatPage() {
         return;
     }
     if (!storage && selectedFile) {
-        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file.", variant: "destructive" });
+        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup.", variant: "destructive" });
+        setIsSending(false); // Ensure button is re-enabled
         return;
     }
     setIsSending(true);
@@ -326,10 +328,10 @@ export default function ChatPage() {
               console.error("Upload error object:", error);
               let detailedErrorMessage = `Could not upload file. Code: ${error.code}. Message: ${error.message}.`;
               switch (error.code) {
-                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules."; break;
+                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules. If on Spark plan, ensure it allows Storage configuration or upgrade."; break;
                 case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
                 case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
-                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Storage bucket not found. Verify Firebase config."; break;
+                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Storage bucket not found. Verify Firebase config (storageBucket value)."; break;
                 case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase config."; break;
                 case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded."; break;
                 case 'storage/unknown': detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Check network and Storage rules.`; break;
@@ -354,9 +356,13 @@ export default function ChatPage() {
           );
         });
       } catch (error) {
+        // This catch block handles errors from the new Promise (e.g., if reject(error) was called)
+        // or if any synchronous part before the promise threw an error.
         setIsSending(false);
         setUploadProgress(null);
-        return; 
+        // The toast for the specific upload error is already shown inside the promise's error handler.
+        // No need to show another generic toast here unless this catch is for a different type of error.
+        return;
       }
     }
 
@@ -372,29 +378,28 @@ export default function ChatPage() {
     try {
       const chatDocRef = doc(db, 'chats', selectedChatId);
       const messagesColRef = collection(chatDocRef, 'messages');
-      
+
       const batch = writeBatch(db);
       batch.set(doc(messagesColRef), newMessageContent);
-      
+
       const chatUpdateData: Partial<ChatMetadata> & {updatedAt: any, lastMessageTimestamp: any} = {
         lastMessage: message.trim() || (selectedFile ? `Attachment: ${selectedFile.name}` : 'New message'),
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        lastMessageSenderId: user.uid, 
-        lastMessageReadBy: [user.uid],   
+        lastMessageSenderId: user.uid,
+        lastMessageReadBy: [user.uid],
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
-      if (userProfile.profilePictureUrl) {
+      if (userProfile.profilePictureUrl) { // Check if profilePictureUrl is defined
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
-        if(userProfile.profilePictureUrl){
-           chatUpdateData.participantProfilePictures = {
-             ...existingPictures,
-             [user.uid]: userProfile.profilePictureUrl,
-           };
-        }
+        chatUpdateData.participantProfilePictures = {
+          ...existingPictures,
+          [user.uid]: userProfile.profilePictureUrl,
+        };
       }
+
 
       batch.update(chatDocRef, chatUpdateData);
 
@@ -416,10 +421,10 @@ export default function ChatPage() {
   }
 
   if (!user) {
-     // This is handled by the useEffect hook for redirection
+    // This is handled by the useEffect hook for redirection which runs after render
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
-  
+
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
   const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user.uid);
   const otherUsername = otherUserId ? selectedChatDetails?.participantUsernames[otherUserId] : 'User';
@@ -430,7 +435,7 @@ export default function ChatPage() {
     <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)]">
       <Card className={cn(
         "w-full md:w-1/3 lg:w-1/4 glass-card flex flex-col",
-        selectedChatId && 'hidden md:flex' 
+        selectedChatId && 'hidden md:flex'
       )}>
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -480,7 +485,7 @@ export default function ChatPage() {
 
       <Card className={cn(
         "flex-grow glass-card flex flex-col h-full relative",
-        !selectedChatId && 'hidden md:flex' 
+        !selectedChatId && 'hidden md:flex'
         )}>
         {selectedChatId && selectedChatDetails ? (
           <>
@@ -544,9 +549,9 @@ export default function ChatPage() {
                 )}
               </CardContent>
             </ScrollArea>
-            
+
             {showEmojiPicker && (
-              <div ref={emojiPickerRef} className="absolute bottom-20 right-2 z-10 md:right-auto md:left-2"> 
+              <div ref={emojiPickerRef} className="absolute bottom-20 right-2 z-10 md:right-auto md:left-2">
                 <EmojiPicker
                   onEmojiClick={onEmojiClick}
                   autoFocusSearch={false}
@@ -563,8 +568,8 @@ export default function ChatPage() {
               {selectedFile && (
                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50">
                   <div className="flex items-center gap-2 overflow-hidden">
-                    {selectedFile.type.startsWith('image/') ? <ImageIcon className="h-5 w-5 text-muted-foreground" /> : <FileIcon className="h-5 w-5 text-muted-foreground" />}
-                    <span className="text-sm text-muted-foreground truncate">{selectedFile.name}</span> 
+                    {selectedFile.type.startsWith('image/') ? <ImageIconLucide className="h-5 w-5 text-muted-foreground" /> : <FileIcon className="h-5 w-5 text-muted-foreground" />}
+                    <span className="text-sm text-muted-foreground truncate">{selectedFile.name}</span>
                     {uploadProgress !== null && <span className="text-xs text-primary">({uploadProgress.toFixed(0)}%)</span>}
                   </div>
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setSelectedFile(null); setUploadProgress(null); if(fileInputRef.current) fileInputRef.current.value = ""; }}>
@@ -576,9 +581,9 @@ export default function ChatPage() {
                  <Progress value={uploadProgress} className="w-full h-2 mb-2" />
               )}
               <div className="flex gap-2 w-full">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setShowEmojiPicker(prev => !prev)}
                   disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
                 >
@@ -620,4 +625,3 @@ export default function ChatPage() {
     </div>
   );
 }
-

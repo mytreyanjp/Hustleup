@@ -78,7 +78,8 @@ export default function NewPostPage() {
       return;
     }
     if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file.", variant: "destructive" });
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup.", variant: "destructive" });
+      setIsSubmittingPost(false); // Ensure button is re-enabled
       return;
     }
 
@@ -99,33 +100,19 @@ export default function NewPostPage() {
             console.log('Upload is ' + progress + '% done');
           },
           (error) => {
-            console.error("Upload error object:", error);
+            console.error("Upload error object for student post:", error);
             let detailedErrorMessage = `Could not upload image. Code: ${error.code}. Message: ${error.message}.`;
-            switch (error.code) {
-              case 'storage/unauthorized':
-                detailedErrorMessage = "Upload failed: Permission denied. Please check Firebase Storage security rules to ensure you can write to this path.";
-                break;
-              case 'storage/canceled':
-                detailedErrorMessage = "Upload canceled by the user.";
-                break;
-              case 'storage/object-not-found':
-                detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself or incorrect rules.";
-                break;
-              case 'storage/bucket-not-found':
-                detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config.";
-                break;
-              case 'storage/project-not-found':
-                 detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings.";
-                 break;
-              case 'storage/quota-exceeded':
-                detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space.";
-                break;
-              case 'storage/unknown':
-              default:
-                detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Please check your network connection and Firebase Storage rules. Firebase message: ${error.message}`;
-                break;
+             switch (error.code) {
+                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules. If on Spark plan, ensure it allows Storage configuration or upgrade."; break;
+                case 'storage/canceled': detailedErrorMessage = "Upload canceled by the user."; break;
+                case 'storage/object-not-found': detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself or incorrect rules."; break;
+                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config."; break;
+                case 'storage/project-not-found': detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings."; break;
+                case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space."; break;
+                case 'storage/unknown':
+                default: detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Please check your network connection and Firebase Storage rules. Firebase message: ${error.message}`; break;
             }
-            toast({ id: `image-upload-failed-${error.code || 'unknown'}`, title: "Image Upload Failed", description: detailedErrorMessage, variant: "destructive" });
+            toast({ id: `image-upload-failed-student-post-${error.code || 'unknown'}`, title: "Image Upload Failed", description: detailedErrorMessage, variant: "destructive" });
             reject(error);
           },
           async () => {
@@ -133,7 +120,7 @@ export default function NewPostPage() {
               const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
               resolve(downloadURL);
             } catch (urlError: any) {
-              console.error("Error getting download URL:", urlError);
+              console.error("Error getting download URL for student post:", urlError);
               toast({ title: "Upload Successful, but URL Failed", description: `Image uploaded, but failed to get download URL: ${urlError.message}`, variant: "destructive" });
               reject(urlError);
             }
@@ -161,9 +148,9 @@ export default function NewPostPage() {
 
     } catch (error: any) {
       console.error('Error creating post (outer try-catch):', error);
-      if (!toast.isActive(`image-upload-failed-${error.code || 'unknown'}`)) { 
+      if (!toast.isActive(`image-upload-failed-student-post-${error.code || 'unknown'}`)) {
          toast({
-           id: `post-creation-failed-${Date.now()}`,
+           id: `post-creation-failed-student-post-${Date.now()}`,
            title: 'Failed to Create Post',
            description: (error.message && error.message.includes("Upload failed")) ? "See previous error for upload details." : (error.message || 'An unexpected error occurred while saving the post.'),
            variant: 'destructive',
@@ -171,7 +158,7 @@ export default function NewPostPage() {
       }
     } finally {
       setIsSubmittingPost(false);
-      setUploadProgress(null); 
+      setUploadProgress(null);
     }
   };
 
@@ -199,7 +186,7 @@ export default function NewPostPage() {
               <FormField
                 control={form.control}
                 name="image"
-                render={({ field }) => ( 
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel>Image</FormLabel>
                     <FormControl>
@@ -274,4 +261,3 @@ export default function NewPostPage() {
     </div>
   );
 }
-    
