@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useFirebase } from '@/context/firebase-context';
@@ -44,11 +45,11 @@ interface ChatMetadata {
   id: string;
   participants: string[];
   participantUsernames: { [key: string]: string };
-  participantProfilePictures?: { [key: string]: string }; // Optional, values must not be undefined
+  participantProfilePictures?: { [key: string]: string };
   lastMessage?: string;
   lastMessageTimestamp?: Timestamp | null;
   gigId?: string;
-  createdAt: Timestamp; // Added createdAt
+  createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
@@ -103,7 +104,7 @@ export default function ChatPage() {
             [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
             [targetUserId]: targetUsername,
           },
-          participantProfilePictures: participantPictures,
+          ...(Object.keys(participantPictures).length > 0 && { participantProfilePictures: participantPictures }),
           lastMessage: 'Chat started.',
           lastMessageTimestamp: serverTimestamp() as Timestamp,
           ...(gigId && { gigId }),
@@ -135,7 +136,7 @@ export default function ChatPage() {
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
         // Clear URL params to avoid re-triggering
-        router.replace('/chat', undefined);
+        router.replace('/chat', { scroll: false });
         return;
     }
     
@@ -151,7 +152,7 @@ export default function ChatPage() {
           console.error("Target user for chat not found.");
         }
          // Clear URL params after processing
-         router.replace('/chat', undefined);
+         router.replace('/chat', { scroll: false });
       };
       fetchTargetUserAndCreateChat();
     }
@@ -206,7 +207,7 @@ export default function ChatPage() {
       })) as ChatMessage[];
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
-      scrollToBottom();
+      // scrollToBottom(); // Removed from here, handled by dedicated useEffect
     }, (error) => {
       console.error(`Error fetching messages for chat ${selectedChatId}:`, error);
       setIsLoadingMessages(false);
@@ -244,17 +245,20 @@ export default function ChatPage() {
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
+      // Only add profile picture if it exists to avoid undefined values
       if (userProfile.profilePictureUrl) {
-        chatUpdateData[`participantProfilePictures.${user.uid}`] = userProfile.profilePictureUrl;
+        if (!chatUpdateData.participantProfilePictures) {
+            chatUpdateData.participantProfilePictures = {};
+        }
+        chatUpdateData.participantProfilePictures[user.uid] = userProfile.profilePictureUrl;
       }
-      // If we wanted to be able to REMOVE a profile picture, we'd need to use FieldValue.delete()
-      // but for now, just not setting it if it's undefined is fine.
+
 
       batch.update(chatDocRef, chatUpdateData);
 
       await batch.commit();
       setMessage('');
-      scrollToBottom();
+      // scrollToBottom(); // Already handled by useEffect reacting to `messages` state change
     } catch (error) {
       console.error("Error sending message:", error);
       // Show toast notification
@@ -316,7 +320,7 @@ export default function ChatPage() {
                     <p className="font-medium text-sm truncate">{chatPartnerUsername}</p>
                     <p className="text-xs text-muted-foreground truncate">{chat.lastMessage}</p>
                      <p className="text-xs text-muted-foreground/70">
-                        {chat.lastMessageTimestamp ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
+                        {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
                     </p>
                   </div>
                 </div>
@@ -368,7 +372,7 @@ export default function ChatPage() {
                     >
                       <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                       <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
-                        {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                        {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                       </p>
                     </div>
                   </div>
@@ -411,6 +415,3 @@ export default function ChatPage() {
   );
 }
 
-// Avatar components are now imported from @/components/ui/avatar
-// If the global Avatar component is different, ensure this page uses the correct one.
-// For simplicity, assuming global ui/avatar is used.
