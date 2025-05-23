@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react'; // Added useRef
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db, storage } from '@/config/firebase'; // Import storage
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Firebase Storage functions
+import { db, storage } from '@/config/firebase';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,11 +16,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud } from 'lucide-react'; // Added UploadCloud
+import { Loader2, PlusCircle, Trash2, UploadCloud } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
-import { Progress } from '@/components/ui/progress'; // Import Progress component
+import { Progress } from '@/components/ui/progress';
+import type { UserProfile } from '@/context/firebase-context';
 
 const portfolioLinkSchema = z.object({
   value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
@@ -31,7 +32,6 @@ const profileSchema = z.object({
   bio: z.string().max(500, { message: 'Bio cannot exceed 500 characters' }).optional().or(z.literal('')),
   skills: z.array(z.string()).max(15, { message: 'Maximum 15 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
-  // profilePictureUrl is handled separately, not part of this form schema for direct RHF submission
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -69,7 +69,7 @@ export default function StudentProfilePage() {
    useEffect(() => {
      if (!authLoading) {
        if (!user || role !== 'student') {
-         router.push('/auth/login?redirect=/student/profile'); // Added redirect
+         router.push('/auth/login?redirect=/student/profile');
        } else if (userProfile) {
          form.reset({
            username: userProfile.username || user.email?.split('@')[0] || '',
@@ -77,9 +77,9 @@ export default function StudentProfilePage() {
            skills: (userProfile.skills as Skill[]) || [],
            portfolioLinks: userProfile.portfolioLinks?.map(link => ({ value: link })) || [],
          });
-         setImagePreview(userProfile.profilePictureUrl || null); // Set initial image preview
+         setImagePreview(userProfile.profilePictureUrl || null);
          setIsFormReady(true);
-       } else if (user) { // User is student, but profile is null
+       } else if (user) {
          form.reset({
              username: user.email?.split('@')[0] || '',
              bio: '',
@@ -94,7 +94,7 @@ export default function StudentProfilePage() {
   const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
         toast({ title: "Image Too Large", description: "Please select an image smaller than 5MB.", variant: "destructive"});
         return;
       }
@@ -135,8 +135,6 @@ export default function StudentProfilePage() {
         setIsUploading(false);
         setUploadProgress(null);
         setSelectedImageFile(null);
-        // Revert preview if needed, or keep it and allow retry
-        // setImagePreview(userProfile?.profilePictureUrl || null); 
       },
       async () => {
         try {
@@ -148,7 +146,7 @@ export default function StudentProfilePage() {
           });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
           if (refreshUserProfile) await refreshUserProfile();
-          setSelectedImageFile(null); // Clear selected file after successful upload
+          setSelectedImageFile(null); 
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
           toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
@@ -167,13 +165,19 @@ export default function StudentProfilePage() {
 
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      const updateData: Partial<UserProfile> = { // Use Partial<UserProfile> for type safety
+      const updateData: Partial<UserProfile> = { 
         username: data.username,
         bio: data.bio || '',
         skills: data.skills || [],
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
         profileUpdatedAt: new Date(),
       };
+
+      // Ensure the profilePictureUrl is included if it exists in the userProfile context
+      // This handles the case where a picture was uploaded separately before hitting "Save Changes"
+      if (userProfile?.profilePictureUrl) {
+        updateData.profilePictureUrl = userProfile.profilePictureUrl;
+      }
 
       await updateDoc(userDocRef, updateData);
 
