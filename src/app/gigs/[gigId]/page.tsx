@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -25,7 +26,7 @@ interface Gig {
   clientUsername?: string;
   createdAt: Timestamp; // Firestore Timestamp
   status: 'open' | 'in-progress' | 'completed' | 'closed';
-  applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[]; // Added applicants field
+  applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
 }
 
 export default function GigDetailPage() {
@@ -36,51 +37,60 @@ export default function GigDetailPage() {
   const { toast } = useToast();
 
   const [gig, setGig] = useState<Gig | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingGig, setIsLoadingGig] = useState(true); // Renamed for clarity
   const [error, setError] = useState<string | null>(null);
   const [applicationMessage, setApplicationMessage] = useState('');
   const [isApplying, setIsApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
 
-  useEffect(() => {
+  const fetchGigData = useCallback(async () => {
     if (!gigId) {
-        setError("Gig ID is missing.");
-        setIsLoading(false);
-        return;
-    };
+      setError("Gig ID is missing.");
+      setIsLoadingGig(false);
+      return;
+    }
+    setIsLoadingGig(true);
+    setError(null);
+    try {
+      const gigDocRef = doc(db, 'gigs', gigId);
+      const docSnap = await getDoc(gigDocRef);
 
-    const fetchGig = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const gigDocRef = doc(db, 'gigs', gigId);
-        const docSnap = await getDoc(gigDocRef);
-
-        if (docSnap.exists()) {
-          const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
-          setGig(fetchedGig);
-
-          // Check if the current user has already applied (only if user is loaded and is a student)
-          if (user && role === 'student' && fetchedGig.applicants) {
-            setHasApplied(fetchedGig.applicants.some(app => app.studentId === user.uid));
-          }
-
-        } else {
-          setError("Gig not found.");
-        }
-      } catch (err: any) {
-        console.error("Error fetching gig:", err);
-        setError("Failed to load gig details. Please try again later.");
-      } finally {
-        setIsLoading(false);
+      if (docSnap.exists()) {
+        const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
+        setGig(fetchedGig);
+      } else {
+        setError("Gig not found.");
+        setGig(null); // Ensure gig is null if not found
       }
-    };
+    } catch (err: any) {
+      console.error("Error fetching gig:", err);
+      setError("Failed to load gig details. Please try again later.");
+      setGig(null);
+    } finally {
+      setIsLoadingGig(false);
+    }
+  }, [gigId]);
 
-    fetchGig();
-  }, [gigId, user, role]); // Re-run if user or role changes
+  useEffect(() => {
+    fetchGigData();
+  }, [fetchGigData]);
+
+  useEffect(() => {
+    // Determine if the current student has applied once gig data is loaded and user/role are known
+    if (gig && user && role === 'student') {
+      if (gig.applicants) {
+        setHasApplied(gig.applicants.some(app => app.studentId === user.uid));
+      } else {
+        setHasApplied(false); // No applicants array means not applied yet
+      }
+    } else {
+      setHasApplied(false); // Default to false if not a student, or no user/gig
+    }
+  }, [gig, user, role]);
+
 
   const handleApply = async () => {
-    if (!user || role !== 'student' || !gig || hasApplied) return;
+    if (!user || role !== 'student' || !gig || hasApplied || gig.status !== 'open') return;
 
     setIsApplying(true);
     try {
@@ -88,7 +98,7 @@ export default function GigDetailPage() {
       const newApplicant = {
         studentId: user.uid,
         studentUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Student',
-        message: applicationMessage.trim() || '', // Include the message
+        message: applicationMessage.trim() || '',
         appliedAt: Timestamp.now(),
       };
 
@@ -96,14 +106,15 @@ export default function GigDetailPage() {
         applicants: arrayUnion(newApplicant),
       });
 
-      setHasApplied(true); // Update UI state
+      setHasApplied(true);
+      // Optimistically update gig state or re-fetch
+      setGig(prevGig => prevGig ? { ...prevGig, applicants: [...(prevGig.applicants || []), newApplicant] } : null);
+
       toast({
         title: 'Application Sent!',
         description: 'Your application has been submitted to the client.',
       });
-       setApplicationMessage(''); // Clear message field
-
-       // TODO: Optionally initiate a chat conversation here
+      setApplicationMessage('');
 
     } catch (err: any) {
       console.error("Error applying to gig:", err);
@@ -117,29 +128,21 @@ export default function GigDetailPage() {
     }
   };
 
-
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     try {
       return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
-    } catch (e) {
-      console.error("Error formatting date:", e);
-      return 'Invalid date';
-    }
+    } catch (e) { return 'Invalid date'; }
   };
 
-   const formatDeadline = (timestamp: Timestamp | undefined): string => {
-     if (!timestamp) return 'N/A';
-     try {
-       return timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-     } catch (e) {
-       console.error("Error formatting deadline:", e);
-       return 'Invalid date';
-     }
-   };
+  const formatDeadline = (timestamp: Timestamp | undefined): string => {
+    if (!timestamp) return 'N/A';
+    try {
+      return timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    } catch (e) { return 'Invalid date'; }
+  };
 
-
-  if (isLoading || authLoading) {
+  if (isLoadingGig || authLoading) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -161,18 +164,17 @@ export default function GigDetailPage() {
   if (!gig) {
      return (
        <div className="text-center py-10 text-muted-foreground">
-         Could not load gig details.
+         Gig details could not be loaded or the gig was not found.
        </div>
      );
    }
 
    const isClientOwner = user && role === 'client' && user.uid === gig.clientId;
 
-
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6">
        <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-4">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Gigs
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
        </Button>
 
        <Card className="glass-card">
@@ -209,94 +211,117 @@ export default function GigDetailPage() {
            </div>
         </CardContent>
         <CardFooter>
-           {/* Action Buttons */}
-           {role === 'student' && gig.status === 'open' && (
-             <div className="w-full space-y-4">
-               {hasApplied ? (
-                 <p className="text-sm text-green-600 font-medium text-center">✅ You have already applied to this gig.</p>
-               ) : (
-                 <>
-                   <h3 className="font-semibold">Apply for this Gig</h3>
-                   <Textarea
-                     placeholder="Include a brief message introducing yourself and why you're a good fit (optional)..."
-                     value={applicationMessage}
-                     onChange={(e) => setApplicationMessage(e.target.value)}
-                     rows={3}
-                   />
-                   <Button
-                     onClick={handleApply}
-                     disabled={isApplying || hasApplied}
-                     className="w-full sm:w-auto"
-                   >
-                     {isApplying ? (
-                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                     ) : (
-                       <Send className="mr-2 h-4 w-4" />
-                     )}
-                     Submit Application
-                   </Button>
-                 </>
-               )}
-             </div>
-           )}
-            {isClientOwner && (
-                <Button asChild variant="secondary">
-                  <Link href={`/client/gigs/${gigId}/manage`}>Manage Gig & Applicants</Link>
-                </Button>
-            )}
-             {role === 'client' && !isClientOwner && (
-                 <p className="text-sm text-muted-foreground">You can browse gigs, but only students can apply.</p>
-             )}
-             {!user && gig.status === 'open' && (
-                 <Button asChild>
-                     <Link href={`/auth/login?redirect=/gigs/${gigId}`}>Login or Sign Up to Apply</Link>
-                 </Button>
-             )}
-             {gig.status !== 'open' && (
-                <p className="text-sm text-muted-foreground">This gig is no longer accepting applications ({gig.status}).</p>
-             )}
+           {(() => {
+              // Explicitly handle loading state for footer actions if main page loading is done
+              // but some sub-conditions might still be resolving (though less likely with current setup)
+
+              if (gig.status !== 'open') {
+                return <p className="text-sm text-muted-foreground w-full text-center">This gig is no longer accepting applications ({gig.status}).</p>;
+              }
+
+              if (!user) { // Not logged in, gig is open
+                return (
+                  <Button asChild className="w-full sm:w-auto">
+                    <Link href={`/auth/login?redirect=/gigs/${gigId}`}>Login or Sign Up to Apply</Link>
+                  </Button>
+                );
+              }
+
+              // User is logged in, gig is open. Now check roles.
+              if (role === 'student') {
+                if (hasApplied) {
+                  return <p className="text-sm text-green-600 font-medium text-center w-full">✅ You have already applied to this gig.</p>;
+                } else {
+                  return (
+                    <div className="w-full space-y-4">
+                      <h3 className="font-semibold">Apply for this Gig</h3>
+                      <Textarea
+                        placeholder="Include a brief message introducing yourself and why you're a good fit (optional)..."
+                        value={applicationMessage}
+                        onChange={(e) => setApplicationMessage(e.target.value)}
+                        rows={3}
+                        disabled={isApplying}
+                      />
+                      <Button
+                        onClick={handleApply}
+                        disabled={isApplying || hasApplied}
+                        className="w-full sm:w-auto"
+                      >
+                        {isApplying ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-2 h-4 w-4" />
+                        )}
+                        Submit Application
+                      </Button>
+                    </div>
+                  );
+                }
+              } else if (role === 'client') {
+                if (isClientOwner) {
+                  return (
+                    <Button asChild variant="secondary" className="w-full sm:w-auto">
+                      <Link href={`/client/gigs/${gigId}/manage`}>Manage Gig & Applicants</Link>
+                    </Button>
+                  );
+                } else {
+                  return <p className="text-sm text-muted-foreground w-full text-center">You are viewing this as a client. Only students can apply.</p>;
+                }
+              } else if (user && !role) { // User logged in, gig open, role not yet determined
+                  return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type to apply...</p>;
+              }
+              
+              // Fallback, though should ideally be covered by above conditions
+              return <p className="text-sm text-muted-foreground w-full text-center">Application status unavailable.</p>;
+           })()}
         </CardFooter>
       </Card>
 
-       {/* Section for Client to view applicants (only visible to owner) */}
-       {isClientOwner && (
+       {isClientOwner && gig.applicants && gig.applicants.length > 0 && (
          <Card className="glass-card">
            <CardHeader>
-             <CardTitle>Applicants</CardTitle>
-             <CardDescription>Students who have applied to this gig.</CardDescription>
+             <CardTitle>Applicants ({gig.applicants.length})</CardTitle>
+             <CardDescription>Students who have applied to this gig. Manage them from the "Manage Gig" page.</CardDescription>
            </CardHeader>
            <CardContent>
-             {gig.applicants && gig.applicants.length > 0 ? (
-               <ul className="space-y-3">
-                 {gig.applicants.map((applicant) => (
-                   <li key={applicant.studentId} className="flex items-center justify-between p-3 border rounded-md">
-                     <div className="flex items-center gap-3">
-                       <UserCircle className="h-6 w-6 text-muted-foreground" />
-                       <div>
-                         <p className="font-medium">{applicant.studentUsername}</p>
-                         <p className="text-xs text-muted-foreground">Applied {formatDate(applicant.appliedAt)}</p>
-                          {applicant.message && <p className="text-sm mt-1 italic">"{applicant.message}"</p>}
-                       </div>
+             <ul className="space-y-3">
+               {gig.applicants.slice(0, 3).map((applicant) => ( // Show a few applicants, link to manage page for full list
+                 <li key={applicant.studentId} className="flex items-center justify-between p-3 border rounded-md">
+                   <div className="flex items-center gap-3">
+                     <UserCircle className="h-6 w-6 text-muted-foreground" />
+                     <div>
+                       <p className="font-medium">{applicant.studentUsername}</p>
+                       <p className="text-xs text-muted-foreground">Applied {formatDate(applicant.appliedAt)}</p>
+                        {applicant.message && <p className="text-sm mt-1 italic line-clamp-2">"{applicant.message}"</p>}
                      </div>
-                     <Button size="sm" variant="outline" asChild>
-                        {/* TODO: Link to applicant profile and chat */}
-                       <Link href={`/profile/${applicant.studentId}`}>View Profile</Link>
+                   </div>
+                    <Button size="sm" variant="outline" asChild>
+                       <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
                      </Button>
-                   </li>
-                 ))}
-               </ul>
-             ) : (
-               <p className="text-sm text-muted-foreground">No applications received yet.</p>
-             )}
+                 </li>
+               ))}
+                {gig.applicants.length > 3 && <p className="text-sm text-muted-foreground mt-2 text-center">And {gig.applicants.length - 3} more...</p>}
+             </ul>
            </CardContent>
-            <CardFooter>
+           <CardFooter>
                  <Button asChild variant="default" className="w-full">
-                     <Link href={`/client/gigs/${gigId}/manage`}>Manage Applicants & Payments</Link>
+                     <Link href={`/client/gigs/${gigId}/manage`}>Manage All Applicants & Payments</Link>
                  </Button>
             </CardFooter>
          </Card>
        )}
+        {isClientOwner && (!gig.applicants || gig.applicants.length === 0) && (
+            <Card className="glass-card">
+                <CardHeader>
+                    <CardTitle>Applicants</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-sm text-muted-foreground">No applications received yet for this gig.</p>
+                </CardContent>
+            </Card>
+        )}
     </div>
   );
 }
 
+    
