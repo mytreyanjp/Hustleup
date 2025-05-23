@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, DocumentData } from 'firebase/firestore';
-import { auth, db, isConfigValid } from '@/config/firebase'; // Import db and auth directly
+import { auth, db } from '@/config/firebase'; // Import db and auth directly
 import { Skeleton } from '@/components/ui/skeleton'; // For loading state
 import { Loader2 } from 'lucide-react';
 
@@ -58,7 +58,12 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
          if (docSnap.exists()) {
            const profileData = { uid: currentUser.uid, email: currentUser.email, ...docSnap.data() } as UserProfile;
            setUserProfile(profileData);
-           setRole(profileData.role || null);
+           if (profileData.role === 'student' || profileData.role === 'client') {
+             setRole(profileData.role);
+           } else {
+             setRole(null);
+             console.warn(`User profile for UID ${currentUser.uid} found, but 'role' field is missing, invalid, or not 'student'/'client'. Actual role value: '${profileData.role}'. Setting role to null.`);
+           }
            console.log("User profile loaded:", profileData);
          } else {
            console.warn("No user profile found in Firestore for UID:", currentUser.uid);
@@ -177,3 +182,4 @@ export const useFirebase = () => {
   return context;
 };
 
+    
