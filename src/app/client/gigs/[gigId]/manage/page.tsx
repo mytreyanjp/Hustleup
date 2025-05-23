@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useRazorpay } from '@/hooks/use-razorpay';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getChatId } from '@/lib/utils';
 
 
 interface ApplicantInfo {
@@ -38,6 +39,7 @@ interface Gig {
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: ApplicantInfo[];
   selectedStudentId?: string | null; // Track hired student
+  currency?: string; // Added for payment
 }
 
 export default function ManageGigPage() {
@@ -67,7 +69,7 @@ export default function ManageGigPage() {
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
-             currency: 'INR',
+             currency: gig.currency || 'INR',
              status: 'succeeded',
              razorpayPaymentId: paymentDetails.paymentId,
              razorpayOrderId: paymentDetails.orderId,
@@ -126,7 +128,7 @@ export default function ManageGigPage() {
 
      openCheckout({
        amount: gig.budget * 100, // Amount in paise
-       currency: "INR",
+       currency: gig.currency || "INR",
        name: "HustleUp Gig Payment",
        description: `Payment for: ${gig.title}`,
        prefill: {
@@ -180,8 +182,83 @@ export default function ManageGigPage() {
   }, [authLoading, user, role, router, fetchGigData]);
 
 
+  const sendApplicationStatusNotification = async (
+    applicant: ApplicantInfo,
+    gigData: Gig,
+    status: 'accepted' | 'rejected'
+  ) => {
+    if (!user || !userProfile || !db) return;
+
+    const chatId = getChatId(user.uid, applicant.studentId);
+    const chatDocRef = doc(db, 'chats', chatId);
+    const messageText = `Your application for the gig "${gigData.title}" has been ${status}.`;
+
+    try {
+      const batch = writeBatch(db);
+
+      // Ensure chat document exists or create it
+      const chatSnap = await getDoc(chatDocRef);
+      if (!chatSnap.exists()) {
+        const newChatData: any = {
+          id: chatId,
+          participants: [user.uid, applicant.studentId],
+          participantUsernames: {
+            [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Client',
+            [applicant.studentId]: applicant.studentUsername,
+          },
+          gigId: gigData.id,
+          createdAt: serverTimestamp(),
+          // Last message fields will be set by the new message
+        };
+        if (userProfile.profilePictureUrl) {
+           newChatData.participantProfilePictures = { [user.uid]: userProfile.profilePictureUrl };
+        }
+        batch.set(chatDocRef, newChatData);
+      }
+
+      // Add the notification message
+      const newMessageRef = doc(collection(db, 'chats', chatId, 'messages'));
+      batch.set(newMessageRef, {
+        senderId: user.uid, // Client is sending the notification
+        text: messageText,
+        timestamp: serverTimestamp(),
+      });
+
+      // Update the main chat document
+      batch.update(chatDocRef, {
+        lastMessage: messageText,
+        lastMessageTimestamp: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        // Update client's profile picture in chat if not already there or changed
+        ...(userProfile.profilePictureUrl && {
+            [`participantProfilePictures.${user.uid}`]: userProfile.profilePictureUrl,
+        }),
+      });
+
+      await batch.commit();
+      toast({
+        title: 'Notification Sent',
+        description: `The student ${applicant.studentUsername} has been notified via chat.`,
+      });
+    } catch (chatError) {
+      console.error('Error sending chat notification:', chatError);
+      toast({
+        title: 'Notification Error',
+        description: 'Could not send chat notification to the student.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+
    const updateApplicantStatus = async (studentId: string, newStatus: 'accepted' | 'rejected') => {
        if (!gig) return;
+       const applicant = gig.applicants?.find(app => app.studentId === studentId);
+       if (!applicant) {
+           toast({ title: "Error", description: "Applicant not found.", variant: "destructive" });
+           return;
+       }
+
        setUpdatingApplicantId(studentId);
        try {
            const gigDocRef = doc(db, 'gigs', gig.id);
@@ -194,11 +271,6 @@ export default function ManageGigPage() {
            if (newStatus === 'accepted') {
                gigUpdateData.status = 'in-progress';
                gigUpdateData.selectedStudentId = studentId;
-               // Optionally reject all other pending applicants automatically
-               // updatedApplicants = updatedApplicants.map(app =>
-               //    (app.studentId !== studentId && (app.status === 'pending' || !app.status)) ? { ...app, status: 'rejected' } : app
-               // );
-               // gigUpdateData.applicants = updatedApplicants;
            }
 
            await updateDoc(gigDocRef, gigUpdateData);
@@ -211,6 +283,9 @@ export default function ManageGigPage() {
             } : null);
 
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
+
+           // Send notification after successful status update
+           await sendApplicationStatusNotification(applicant, gig, newStatus);
 
        } catch (err: any) {
            console.error("Error updating applicant status:", err);
@@ -235,7 +310,7 @@ export default function ManageGigPage() {
            case 'pending': return 'secondary';
            case 'open': return 'default';
            case 'in-progress': return 'secondary';
-           case 'completed': return 'outline'; // Consider 'success' if you have it, or green.
+           case 'completed': return 'outline'; 
            case 'closed': return 'destructive';
            default: return 'secondary';
        }
@@ -421,5 +496,3 @@ export default function ManageGigPage() {
      </div>
    );
 }
-
-    
