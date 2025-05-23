@@ -37,6 +37,7 @@ type GigFormValues = z.infer<typeof gigSchema>;
 interface GigData extends GigFormValues {
   id: string;
   clientId: string;
+  currency: string; // Add currency
   // other fields like status, createdAt are not directly edited here but exist on the document
 }
 
@@ -124,6 +125,7 @@ export default function EditGigPage() {
       const gigDocRef = doc(db, 'gigs', gigId);
       // Ensure we only update fields that are part of the form
       // status, applicants, etc. should not be overwritten here
+      // Currency is also not editable here, it's set on creation
       await updateDoc(gigDocRef, {
         ...data, // title, description, budget, deadline, requiredSkills
         updatedAt: serverTimestamp(),
@@ -175,7 +177,7 @@ export default function EditGigPage() {
         <CardHeader>
           <CardTitle className="text-2xl">Edit Gig</CardTitle>
           <CardDescription>
-            Modify the details of your gig.
+            Modify the details of your gig. Currency is fixed to INR.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -216,11 +218,11 @@ export default function EditGigPage() {
                   name="budget"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Budget ($)</FormLabel>
+                      <FormLabel>Budget (INR)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 150" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} min="1" step="any" />
+                        <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} min="1" step="any" />
                       </FormControl>
-                      <FormDescription>Enter the total amount you're willing to pay.</FormDescription>
+                      <FormDescription>Enter the total amount in INR.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -300,5 +302,3 @@ export default function EditGigPage() {
     </div>
   );
 }
-
-    

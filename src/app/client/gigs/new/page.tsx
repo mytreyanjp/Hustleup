@@ -71,6 +71,7 @@ export default function NewGigPage() {
         clientId: user.uid,
         clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Client',
         ...data,
+        currency: "INR", // Set currency to INR
         status: 'open', // Default status for new gigs
         createdAt: serverTimestamp(),
         applicants: [], // Initialize with empty applicants array
@@ -156,11 +157,11 @@ export default function NewGigPage() {
                    name="budget"
                    render={({ field }) => (
                      <FormItem>
-                       <FormLabel>Budget ($)</FormLabel>
+                       <FormLabel>Budget (INR)</FormLabel>
                        <FormControl>
-                         <Input type="number" placeholder="e.g., 150" {...field} value={field.value ?? ''} min="1" step="any" />
+                         <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} min="1" step="any" />
                        </FormControl>
-                       <FormDescription>Enter the total amount you're willing to pay.</FormDescription>
+                       <FormDescription>Enter the total amount in INR.</FormDescription>
                        <FormMessage />
                      </FormItem>
                    )}

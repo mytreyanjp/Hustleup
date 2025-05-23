@@ -20,6 +20,7 @@ interface ClientGig {
   createdAt: Timestamp;
   deadline: Timestamp;
   budget: number;
+  currency: string; // Added currency
   applicantCount: number;
   selectedStudentId?: string;
 }
@@ -62,6 +63,7 @@ export default function ClientGigsPage() {
           createdAt: data.createdAt,
           deadline: data.deadline,
           budget: data.budget || 0,
+          currency: data.currency || "INR", // Default to INR if not present
           applicantCount: data.applicants?.length || 0,
           selectedStudentId: data.selectedStudentId || null,
         } as ClientGig;
@@ -140,7 +142,7 @@ export default function ClientGigsPage() {
            </Badge>
         </div>
         <CardDescription>
-          Deadline: {formatDeadline(gig.deadline)} | Budget: ${gig.budget.toFixed(2)}
+          Deadline: {formatDeadline(gig.deadline)} | Budget: {gig.currency} {gig.budget.toFixed(2)}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow">
@@ -157,7 +159,7 @@ export default function ClientGigsPage() {
               </Link>
             </Button>
             <Button variant="secondary" size="sm" asChild>
-              <Link href={`/client/gigs/${gig.id}/edit`}> {/* TODO: Create edit page */}
+              <Link href={`/client/gigs/${gig.id}/edit`}>
                 <Edit className="mr-1 h-4 w-4" /> Edit Gig
               </Link>
             </Button>
@@ -239,4 +241,3 @@ export default function ClientGigsPage() {
     </div>
   );
 }
-

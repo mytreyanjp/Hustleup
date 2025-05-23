@@ -39,7 +39,7 @@ interface Gig {
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: ApplicantInfo[];
   selectedStudentId?: string | null; // Track hired student
-  currency?: string; // Added for payment
+  currency: string; // Currency will always be INR
 }
 
 export default function ManageGigPage() {
@@ -69,7 +69,7 @@ export default function ManageGigPage() {
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
-             currency: gig.currency || 'INR',
+             currency: "INR", // Hardcode to INR
              status: 'succeeded',
              razorpayPaymentId: paymentDetails.paymentId,
              razorpayOrderId: paymentDetails.orderId,
@@ -87,7 +87,7 @@ export default function ManageGigPage() {
 
          toast({
              title: "Payment Successful!",
-             description: `Payment of ${gig.currency || 'INR'} ${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded.`,
+             description: `Payment of INR ${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded.`,
          });
 
      } catch (err) {
@@ -128,7 +128,7 @@ export default function ManageGigPage() {
 
      openCheckout({
        amount: gig.budget * 100, // Amount in paise
-       currency: gig.currency || "INR",
+       currency: "INR", // Explicitly use INR
        name: "HustleUp Gig Payment",
        description: `Payment for: ${gig.title}`,
        prefill: {
@@ -157,6 +157,10 @@ export default function ManageGigPage() {
              setError("You are not authorized to manage this gig.");
               setGig(null);
            } else {
+              // Ensure currency is INR if it's missing from older data (should be set for new gigs)
+              if (!fetchedGig.currency) {
+                fetchedGig.currency = "INR";
+              }
               setGig(fetchedGig);
            }
          } else {
@@ -387,7 +391,7 @@ export default function ManageGigPage() {
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
                 <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0">
-                    Ready to pay **${gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}?
+                    Ready to pay **INR {gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}?
                 </p>
                 <Button
                    size="lg"
@@ -396,7 +400,7 @@ export default function ManageGigPage() {
                    className="w-full sm:w-auto"
                  >
                    {(isLoading && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                   Pay ${gig.budget.toFixed(2)}
+                   Pay INR {gig.budget.toFixed(2)}
                  </Button>
             </CardFooter>
          </Card>

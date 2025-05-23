@@ -20,6 +20,7 @@ interface Gig {
   title: string;
   description: string;
   budget: number;
+  currency: string; // Added currency
   deadline: Timestamp; // Firestore Timestamp
   requiredSkills: string[];
   clientId: string;
@@ -57,6 +58,10 @@ export default function GigDetailPage() {
 
       if (docSnap.exists()) {
         const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
+        // Ensure currency is set, default to INR if missing from older data
+        if (!fetchedGig.currency) {
+            fetchedGig.currency = "INR";
+        }
         setGig(fetchedGig);
       } else {
         setError("Gig not found.");
@@ -100,6 +105,7 @@ export default function GigDetailPage() {
         studentUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Student',
         message: applicationMessage.trim() || '',
         appliedAt: Timestamp.now(),
+        status: 'pending', // Initial status
       };
 
       await updateDoc(gigDocRef, {
@@ -202,7 +208,7 @@ export default function GigDetailPage() {
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="flex items-center text-sm">
                   <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">${gig.budget.toFixed(2)}</span>
+                  <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span>
               </div>
               <div className="flex items-center text-sm">
                   <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -212,8 +218,9 @@ export default function GigDetailPage() {
         </CardContent>
         <CardFooter>
            {(() => {
-              // Explicitly handle loading state for footer actions if main page loading is done
-              // but some sub-conditions might still be resolving (though less likely with current setup)
+              if (isLoadingGig || authLoading) {
+                return <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />;
+              }
 
               if (gig.status !== 'open') {
                 return <p className="text-sm text-muted-foreground w-full text-center">This gig is no longer accepting applications ({gig.status}).</p>;
@@ -267,7 +274,7 @@ export default function GigDetailPage() {
                 } else {
                   return <p className="text-sm text-muted-foreground w-full text-center">You are viewing this as a client. Only students can apply.</p>;
                 }
-              } else if (user && !role) { // User logged in, gig open, role not yet determined
+              } else if (user && !role && !authLoading) { // User logged in, gig open, role not yet determined but auth loaded
                   return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type to apply...</p>;
               }
               
@@ -323,5 +330,3 @@ export default function GigDetailPage() {
     </div>
   );
 }
-
-    
