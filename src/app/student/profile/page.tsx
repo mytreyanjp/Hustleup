@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form'; // Removed useFieldArray
+import { useForm, useFieldArray } from 'react-hook-form'; // Added useFieldArray
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, updateDoc } from 'firebase/firestore'; // Removed getDoc as profile comes from context
@@ -15,10 +15,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2 } from 'lucide-react'; // PlusCircle and Trash2 might be unused now
+import { Loader2, PlusCircle, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { MultiSelectSkills } from '@/components/ui/multi-select-skills'; // Import new component
-import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants'; // Import predefined skills
+import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
+import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 
 const portfolioLinkSchema = z.object({
   value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
@@ -27,7 +27,7 @@ const portfolioLinkSchema = z.object({
 const profileSchema = z.object({
   username: z.string().min(3, { message: 'Username must be at least 3 characters' }),
   bio: z.string().max(500, { message: 'Bio cannot exceed 500 characters' }).optional().or(z.literal('')),
-  skills: z.array(z.string()).max(15, { message: 'Maximum 15 skills allowed' }).optional(), // Skills are now selected from predefined list
+  skills: z.array(z.string()).max(15, { message: 'Maximum 15 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
 });
 
@@ -37,7 +37,7 @@ export default function StudentProfilePage() {
   const { user, userProfile, loading: authLoading, role, refreshUserProfile } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed for clarity
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormReady, setIsFormReady] = useState(false);
 
 
@@ -51,21 +51,9 @@ export default function StudentProfilePage() {
     },
   });
 
-   // Field array hook for portfolio links (skills handled by MultiSelectSkills)
-   const { fields: linkFields, append: appendLink, remove: removeLink } = useForm<ProfileFormValues>().control.register ? useForm<ProfileFormValues>().control : useForm({
-    defaultValues: { portfolioLinks: [] }
-   }).control // Fallback if used outside a FormProvider initially, though Form should provide it
-    // This is a bit of a workaround for useFieldArray needing control. Better to ensure Form is always parent.
-    // A cleaner way: const { control } = form; and then pass control to useFieldArray
-    // For now, let's assume 'form.control' is available when needed.
-    // Corrected useFieldArray:
-    const fieldArrayMethods = useForm<ProfileFormValues>().control; // Get control from useForm instance
-
-    // This useEffect depends on userProfile. Let's use a more direct way if useFieldArray requires control immediately.
-    // For portfolioLinks
-    const portfolioLinksControl = form.control;
+   // Corrected useFieldArray for portfolioLinks
     const { fields: actualLinkFields, append: actualAppendLink, remove: actualRemoveLink } = useFieldArray({
-        control: portfolioLinksControl,
+        control: form.control, // Use control from the main form instance
         name: "portfolioLinks"
     });
 
@@ -106,7 +94,7 @@ export default function StudentProfilePage() {
         bio: data.bio || '',
         skills: data.skills || [],
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
-        profileUpdatedAt: new Date(),
+        profileUpdatedAt: new Date(), // Consider using serverTimestamp() for consistency
       };
 
       await updateDoc(userDocRef, updateData);
