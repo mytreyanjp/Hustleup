@@ -89,6 +89,21 @@ export default function ChatPage() {
         return chatId;
       } else {
         // Create new chat
+        const newChatData: Omit<ChatMetadata, 'createdAt' | 'updatedAt' | 'lastMessageTimestamp'> & { createdAt: any, updatedAt: any, lastMessageTimestamp: any } = {
+          id: chatId,
+          participants: [user.uid, targetUserId],
+          participantUsernames: {
+            [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
+            [targetUserId]: targetUsername,
+          },
+          // participantProfilePictures will be populated conditionally
+          lastMessage: 'Chat started.',
+          lastMessageTimestamp: serverTimestamp(),
+          ...(gigId && { gigId }),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
         const participantPictures: { [key: string]: string } = {};
         if (userProfile.profilePictureUrl) {
           participantPictures[user.uid] = userProfile.profilePictureUrl;
@@ -96,25 +111,14 @@ export default function ChatPage() {
         if (targetProfilePictureUrl) {
           participantPictures[targetUserId] = targetProfilePictureUrl;
         }
-
-        const newChatData: ChatMetadata = {
-          id: chatId,
-          participants: [user.uid, targetUserId],
-          participantUsernames: {
-            [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
-            [targetUserId]: targetUsername,
-          },
-          ...(Object.keys(participantPictures).length > 0 && { participantProfilePictures: participantPictures }),
-          lastMessage: 'Chat started.',
-          lastMessageTimestamp: serverTimestamp() as Timestamp,
-          ...(gigId && { gigId }),
-          createdAt: serverTimestamp() as Timestamp,
-          updatedAt: serverTimestamp() as Timestamp,
-        };
+        if (Object.keys(participantPictures).length > 0) {
+          newChatData.participantProfilePictures = participantPictures;
+        }
+        
         await setDoc(chatDocRef, newChatData);
         setSelectedChatId(chatId);
         // Manually add to chats list or wait for listener to pick it up
-        setChats(prevChats => [newChatData, ...prevChats.filter(c => c.id !== chatId)].sort((a,b) => (b.lastMessageTimestamp?.toMillis() || 0) - (a.lastMessageTimestamp?.toMillis() || 0)));
+        // setChats(prevChats => [newChatData as ChatMetadata, ...prevChats.filter(c => c.id !== chatId)].sort((a,b) => (b.lastMessageTimestamp?.toMillis() || 0) - (a.lastMessageTimestamp?.toMillis() || 0)));
         return chatId;
       }
     } catch (error) {
@@ -167,6 +171,12 @@ export default function ChatPage() {
       return;
     }
     setIsLoadingChats(true);
+    // IMPORTANT: This query requires a composite index in Firestore.
+    // If you see an error about a missing index, Firebase will provide a link
+    // to create it in the console. The index typically involves:
+    // Collection: 'chats'
+    // Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
+    // Example link: https://console.firebase.google.com/project/<YOUR_PROJECT_ID>/firestore/indexes?create_composite=...
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -207,7 +217,6 @@ export default function ChatPage() {
       })) as ChatMessage[];
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
-      // scrollToBottom(); // Removed from here, handled by dedicated useEffect
     }, (error) => {
       console.error(`Error fetching messages for chat ${selectedChatId}:`, error);
       setIsLoadingMessages(false);
@@ -218,7 +227,6 @@ export default function ChatPage() {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
-    // If on mobile, URL params might have been cleared, but this is fine
   };
 
   const handleSendMessage = async () => {
@@ -245,20 +253,20 @@ export default function ChatPage() {
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
-      // Only add profile picture if it exists to avoid undefined values
       if (userProfile.profilePictureUrl) {
-        if (!chatUpdateData.participantProfilePictures) {
-            chatUpdateData.participantProfilePictures = {};
-        }
-        chatUpdateData.participantProfilePictures[user.uid] = userProfile.profilePictureUrl;
+        // Ensure participantProfilePictures exists before trying to set a property on it
+        const currentChat = chats.find(c => c.id === selectedChatId);
+        const existingPictures = currentChat?.participantProfilePictures || {};
+        chatUpdateData.participantProfilePictures = {
+          ...existingPictures,
+          [user.uid]: userProfile.profilePictureUrl,
+        };
       }
-
 
       batch.update(chatDocRef, chatUpdateData);
 
       await batch.commit();
       setMessage('');
-      // scrollToBottom(); // Already handled by useEffect reacting to `messages` state change
     } catch (error) {
       console.error("Error sending message:", error);
       // Show toast notification
@@ -272,7 +280,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    if (!authLoading) router.push('/auth/login?redirect=/chat');
+    if (!authLoading && typeof window !== 'undefined') router.push('/auth/login?redirect=/chat');
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
