@@ -4,26 +4,78 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, Users, CreditCard, Briefcase, Loader2 } from 'lucide-react'; // Added Briefcase and Loader2
+import { PlusCircle, Users, CreditCard, Briefcase, Loader2, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+
+interface Gig {
+  id: string;
+  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+  // other gig properties
+}
 
 export default function ClientDashboardPage() {
-  const { user, userProfile, loading, role } = useFirebase();
+  const { user, userProfile, loading: authLoading, role } = useFirebase();
   const router = useRouter();
+  const [activeGigsCount, setActiveGigsCount] = useState<number | null>(null);
+  const [pendingApplicantsCount, setPendingApplicantsCount] = useState<number | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   // Protect route: Redirect if not loading, not logged in, or not a client
   useEffect(() => {
-    if (!loading) { // Only check after initial context loading is done
+    if (!authLoading) {
       if (!user || role !== 'client') {
-        router.push('/auth/login'); // Or show an unauthorized page
+        router.push('/auth/login?redirect=/client/dashboard');
       }
     }
-  }, [user, role, loading, router]);
+  }, [user, role, authLoading, router]);
 
-  // Show loading state from context
-  if (loading) {
+  useEffect(() => {
+    if (user && role === 'client') {
+      const fetchDashboardStats = async () => {
+        setIsLoadingStats(true);
+        try {
+          const gigsRef = collection(db, "gigs");
+          const q = query(gigsRef, where("clientId", "==", user.uid));
+          const querySnapshot = await getDocs(q);
+
+          let activeGigs = 0;
+          let pendingApplicants = 0;
+
+          querySnapshot.forEach((doc) => {
+            const gig = doc.data() as Gig;
+            if (gig.status === 'open' || gig.status === 'in-progress') {
+              activeGigs++;
+            }
+            if (gig.status === 'open' && gig.applicants) {
+              gig.applicants.forEach(applicant => {
+                if (applicant.status === 'pending' || !applicant.status) {
+                  pendingApplicants++;
+                }
+              });
+            }
+          });
+
+          setActiveGigsCount(activeGigs);
+          setPendingApplicantsCount(pendingApplicants);
+        } catch (error) {
+          console.error("Error fetching dashboard stats:", error);
+          // Optionally set error state to display in UI
+        } finally {
+          setIsLoadingStats(false);
+        }
+      };
+      fetchDashboardStats();
+    }
+  }, [user, role]);
+
+
+  // Show loading state from context or stats loading
+  if (authLoading || (isLoadingStats && user && role === 'client')) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -41,7 +93,6 @@ export default function ClientDashboardPage() {
     );
   }
 
-  // If all checks pass, render dashboard
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -60,9 +111,11 @@ export default function ClientDashboardPage() {
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div> {/* TODO: Fetch actual count */}
+            <div className="text-2xl font-bold">
+                {activeGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeGigsCount}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Manage your ongoing projects.
+              Gigs that are open or in-progress.
             </p>
              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
                 <Link href="/client/gigs">View Gigs</Link>
@@ -72,13 +125,15 @@ export default function ClientDashboardPage() {
 
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Applicants</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending Applicants</CardTitle>
              <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div> {/* TODO: Fetch actual count */}
+            <div className="text-2xl font-bold">
+                {pendingApplicantsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : pendingApplicantsCount}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Review students who applied to your gigs.
+              Students awaiting review for your open gigs.
             </p>
              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
                  <Link href="/client/applicants">View Applicants</Link>
@@ -92,7 +147,8 @@ export default function ClientDashboardPage() {
              <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$0.00</div> {/* TODO: Fetch actual payment data */}
+            {/* TODO: Fetch actual payment data */}
+            <div className="text-2xl font-bold">$0.00</div>
             <p className="text-xs text-muted-foreground">
               Track your spending on completed gigs.
             </p>
@@ -109,8 +165,8 @@ export default function ClientDashboardPage() {
            <CardDescription>Overview of recent applications and messages.</CardDescription>
          </CardHeader>
          <CardContent>
+           {/* TODO: Implement recent activity feed (e.g., list of last 5 applied/accepted applicants) */}
            <p className="text-sm text-muted-foreground">No recent activity to display. Post a gig to get started!</p>
-           {/* TODO: Implement recent activity feed */}
          </CardContent>
        </Card>
     </div>
