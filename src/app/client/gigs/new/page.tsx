@@ -3,69 +3,64 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form'; // Removed useFieldArray
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, addDoc, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'; // Removed doc
 import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, PlusCircle, Trash2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2 } from 'lucide-react'; // Removed PlusCircle, Trash2
 import { useToast } from '@/hooks/use-toast';
+import { MultiSelectSkills } from '@/components/ui/multi-select-skills'; // Import new component
+import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants'; // Import predefined skills
 
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
   description: z.string().min(20, { message: 'Description must be at least 20 characters' }).max(2000, { message: 'Description cannot exceed 2000 characters'}),
-  budget: z.coerce.number().positive({ message: 'Budget must be a positive number' }), // Coerce input to number
+  budget: z.coerce.number().positive({ message: 'Budget must be a positive number' }),
   deadline: z.date({ required_error: 'A deadline is required.' }),
-  requiredSkills: z.array(z.string().min(1, { message: 'Skill cannot be empty' })).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
+  requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
 });
 
 type GigFormValues = z.infer<typeof gigSchema>;
 
 export default function NewGigPage() {
-  const { user, userProfile, loading, role } = useFirebase();
+  const { user, userProfile, loading: authLoading, role } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed from isLoading for clarity
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<GigFormValues>({
     resolver: zodResolver(gigSchema),
     defaultValues: {
       title: '',
       description: '',
-      budget: '' as unknown as number, // Initialize with empty string for input, coerce handles it
+      budget: '' as unknown as number, // Keep as is, coerce handles it
       deadline: undefined,
-      requiredSkills: [''],
+      requiredSkills: [], // Initialize as empty array for MultiSelectSkills
     },
   });
 
-   const { fields, append, remove } = useFieldArray({
-     control: form.control,
-     name: "requiredSkills"
-   });
-
-  // Effect for redirection if not authorized
   useEffect(() => {
-    if (!loading) { // Only act once context is not loading
+    if (!authLoading) {
       if (!user || role !== 'client') {
         toast({ title: "Access Denied", description: "You must be logged in as a client to post a gig.", variant: "destructive"});
         router.push('/auth/login?redirect=/client/gigs/new');
       }
     }
-  }, [loading, user, role, router, toast]);
+  }, [authLoading, user, role, router, toast]);
 
   const onSubmit = async (data: GigFormValues) => {
-    if (!user || role !== 'client') { // Double check authorization before submission
+    if (!user || role !== 'client') {
         toast({ title: "Action Failed", description: "You are not authorized to perform this action.", variant: "destructive"});
         return;
     }
@@ -76,16 +71,16 @@ export default function NewGigPage() {
         clientId: user.uid,
         clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Client',
         ...data,
-        status: 'open',
+        status: 'open', // Default status for new gigs
         createdAt: serverTimestamp(),
-        applicants: [],
+        applicants: [], // Initialize with empty applicants array
       });
 
       toast({
         title: 'Gig Posted Successfully!',
         description: `Your gig "${data.title}" is now live.`,
       });
-      router.push('/client/dashboard');
+      router.push('/client/dashboard'); // Or to the client's gigs list
 
     } catch (error: any) {
       console.error('Error posting gig:', error);
@@ -99,8 +94,7 @@ export default function NewGigPage() {
     }
   };
 
-  // Primary loading check from Firebase context
-  if (loading) {
+  if (authLoading) {
     return (
        <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -108,8 +102,6 @@ export default function NewGigPage() {
     );
   }
 
-  // After context is loaded, if user is not authorized, show placeholder while redirecting.
-  // The useEffect above handles the actual redirect.
   if (!user || role !== 'client') {
     return (
       <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center">
@@ -119,7 +111,6 @@ export default function NewGigPage() {
     );
   }
 
-  // If all checks pass, render the form.
   return (
      <div className="max-w-3xl mx-auto py-8">
        <Card className="glass-card">
@@ -219,54 +210,26 @@ export default function NewGigPage() {
                   />
               </div>
 
-               <div>
-                 <FormLabel>Required Skills</FormLabel>
-                 <FormDescription className="mb-2">List the skills needed for this gig (max 10).</FormDescription>
-                 <div className="space-y-2">
-                   {fields.map((field, index) => (
-                     <div key={field.id} className="flex items-center gap-2">
-                       <FormField
-                         control={form.control}
-                         name={`requiredSkills.${index}`}
-                         render={({ field: skillField }) => (
-                           <FormItem className="flex-1">
-                             <FormControl>
-                                <Input
-                                  {...skillField}
-                                  value={skillField.value ?? ''} // Ensure value is not undefined
-                                  placeholder={`Skill ${index + 1} (e.g., JavaScript, UI/UX Design)`}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                           </FormItem>
-                         )}
-                       />
-                       {fields.length > 1 && (
-                         <Button
-                           type="button"
-                           variant="ghost"
-                           size="icon"
-                           className="h-9 w-9 text-destructive hover:bg-destructive/10"
-                           onClick={() => remove(index)}
-                         >
-                           <Trash2 className="h-4 w-4" />
-                         </Button>
-                       )}
-                     </div>
-                   ))}
-                 </div>
-                 <Button
-                   type="button"
-                   variant="outline"
-                   size="sm"
-                   className="mt-2"
-                   onClick={() => append('')}
-                   disabled={fields.length >= 10}
-                 >
-                   <PlusCircle className="mr-2 h-4 w-4" /> Add Another Skill
-                 </Button>
-                  <FormMessage>{form.formState.errors.requiredSkills?.message || form.formState.errors.requiredSkills?.root?.message}</FormMessage>
-               </div>
+              <FormField
+                control={form.control}
+                name="requiredSkills"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Required Skills</FormLabel>
+                    <FormControl>
+                      <MultiSelectSkills
+                        options={PREDEFINED_SKILLS}
+                        selected={(field.value as Skill[]) || []}
+                        onChange={field.onChange}
+                        placeholder="Select required skills"
+                        maxSkills={10}
+                      />
+                    </FormControl>
+                    <FormDescription>List the skills needed for this gig (min 1, max 10).</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

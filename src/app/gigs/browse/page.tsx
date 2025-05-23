@@ -4,46 +4,40 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
+import { useFirebase } from '@/context/firebase-context'; // Import useFirebase
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Search } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
+import type { Skill } from '@/lib/constants'; // Import Skill type
 
 interface Gig {
   id: string;
   title: string;
   description: string;
   budget: number;
-  deadline: Timestamp; // Firestore Timestamp
-  requiredSkills: string[];
+  deadline: Timestamp;
+  requiredSkills: Skill[]; // Use Skill type
   clientId: string;
   clientUsername?: string;
-  createdAt: Timestamp; // Firestore Timestamp
+  createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
 }
 
 export default function BrowseGigsPage() {
+  const { user: currentUser, userProfile, loading: authLoading, role } = useFirebase();
   const [gigs, setGigs] = useState<Gig[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // For fetching gigs
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchGigs = async () => {
+    const fetchAndFilterGigs = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const gigsCollectionRef = collection(db, 'gigs');
-        // Query for open gigs, ordered by creation date (newest first)
-        // IMPORTANT: This query requires a composite index in Firestore.
-        // If you see an error about a missing index, Firebase will provide a link
-        // to create it in the console. The index typically involves:
-        // Collection: 'gigs'
-        // Fields: 'status' (Ascending), 'createdAt' (Descending)
-        // Example link from a past error for this query structure:
-        // https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=...
-        // (Replace YOUR_PROJECT_ID with your actual project ID if the link in the error is different)
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -54,7 +48,29 @@ export default function BrowseGigsPage() {
           id: doc.id,
           ...doc.data(),
         })) as Gig[];
-        setGigs(fetchedGigs);
+
+        // Filter based on student skills if applicable, only after auth state is resolved
+        if (!authLoading) {
+          if (currentUser && role === 'student') {
+            if (userProfile?.skills && userProfile.skills.length > 0) {
+              const studentSkills = userProfile.skills as Skill[];
+              const filtered = fetchedGigs.filter(gig =>
+                gig.requiredSkills.some(reqSkill => studentSkills.includes(reqSkill))
+              );
+              setGigs(filtered);
+            } else {
+              // Student is logged in but has no skills, show empty or a message
+              setGigs([]);
+            }
+          } else {
+            // Not a student, or not logged in
+            setGigs(fetchedGigs);
+          }
+        } else {
+            // Auth still loading, show all open gigs temporarily or keep gigs empty until auth resolves
+            setGigs(fetchedGigs); // Or setGigs([]) and handle loading state appropriately
+        }
+
       } catch (err: any) {
         console.error("Error fetching gigs:", err);
         setError("Failed to load gigs. Please try again later. This might be due to a missing Firestore index. Check the console for a link to create it.");
@@ -63,8 +79,8 @@ export default function BrowseGigsPage() {
       }
     };
 
-    fetchGigs();
-  }, []);
+    fetchAndFilterGigs();
+  }, [authLoading, currentUser, role, userProfile]);
 
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -79,7 +95,6 @@ export default function BrowseGigsPage() {
    const formatDeadline = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     try {
-      // Example: "Due on January 15, 2025"
       return `Due on ${timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;
     } catch (e) {
       console.error("Error formatting deadline:", e);
@@ -87,7 +102,10 @@ export default function BrowseGigsPage() {
     }
    };
 
-  if (isLoading) {
+  // Combined loading state
+  const pageIsLoading = authLoading || isLoading;
+
+  if (pageIsLoading) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -107,10 +125,33 @@ export default function BrowseGigsPage() {
     <div className="space-y-8">
       <h1 className="text-3xl font-bold tracking-tight">Browse Available Gigs</h1>
 
-      {gigs.length === 0 ? (
-        <p className="text-center text-muted-foreground py-10">
-          No open gigs found at the moment. Check back later!
-        </p>
+      {gigs.length === 0 && !pageIsLoading ? (
+        <Card className="glass-card text-center py-10">
+            <CardHeader>
+                <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <CardTitle>No Gigs Found</CardTitle>
+            </CardHeader>
+            <CardContent>
+                {currentUser && role === 'student' && (!userProfile?.skills || userProfile.skills.length === 0) ? (
+                    <>
+                        <p className="text-muted-foreground mb-4">
+                            Add skills to your profile to discover relevant freelance opportunities.
+                        </p>
+                        <Button asChild>
+                            <Link href="/student/profile">Update Your Profile Skills</Link>
+                        </Button>
+                    </>
+                ) : currentUser && role === 'student' ? (
+                     <p className="text-muted-foreground">
+                        No gigs currently match your skill set. Check back later or expand your skills!
+                    </p>
+                ) : (
+                    <p className="text-muted-foreground">
+                        There are no open gigs at the moment. Please check back later!
+                    </p>
+                )}
+            </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {gigs.map((gig) => (
@@ -123,11 +164,15 @@ export default function BrowseGigsPage() {
               </CardHeader>
               <CardContent className="flex-grow">
                 <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
-                 <div className="flex flex-wrap gap-2 mb-4">
-                  {gig.requiredSkills?.map((skill, index) => (
-                    <Badge key={index} variant="secondary">{skill}</Badge>
-                  ))}
-                </div>
+                 <div className="mb-4">
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
+                    <div className="flex flex-wrap gap-1">
+                        {gig.requiredSkills?.slice(0, 5).map((skill, index) => ( // Show max 5 skills initially
+                            <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
+                        ))}
+                        {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}
+                    </div>
+                 </div>
                  <div className="flex items-center text-sm text-muted-foreground mb-1">
                      <DollarSign className="mr-1 h-4 w-4" /> Budget: ${gig.budget.toFixed(2)}
                  </div>
