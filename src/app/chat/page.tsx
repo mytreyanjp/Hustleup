@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, UploadCloud } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, UploadCloud, X } from 'lucide-react'; // Added X
 import { db, storage } from '@/config/firebase'; // Import storage
 import {
   collection,
@@ -182,6 +182,8 @@ export default function ChatPage() {
     setIsLoadingChats(true);
     // IMPORTANT: This query requires a composite index in Firestore.
     // Collection: 'chats', Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
+    // Example link to create index if Firebase console prompts:
+    // https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQEFBhcnRpY2lwYW50cxgBGg0KCXVwZGF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -353,6 +355,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
+    // Redirect logic is handled in useEffect
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
@@ -476,7 +479,7 @@ export default function ChatPage() {
                 )}
               </CardContent>
             </ScrollArea>
-            <CardFooter className="p-3 border-t">
+            <CardFooter className="p-3 border-t flex flex-col items-start"> {/* Changed to flex-col and items-start */}
               {selectedFile && (
                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50">
                   <div className="flex items-center gap-2 overflow-hidden">
