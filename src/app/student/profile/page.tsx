@@ -1,13 +1,14 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // Added useRef
 import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray } from 'react-hook-form'; // Added useFieldArray
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, updateDoc } from 'firebase/firestore'; // Removed getDoc as profile comes from context
-import { db } from '@/config/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db, storage } from '@/config/firebase'; // Import storage
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Firebase Storage functions
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,10 +16,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2 } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud } from 'lucide-react'; // Added UploadCloud
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
+import { Progress } from '@/components/ui/progress'; // Import Progress component
 
 const portfolioLinkSchema = z.object({
   value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
@@ -29,6 +31,7 @@ const profileSchema = z.object({
   bio: z.string().max(500, { message: 'Bio cannot exceed 500 characters' }).optional().or(z.literal('')),
   skills: z.array(z.string()).max(15, { message: 'Maximum 15 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
+  // profilePictureUrl is handled separately, not part of this form schema for direct RHF submission
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -39,6 +42,12 @@ export default function StudentProfilePage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormReady, setIsFormReady] = useState(false);
+
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
 
   const form = useForm<ProfileFormValues>({
@@ -51,17 +60,16 @@ export default function StudentProfilePage() {
     },
   });
 
-   // Corrected useFieldArray for portfolioLinks
-    const { fields: actualLinkFields, append: actualAppendLink, remove: actualRemoveLink } = useFieldArray({
-        control: form.control, // Use control from the main form instance
-        name: "portfolioLinks"
-    });
+  const { fields: actualLinkFields, append: actualAppendLink, remove: actualRemoveLink } = useFieldArray({
+    control: form.control,
+    name: "portfolioLinks"
+  });
 
 
    useEffect(() => {
      if (!authLoading) {
        if (!user || role !== 'student') {
-         router.push('/auth/login');
+         router.push('/auth/login?redirect=/student/profile'); // Added redirect
        } else if (userProfile) {
          form.reset({
            username: userProfile.username || user.email?.split('@')[0] || '',
@@ -69,10 +77,10 @@ export default function StudentProfilePage() {
            skills: (userProfile.skills as Skill[]) || [],
            portfolioLinks: userProfile.portfolioLinks?.map(link => ({ value: link })) || [],
          });
+         setImagePreview(userProfile.profilePictureUrl || null); // Set initial image preview
          setIsFormReady(true);
-       } else {
-         // User is student, but profile is null (maybe new user or fetch issue)
-         form.reset({ // Reset with some defaults if profile is missing
+       } else if (user) { // User is student, but profile is null
+         form.reset({
              username: user.email?.split('@')[0] || '',
              bio: '',
              skills: [],
@@ -83,25 +91,95 @@ export default function StudentProfilePage() {
      }
    }, [user, userProfile, authLoading, role, router, form]);
 
+  const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 5MB.", variant: "destructive"});
+        return;
+      }
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+        toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, WEBP, or GIF image.", variant: "destructive"});
+        return;
+      }
+      setSelectedImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleImageUpload = async () => {
+    if (!selectedImageFile || !user) {
+      toast({ title: "No Image Selected", description: "Please select an image file to upload.", variant: "destructive" });
+      return;
+    }
+    if (!storage) {
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured.", variant: "destructive" });
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    const filePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedImageFile.name}`;
+    const fileStorageRef = storageRef(storage, filePath);
+    const uploadTask = uploadBytesResumable(fileStorageRef, selectedImageFile);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(progress);
+      },
+      (error) => {
+        console.error("Image upload error:", error);
+        toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
+        setIsUploading(false);
+        setUploadProgress(null);
+        setSelectedImageFile(null);
+        // Revert preview if needed, or keep it and allow retry
+        // setImagePreview(userProfile?.profilePictureUrl || null); 
+      },
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const userDocRef = doc(db, 'users', user.uid);
+          await updateDoc(userDocRef, {
+            profilePictureUrl: downloadURL,
+            profileUpdatedAt: new Date(),
+          });
+          toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
+          if (refreshUserProfile) await refreshUserProfile();
+          setSelectedImageFile(null); // Clear selected file after successful upload
+        } catch (updateError: any) {
+          console.error("Error updating profile picture URL in Firestore:", updateError);
+          toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      }
+    );
+  };
+
+
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
     setIsSubmitting(true);
 
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      const updateData = {
+      const updateData: Partial<UserProfile> = { // Use Partial<UserProfile> for type safety
         username: data.username,
         bio: data.bio || '',
         skills: data.skills || [],
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
-        profileUpdatedAt: new Date(), // Consider using serverTimestamp() for consistency
+        profileUpdatedAt: new Date(),
       };
 
       await updateDoc(userDocRef, updateData);
 
       toast({
         title: 'Profile Updated',
-        description: 'Your profile has been successfully saved.',
+        description: 'Your profile details have been successfully saved.',
       });
       if (refreshUserProfile) {
            await refreshUserProfile();
@@ -137,14 +215,43 @@ export default function StudentProfilePage() {
        <Card className="glass-card">
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-center gap-4">
-             <Avatar className="h-20 w-20">
-               <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
-               <AvatarFallback className="text-2xl">{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
-             </Avatar>
-             <div className='text-center sm:text-left'>
+             <div className="relative group">
+                <Avatar className="h-24 w-24 sm:h-28 sm:w-28 text-3xl border-2 border-muted shadow-md">
+                  <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
+                  <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
+                </Avatar>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 h-8 w-8 p-0 rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Change profile picture"
+                    disabled={isUploading}
+                >
+                    <UploadCloud className="h-4 w-4" />
+                </Button>
+             </div>
+             <input 
+                type="file" 
+                ref={fileInputRef} 
+                hidden 
+                accept="image/png, image/jpeg, image/webp, image/gif" 
+                onChange={handleImageFileChange}
+             />
+             <div className='text-center sm:text-left flex-grow'>
                <CardTitle className="text-2xl">Edit Your Profile</CardTitle>
                <CardDescription>Keep your information up-to-date to attract clients.</CardDescription>
-               <Button variant="outline" size="sm" className="mt-2" disabled>Upload Picture (Soon)</Button>
+                {selectedImageFile && !isUploading && (
+                    <Button onClick={handleImageUpload} size="sm" className="mt-2">
+                        <UploadCloud className="mr-2 h-4 w-4" /> Upload New Picture
+                    </Button>
+                )}
+                {isUploading && uploadProgress !== null && (
+                    <div className="mt-2 space-y-1">
+                        <Progress value={uploadProgress} className="w-full h-2" />
+                        <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
+                    </div>
+                )}
              </div>
           </div>
         </CardHeader>
@@ -244,8 +351,8 @@ export default function StudentProfilePage() {
                  <FormDescription className="mt-1">Links to your work (GitHub, Behance, personal site, etc. max 5).</FormDescription>
                </div>
 
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isUploading}>
+                {(isSubmitting || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>
             </form>
