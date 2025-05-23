@@ -12,12 +12,12 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
+} from "@/components/ui/command"; // Corrected: This should now exist
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/ui/popover"; // Corrected: This should now exist
 import { Badge } from "@/components/ui/badge";
 import type { Skill } from "@/lib/constants";
 
