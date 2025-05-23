@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -80,8 +81,8 @@ export default function ClientApplicantsPage() {
 
        // Sort gigs by the most recent application across all applicants for that gig
        gigsWithApplicants.sort((a, b) => {
-         const lastAppA = a.applicants.reduce((latest, app) => app.appliedAt > latest ? app.appliedAt : latest, a.applicants[0].appliedAt);
-         const lastAppB = b.applicants.reduce((latest, app) => app.appliedAt > latest ? app.appliedAt : latest, b.applicants[0].appliedAt);
+         const lastAppA = a.applicants.reduce((latest, app) => app.appliedAt.toMillis() > latest.toMillis() ? app.appliedAt : latest, a.applicants[0].appliedAt);
+         const lastAppB = b.applicants.reduce((latest, app) => app.appliedAt.toMillis() > latest.toMillis() ? app.appliedAt : latest, b.applicants[0].appliedAt);
          return lastAppB.toMillis() - lastAppA.toMillis();
        });
 
@@ -173,21 +174,21 @@ export default function ClientApplicantsPage() {
                         <p className="font-semibold">{applicant.studentUsername}</p>
                         <p className="text-xs text-muted-foreground mb-1">Applied {formatDate(applicant.appliedAt)}</p>
                         {applicant.message && (
-                          <p className="text-sm bg-secondary p-2 rounded-md my-1 italic">"{applicant.message}"</p>
+                          <div className="mt-1 p-2 bg-secondary/50 dark:bg-secondary/20 rounded-md text-sm">
+                            <p className="text-xs text-muted-foreground mb-0.5">Message from applicant:</p>
+                            <p className="italic">"{applicant.message}"</p>
+                          </div>
                         )}
-                         <Badge variant={getStatusBadgeVariant(applicant.status)} className="capitalize mt-1 inline-block">
+                         <Badge variant={getStatusBadgeVariant(applicant.status)} className="capitalize mt-2 inline-block">
                            {applicant.status}
                          </Badge>
                       </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0">
-                       {/* TODO: Implement these actions */}
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 mt-2 sm:mt-0">
                        <Button size="sm" variant="outline" asChild>
-                           {/* Link to public student profile if available */}
                           <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
                        </Button>
                        <Button size="sm" asChild>
-                           {/* Link to chat page, potentially pre-selecting this chat */}
                           <Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.gigId}`}>
                               <MessageSquare className="mr-1 h-4 w-4" /> Chat
                           </Link>
@@ -203,3 +204,4 @@ export default function ClientApplicantsPage() {
     </div>
   );
 }
+
