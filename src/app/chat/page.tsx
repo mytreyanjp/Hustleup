@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, UploadCloud, X, Smile } from 'lucide-react'; // Added Smile, X
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, X, Smile } from 'lucide-react';
 import { db, storage } from '@/config/firebase'; // Import storage
 import {
   collection,
@@ -89,7 +89,7 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  useEffect(scrollToBottom, [messages]);
+  useEffect(scrollToBottom, [messages, isLoadingMessages]); // Also scroll when messages finish loading
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -164,6 +164,7 @@ export default function ChatPage() {
 
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
+        // Clear URL params after processing
         router.replace('/chat', { scroll: false });
         return;
     }
@@ -178,12 +179,13 @@ export default function ChatPage() {
         const targetUserSnap = await getDoc(targetUserDocRef);
         if (targetUserSnap.exists()) {
           const targetUserData = targetUserSnap.data() as UserProfile;
-          setTargetUserForNewChat(targetUserData);
+          setTargetUserForNewChat(targetUserData); // For UI feedback
           await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigId || undefined);
         } else {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
+         // Clear URL params after processing
          router.replace('/chat', { scroll: false });
       };
       fetchTargetUserAndCreateChat();
@@ -201,8 +203,7 @@ export default function ChatPage() {
     setIsLoadingChats(true);
     // IMPORTANT: This query requires a composite index in Firestore.
     // Collection: 'chats', Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
-    // Example link to create index if Firebase console prompts:
-    // https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQEFBhcnRpY2lwYW50cxgBGg0KCXVwZGF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
+    // Create index if Firebase console prompts: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQEFBhcnRpY2lwYW50cxgBGg0KCXVwZGF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -218,7 +219,7 @@ export default function ChatPage() {
       setIsLoadingChats(false);
     }, (error) => {
       console.error("Error fetching chat list:", error);
-      toast({ title: "Chat List Error", description: "Could not load your conversations.", variant: "destructive" });
+      toast({ title: "Chat List Error", description: "Could not load your conversations. Check Firestore index.", variant: "destructive" });
       setIsLoadingChats(false);
     });
 
@@ -266,6 +267,7 @@ export default function ChatPage() {
     setSelectedFile(null); // Clear any selected file when switching chats
     setUploadProgress(null);
     setShowEmojiPicker(false);
+    setMessage(''); // Clear message input
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -300,6 +302,16 @@ export default function ChatPage() {
     if (selectedFile) {
       try {
         const file = selectedFile;
+        // IMPORTANT: Ensure your Firebase Storage rules allow uploads to this path for authenticated users.
+        // Example rule for development in storage.rules:
+        // rules_version = '2';
+        // service firebase.storage {
+        //   match /b/{bucket}/o {
+        //     match /chat_attachments/{chatId}/{fileName} { // More specific path
+        //       allow read, write: if request.auth != null;
+        //     }
+        //   }
+        // }
         const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
         const fileStorageRef = storageRef(storage, filePath);
         const uploadTask = uploadBytesResumable(fileStorageRef, file);
@@ -309,22 +321,45 @@ export default function ChatPage() {
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               setUploadProgress(progress);
+              console.log('Upload is ' + progress + '% done');
             },
             (error) => {
-              console.error("Upload error:", error);
-              toast({ title: "Upload Failed", description: `Could not upload file: ${error.message}`, variant: "destructive" });
+              console.error("Upload error object:", error); // Log the full error object
+              let detailedErrorMessage = `Could not upload file. Code: ${error.code}. Message: ${error.message}.`;
+              // Check for specific Firebase Storage errors
+              switch (error.code) {
+                case 'storage/unauthorized':
+                  detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules.";
+                  break;
+                case 'storage/canceled':
+                  detailedErrorMessage = "Upload canceled.";
+                  break;
+                case 'storage/unknown':
+                  detailedErrorMessage = "An unknown error occurred during upload. Check network and Storage rules.";
+                  break;
+              }
+              toast({ title: "Upload Failed", description: detailedErrorMessage, variant: "destructive" });
               reject(error);
             },
             async () => {
-              mediaUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              mediaType = file.type;
-              resolve();
+              console.log('Upload task completed. Getting download URL...');
+              try {
+                mediaUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                mediaType = file.type;
+                console.log('Download URL obtained:', mediaUrl);
+                resolve();
+              } catch (urlError: any) {
+                console.error("Error getting download URL:", urlError);
+                toast({ title: "Upload Failed", description: `File uploaded, but could not get URL: ${urlError.message}`, variant: "destructive" });
+                reject(urlError);
+              }
             }
           );
         });
-      } catch (error) {
-        setIsSending(false);
+      } catch (error) { // Catches rejection from the new Promise (e.g., upload error or getDownloadURL error)
+        setIsSending(false); // Ensure sending state is reset
         setUploadProgress(null);
+        // Toast is already shown by the specific error handlers
         return; // Stop if upload failed
       }
     }
@@ -355,8 +390,7 @@ export default function ChatPage() {
       if (userProfile.profilePictureUrl) {
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
-        // Only update if the URL is actually defined
-        if(userProfile.profilePictureUrl){
+        if(userProfile.profilePictureUrl){ // Only add if defined
            chatUpdateData.participantProfilePictures = {
              ...existingPictures,
              [user.uid]: userProfile.profilePictureUrl,
@@ -385,6 +419,7 @@ export default function ChatPage() {
 
   if (!user) {
     // Redirect logic is handled in useEffect
+    // No router.push() here to avoid "update during render"
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
@@ -443,7 +478,7 @@ export default function ChatPage() {
       </Card>
 
       <Card className={cn(
-        "flex-grow glass-card flex flex-col h-full relative", // Added relative for emoji picker positioning
+        "flex-grow glass-card flex flex-col h-full relative",
         !selectedChatId && 'hidden md:flex' 
         )}>
         {selectedChatId && selectedChatDetails ? (
@@ -510,7 +545,7 @@ export default function ChatPage() {
             </ScrollArea>
             
             {showEmojiPicker && (
-              <div ref={emojiPickerRef} className="absolute bottom-16 right-2 z-10 md:right-auto md:left-2"> 
+              <div ref={emojiPickerRef} className="absolute bottom-20 right-2 z-10 md:right-auto md:left-2"> 
                 <EmojiPicker
                   onEmojiClick={onEmojiClick}
                   autoFocusSearch={false}
