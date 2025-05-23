@@ -24,6 +24,7 @@ interface Gig {
   clientUsername?: string;
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
+  applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
 }
 
 export default function BrowseGigsPage() {
@@ -48,37 +49,45 @@ export default function BrowseGigsPage() {
           orderBy('createdAt', 'desc')
         );
         const querySnapshot = await getDocs(q);
-        const fetchedGigs = querySnapshot.docs.map(doc => ({
+        let fetchedGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
         })) as Gig[];
 
         if (!authLoading) {
           if (currentUser && role === 'student') {
+            // First, filter out gigs the student has already applied to
+            fetchedGigs = fetchedGigs.filter(gig => 
+              !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
+            );
+
+            // Then, filter by skills if the student has skills
             if (userProfile?.skills && userProfile.skills.length > 0) {
               const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
-              const filtered = fetchedGigs.filter(gig =>
+              const skillFilteredGigs = fetchedGigs.filter(gig =>
                 gig.requiredSkills.some(reqSkill => {
                   const reqSkillLower = reqSkill.toLowerCase();
-                  // Bi-directional substring match for domain-like matching
                   return studentSkillsLower.some(studentSkillLower =>
                     studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
                   );
                 })
               );
-              setGigs(filtered);
+              setGigs(skillFilteredGigs);
             } else {
-              setGigs([]); // Student is logged in but has no skills
+              // Student is logged in but has no skills, show them the gigs they haven't applied to.
+              // Or, if you want to show no gigs if they have no skills, setGigs([])
+              setGigs(fetchedGigs); 
             }
           } else {
-            setGigs(fetchedGigs); // Not a student, or not logged in, show all open gigs
+            // Not a student, or not logged in, show all open gigs
+            setGigs(fetchedGigs); 
           }
         } else {
-          setGigs(fetchedGigs); // Auth still loading, show all open gigs temporarily
+          // Auth still loading, show all open gigs temporarily
+          setGigs(fetchedGigs); 
         }
 
-      } catch (err: any)
-{
+      } catch (err: any) {
         console.error("Error fetching gigs:", err);
         setError("Failed to load gigs. Please try again later. This might be due to a missing Firestore index. Check the console for a link to create it.");
       } finally {
@@ -149,7 +158,7 @@ export default function BrowseGigsPage() {
                     </>
                 ) : currentUser && role === 'student' ? (
                      <p className="text-muted-foreground">
-                        No gigs currently match your skill set. Check back later or expand your skills!
+                        No gigs currently match your skill set, or you've applied to all available matching gigs. Check back later or expand your skills!
                     </p>
                 ) : (
                     <p className="text-muted-foreground">
