@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -15,7 +16,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
-import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare } from 'lucide-react';
+import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search, Users as HustlersIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation'; // Use next/navigation for App Router
 
 export default function Navbar() {
@@ -50,29 +51,37 @@ export default function Navbar() {
         </Link>
 
         <nav className="flex flex-1 items-center space-x-4">
-          {/* Add main navigation links here if needed */}
-          {/* Example: <Link href="/browse-gigs" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">Browse Gigs</Link> */}
-           {role === 'student' && (
+          <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+            <Search className="mr-1 h-4 w-4" /> Gigs
+          </Link>
+
+          {role === 'client' && (
+            <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+              <HustlersIcon className="mr-1 h-4 w-4" /> Hustlers
+            </Link>
+          )}
+
+          {role === 'student' && (
             <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Dashboard
             </Link>
           )}
-           {role === 'client' && (
+          {role === 'client' && (
             <Link href="/client/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Dashboard
             </Link>
           )}
-           {user && (
-             <Link href="/chat" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
-               Messages
-             </Link>
-           )}
+          {user && (
+            <Link href="/chat" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+              Messages
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center space-x-2">
           <ModeToggle />
           {loading ? (
-             <Avatar className="h-8 w-8">
+            <Avatar className="h-8 w-8">
               <AvatarFallback>..</AvatarFallback>
             </Avatar>
           ) : user ? (
@@ -94,13 +103,13 @@ export default function Navbar() {
                     <p className="text-xs leading-none text-muted-foreground">
                       {user.email}
                     </p>
-                     <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
+                    <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
                       Role: {role || 'N/A'}
                     </p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                 {role === 'student' && (
+                {role === 'student' && (
                   <DropdownMenuItem asChild>
                     <Link href="/student/dashboard">
                       <LayoutDashboard className="mr-2 h-4 w-4" />
@@ -108,42 +117,42 @@ export default function Navbar() {
                     </Link>
                   </DropdownMenuItem>
                 )}
-                 {role === 'client' && (
+                {role === 'client' && (
                   <DropdownMenuItem asChild>
                     <Link href="/client/dashboard">
                       <LayoutDashboard className="mr-2 h-4 w-4" />
-                       <span>Dashboard</span>
+                      <span>Dashboard</span>
                     </Link>
                   </DropdownMenuItem>
                 )}
-                 {role === 'student' && (
+                {role === 'student' && (
                   <DropdownMenuItem asChild>
                     <Link href="/student/profile">
-                       <GraduationCap className="mr-2 h-4 w-4" />
-                       <span>My Profile</span>
+                      <GraduationCap className="mr-2 h-4 w-4" />
+                      <span>My Profile</span>
                     </Link>
                   </DropdownMenuItem>
-                 )}
-                  {role === 'client' && (
+                )}
+                {role === 'client' && (
                   <DropdownMenuItem asChild>
                     <Link href="/client/gigs">
-                       <Briefcase className="mr-2 h-4 w-4" />
-                       <span>My Gigs</span>
+                      <Briefcase className="mr-2 h-4 w-4" />
+                      <span>My Gigs</span>
                     </Link>
                   </DropdownMenuItem>
-                 )}
-                  <DropdownMenuItem asChild>
-                    <Link href="/chat">
-                       <MessageSquare className="mr-2 h-4 w-4" />
-                       <span>Messages</span>
-                    </Link>
-                  </DropdownMenuItem>
-                 <DropdownMenuItem asChild>
-                   <Link href="/settings">
-                     <Settings className="mr-2 h-4 w-4" />
-                     <span>Settings</span>
-                   </Link>
-                 </DropdownMenuItem>
+                )}
+                <DropdownMenuItem asChild>
+                  <Link href="/chat">
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    <span>Messages</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
