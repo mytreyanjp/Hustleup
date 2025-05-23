@@ -2,6 +2,7 @@
 "use client";
 
 import Link from 'next/link';
+import React, { useState, useEffect } from 'react'; // Import useState and useEffect
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -20,8 +21,13 @@ import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, Mess
 import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
-  const { user, userProfile, loading, role, totalUnreadChats } = useFirebase(); // Added totalUnreadChats
+  const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
   const router = useRouter();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleSignOut = async () => {
     try {
@@ -34,6 +40,8 @@ export default function Navbar() {
 
   const getInitials = (email: string | null | undefined) => {
     if (!email) return '??';
+    const username = userProfile?.username;
+    if (username && username.trim() !== '') return username.substring(0, 2).toUpperCase();
     return email.substring(0, 2).toUpperCase();
   };
 
@@ -52,23 +60,23 @@ export default function Navbar() {
             <Search className="mr-1 h-4 w-4 hidden sm:inline-block" /> Gigs
           </Link>
 
-          {role === 'client' && (
+          {isClient && role === 'client' && (
             <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
               <HustlersIcon className="mr-1 h-4 w-4 hidden sm:inline-block" /> Hustlers
             </Link>
           )}
 
-          {role === 'student' && (
+          {isClient && role === 'student' && (
             <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Dashboard
             </Link>
           )}
-          {role === 'client' && (
+          {isClient && role === 'client' && (
             <Link href="/client/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Dashboard
             </Link>
           )}
-          {user && (
+          {isClient && user && (
             <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
               <MessageSquare className="mr-1 h-4 w-4 hidden sm:inline-block" />
               <span>Messages</span>
@@ -83,96 +91,100 @@ export default function Navbar() {
 
         <div className="flex items-center space-x-2">
           <ModeToggle />
-          {loading ? (
-            <Avatar className="h-8 w-8">
-              <AvatarFallback>..</AvatarFallback>
-            </Avatar>
-          ) : user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
-                    <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
-                  </Avatar>
+          {isClient ? (
+            loading ? (
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>..</AvatarFallback>
+              </Avatar>
+            ) : user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
+                      <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {userProfile?.username || user.email?.split('@')[0]}
+                      </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
+                      <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
+                        Role: {role || 'N/A'}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {role === 'student' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/dashboard">
+                        <LayoutDashboard className="mr-2 h-4 w-4" />
+                        <span>Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {role === 'client' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/client/dashboard">
+                        <LayoutDashboard className="mr-2 h-4 w-4" />
+                        <span>Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {role === 'student' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/student/profile">
+                        <GraduationCap className="mr-2 h-4 w-4" />
+                        <span>My Profile</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {role === 'client' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/client/gigs">
+                        <Briefcase className="mr-2 h-4 w-4" />
+                        <span>My Gigs</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem asChild>
+                    <Link href="/chat" className="relative">
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      <span>Messages</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings">
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                <Button variant="ghost" asChild>
+                  <Link href="/auth/login">Log In</Link>
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {userProfile?.username || user.email?.split('@')[0]}
-                    </p>
-                    <p className="text-xs leading-none text-muted-foreground">
-                      {user.email}
-                    </p>
-                    <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
-                      Role: {role || 'N/A'}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {role === 'student' && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/student/dashboard">
-                      <LayoutDashboard className="mr-2 h-4 w-4" />
-                      <span>Dashboard</span>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {role === 'client' && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/client/dashboard">
-                      <LayoutDashboard className="mr-2 h-4 w-4" />
-                      <span>Dashboard</span>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {role === 'student' && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/student/profile">
-                      <GraduationCap className="mr-2 h-4 w-4" />
-                      <span>My Profile</span>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {role === 'client' && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/client/gigs">
-                      <Briefcase className="mr-2 h-4 w-4" />
-                      <span>My Gigs</span>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem asChild>
-                  <Link href="/chat" className="relative"> {/* Added relative for potential badge */}
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    <span>Messages</span>
-                     {/* No separate badge here, main navbar link has it */}
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/settings">
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <Button asChild>
+                  <Link href="/auth/signup">Sign Up</Link>
+                </Button>
+              </>
+            )
           ) : (
-            <>
-              <Button variant="ghost" asChild>
-                <Link href="/auth/login">Log In</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/auth/signup">Sign Up</Link>
-              </Button>
-            </>
+            // Placeholder for SSR to avoid layout shifts
+            <div style={{ width: '7rem' }} /> // Approx width of login/signup buttons or avatar
           )}
         </div>
       </div>
