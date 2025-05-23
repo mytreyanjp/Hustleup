@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -6,9 +7,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo } from 'firebase/auth'; // Added Google sign-in
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/config/firebase'; // Import potentially null auth/db
+import { auth, db, googleAuthProvider } from '@/config/firebase'; // Import googleAuthProvider
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,18 +24,27 @@ const signupSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
   role: z.enum(['student', 'client'], { required_error: 'You must select a role' }),
-  username: z.string().min(3, { message: 'Username must be at least 3 characters' }).optional(), // Optional for now
+  username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, {message: 'Username cannot exceed 30 characters'}).optional(),
 });
 
 type SignupFormValues = z.infer<typeof signupSchema>;
+
+// SVG for Google Icon (can be moved to a shared component)
+const GoogleIcon = () => (
+  <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+    <path fill="currentColor" d="M488 261.8C488 403.3 381.5 512 244 512 110.5 512 0 401.5 0 265.5S110.5 19 244 19c70.5 0 132.5 29 177.5 76.5l-64.5 64.5C330.5 131.5 290.5 112 244 112c-80.5 0-147 65.5-147 153.5S163.5 419 244 419c47.5 0 87.5-24.5 113.5-62.5H244v-87h244c1.5 10.5 2.5 22.5 2.5 34.5z"></path>
+  </svg>
+);
+
 
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
-  const initialRole = searchParams.get('role') === 'client' ? 'client' : 'student'; // Default to student if param missing/invalid
+  const initialRole = searchParams.get('role') === 'client' ? 'client' : 'student';
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -46,18 +56,14 @@ export default function SignupPage() {
     },
   });
 
-   // Check Firebase services availability on mount
    useEffect(() => {
-     // This effect primarily checks for the *initial* configuration state
      if (!auth || !db) {
        setFirebaseError("Firebase is not configured correctly. Please check setup and environment variables.");
      } else {
-       setFirebaseError(null); // Clear error if services seem available initially
+       setFirebaseError(null);
      }
    }, []);
 
-
-   // Update default role if search param changes after initial load
    useEffect(() => {
      const roleParam = searchParams.get('role');
      if (roleParam === 'client' || roleParam === 'student') {
@@ -65,12 +71,10 @@ export default function SignupPage() {
      }
    }, [searchParams, form]);
 
-
-  const onSubmit = async (data: SignupFormValues) => {
+  const handleEmailPasswordSignup = async (data: SignupFormValues) => {
     setIsLoading(true);
-    setFirebaseError(null); // Clear previous errors
+    setFirebaseError(null);
 
-    // Explicitly check if auth and db are available *before* proceeding with the API call
     if (!auth || !db) {
        const configError = "Signup cannot proceed: Firebase is not properly initialized.";
        setFirebaseError(configError);
@@ -84,33 +88,30 @@ export default function SignupPage() {
     }
 
     try {
-      // 1. Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // 2. Create user profile document in Firestore
       const userDocRef = doc(db, 'users', user.uid);
       await setDoc(userDocRef, {
         uid: user.uid,
         email: user.email,
         role: data.role,
-        username: data.username || user.email?.split('@')[0] || `user_${user.uid.substring(0, 5)}`, // Default username logic
+        username: data.username || user.email?.split('@')[0] || `user_${user.uid.substring(0, 5)}`,
+        profilePictureUrl: '', // Default empty, Google sign-up will use Google's photo
         createdAt: serverTimestamp(),
-        // Initialize other profile fields based on role if needed
-        ...(data.role === 'student' ? { skills: [], portfolioLinks: [], bio: '', profilePictureUrl: '' } : {}),
-        ...(data.role === 'client' ? { companyName: '', website: '' } : {}), // Example client fields
+        ...(data.role === 'student' ? { skills: [], portfolioLinks: [], bio: '' } : {}),
+        ...(data.role === 'client' ? { companyName: '', website: '' } : {}),
       });
 
       toast({
         title: 'Account Created Successfully!',
         description: `Welcome to HustleUp as a ${data.role}. Redirecting...`,
       });
-
-      // Redirect based on role
       router.push(data.role === 'student' ? '/student/dashboard' : '/client/dashboard');
 
     } catch (error: any) {
       console.error('Signup error:', error);
+      // ... (existing error handling)
       let errorMessage = 'An unexpected error occurred during signup.';
       if (error.code) {
         switch (error.code) {
@@ -123,19 +124,19 @@ export default function SignupPage() {
           case 'auth/weak-password':
             errorMessage = 'Password is too weak. Please choose a stronger password.';
             break;
-          case 'auth/operation-not-allowed': // Possible if email/password auth is disabled
+          case 'auth/operation-not-allowed': 
              errorMessage = 'Email/Password sign-up is currently disabled.';
              break;
-          case 'auth/configuration-not-found': // Specific error
+          case 'auth/configuration-not-found': 
              errorMessage = 'Firebase Authentication configuration is missing or incomplete. Please ensure Email/Password sign-in is enabled in your Firebase project.';
-             setFirebaseError(errorMessage); // Set specific state for config errors
+             setFirebaseError(errorMessage); 
              break;
-          case 'auth/invalid-api-key': // Added from previous errors
+          case 'auth/invalid-api-key': 
           case 'auth/api-key-not-valid':
           case 'auth/app-deleted':
           case 'auth/app-not-authorized':
              errorMessage = 'Firebase configuration error (API Key or App setup). Please check your .env.local file and Firebase project settings.';
-             setFirebaseError(errorMessage); // Set specific state for config errors
+             setFirebaseError(errorMessage); 
              break;
           default:
             errorMessage = `Signup failed: ${error.message} (Code: ${error.code})`;
@@ -146,9 +147,59 @@ export default function SignupPage() {
         description: errorMessage,
         variant: 'destructive',
       });
-      setIsLoading(false); // Only stop loading on error
+      setIsLoading(false);
     }
   };
+
+  const handleGoogleSignUp = async () => {
+    setIsGoogleLoading(true);
+    if (!auth || !googleAuthProvider || !db) {
+      toast({ title: 'Error', description: 'Firebase not configured for Google Sign-In.', variant: 'destructive' });
+      setIsGoogleLoading(false);
+      return;
+    }
+    try {
+      const result = await signInWithPopup(auth, googleAuthProvider);
+      const user = result.user;
+      const additionalUserInfo = getAdditionalUserInfo(result);
+
+      // Check if user document already exists (e.g., if they logged in via Google before completing email signup)
+      const userDocRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(userDocRef);
+
+      if (docSnap.exists()) {
+        // User already exists, possibly from a previous Google sign-in attempt or direct login
+        toast({
+          title: 'Welcome Back!',
+          description: `Signed in as ${user.displayName || user.email}.`,
+        });
+        router.push('/'); // Redirect to homepage, which will handle role-based dashboard redirect
+      } else if (additionalUserInfo?.isNewUser || !docSnap.exists()) {
+        // New user via Google, or user auth record exists but no Firestore profile (e.g. from prior login page Google signin)
+        toast({
+          title: 'Account Created with Google!',
+          description: 'Please complete your profile to get started.',
+        });
+        router.push('/auth/complete-profile'); // Redirect to complete profile page
+      }
+    } catch (error: any) {
+      console.error('Google Sign-Up error:', error);
+      let errorMessage = 'Google Sign-Up failed.';
+      if (error.code === 'auth/account-exists-with-different-credential') {
+        errorMessage = 'An account already exists with this email. Try logging in or use a different email.';
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = 'Google Sign-Up cancelled.';
+      }
+      toast({
+        title: 'Google Sign-Up Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
 
   return (
      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)] py-8">
@@ -166,7 +217,7 @@ export default function SignupPage() {
                </Alert>
              )}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(handleEmailPasswordSignup)} className="space-y-4">
                <FormField
                  control={form.control}
                  name="role"
@@ -248,12 +299,38 @@ export default function SignupPage() {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={isLoading || !!firebaseError}>
+              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading || !!firebaseError}>
                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Account
+                Create Account with Email
               </Button>
             </form>
           </Form>
+
+           <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or sign up with
+              </span>
+            </div>
+          </div>
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignUp}
+            disabled={isLoading || isGoogleLoading || !!firebaseError}
+          >
+            {isGoogleLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <GoogleIcon />
+            )}
+            Sign up with Google
+          </Button>
+
           <div className="mt-4 text-center text-sm">
             Already have an account?{' '}
             <Button variant="link" asChild className="p-0 h-auto">
