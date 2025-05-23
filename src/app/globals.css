@@ -80,6 +80,33 @@ body {
     --sidebar-border: 225 10% 25%; /* Slightly lighter Dark Gray */
     --sidebar-ring: 174 45% 52%; /* Teal */
   }
+
+  /* Client-specific theme */
+  .theme-client {
+    --accent: 210 70% 55%; /* Brighter Blue for client accent */
+    --accent-foreground: 0 0% 100%; /* White for client accent foreground */
+  }
+  .dark .theme-client {
+    --accent: 210 70% 60%; /* Slightly lighter Brighter Blue for dark client accent */
+    --accent-foreground: 0 0% 10%;  /* Darker for dark client accent foreground */
+  }
+
+  /* Student-specific theme */
+  .theme-student {
+    /* Change primary color for students */
+    --primary: 190 60% 40%; /* Medium Teal/Green for student primary */
+    --primary-foreground: 0 0% 98%; /* Almost White for student primary foreground */
+    /* Students can use the default accent or define a new one: */
+    /* --accent: 30 80% 55%; */ /* Example: Orange accent for students */
+    /* --accent-foreground: 0 0% 100%; */
+  }
+  .dark .theme-student {
+    /* Change primary color for students in dark mode */
+    --primary: 190 60% 45%; /* Slightly lighter Medium Teal/Green for dark student primary */
+    --primary-foreground: 0 0% 10%; /* Darker for dark student primary foreground */
+    /* --accent: 30 80% 60%; */ /* Example: Dark Orange accent for students */
+    /* --accent-foreground: 0 0% 10%; */
+  }
 }
 
 @layer base {

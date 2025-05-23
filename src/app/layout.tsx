@@ -1,10 +1,12 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google'; // Changed from Geist to Inter
+"use client"; // Make RootLayout a client component
+
+import type { Metadata } from 'next'; // Metadata can still be exported from client component
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from "@/components/ui/toaster"
-import { FirebaseProvider } from '@/context/firebase-context';
+import { FirebaseProvider, useFirebase } from '@/context/firebase-context'; // Import useFirebase
 import Navbar from '@/components/layout/navbar';
 
 const inter = Inter({
@@ -12,11 +14,30 @@ const inter = Inter({
   subsets: ['latin'],
 });
 
-export const metadata: Metadata = {
-  title: 'HustleUp - Find & Post Freelance Gigs',
-  description: 'A platform connecting clients with student freelancers.',
-  // Add icons later if needed
-};
+// Removed static metadata export as it's not allowed in client components.
+// If metadata is needed, it should be handled differently, e.g.
+// in a parent server component or via dynamic metadata generation if applicable.
+
+function AppBody({ children }: { children: React.ReactNode }) {
+  const { role } = useFirebase(); // Get role here
+
+  let roleThemeClass = '';
+  if (role === 'client') {
+    roleThemeClass = 'theme-client';
+  } else if (role === 'student') {
+    roleThemeClass = 'theme-student';
+  }
+
+  return (
+    <div className={cn("relative flex min-h-screen flex-col", roleThemeClass)}>
+      <Navbar />
+      <main className="flex-1 container mx-auto px-4 py-8">
+        {children}
+      </main>
+      {/* Add Footer later if needed */}
+    </div>
+  );
+}
 
 export default function RootLayout({
   children,
@@ -28,7 +49,7 @@ export default function RootLayout({
       <body
         className={cn(
           'min-h-screen bg-background font-sans antialiased',
-          inter.variable // Use Inter font variable
+          inter.variable
         )}
       >
         <ThemeProvider
@@ -38,13 +59,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <FirebaseProvider>
-            <div className="relative flex min-h-screen flex-col">
-              <Navbar />
-              <main className="flex-1 container mx-auto px-4 py-8">
-                {children}
-              </main>
-              {/* Add Footer later if needed */}
-            </div>
+            <AppBody>{children}</AppBody> {/* Use AppBody to access context */}
             <Toaster />
           </FirebaseProvider>
         </ThemeProvider>
