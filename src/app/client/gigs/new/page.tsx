@@ -43,7 +43,7 @@ export default function NewGigPage() {
     defaultValues: {
       title: '',
       description: '',
-      budget: undefined,
+      budget: '' as unknown as number, // Initialize with empty string for input, coerce handles it
       deadline: undefined,
       requiredSkills: [''],
     },
@@ -167,7 +167,7 @@ export default function NewGigPage() {
                      <FormItem>
                        <FormLabel>Budget ($)</FormLabel>
                        <FormControl>
-                         <Input type="number" placeholder="e.g., 150" {...field} min="1" step="any" />
+                         <Input type="number" placeholder="e.g., 150" {...field} value={field.value ?? ''} min="1" step="any" />
                        </FormControl>
                        <FormDescription>Enter the total amount you're willing to pay.</FormDescription>
                        <FormMessage />
@@ -233,6 +233,7 @@ export default function NewGigPage() {
                              <FormControl>
                                 <Input
                                   {...skillField}
+                                  value={skillField.value ?? ''} // Ensure value is not undefined
                                   placeholder={`Skill ${index + 1} (e.g., JavaScript, UI/UX Design)`}
                                 />
                               </FormControl>
