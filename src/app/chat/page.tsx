@@ -7,8 +7,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft } from 'lucide-react';
-import { db } from '@/config/firebase';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIcon, FileText as FileIcon, UploadCloud } from 'lucide-react';
+import { db, storage } from '@/config/firebase'; // Import storage
 import {
   collection,
   query,
@@ -26,18 +26,22 @@ import {
   Unsubscribe,
   writeBatch,
 } from 'firebase/firestore';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getChatId, cn } from '@/lib/utils';
 import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useToast } from '@/hooks/use-toast';
 
 
 interface ChatMessage {
   id: string;
   senderId: string;
-  text: string;
+  text?: string; // Text is optional if media is present
+  mediaUrl?: string;
+  mediaType?: string; // e.g., 'image/png', 'application/pdf'
   timestamp: Timestamp | null;
 }
 
@@ -57,10 +61,14 @@ export default function ChatPage() {
   const { user, userProfile, loading: authLoading } = useFirebase();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
 
   const [chats, setChats] = useState<ChatMetadata[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -69,6 +77,8 @@ export default function ChatPage() {
   const [targetUserForNewChat, setTargetUserForNewChat] = useState<UserProfile | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -77,7 +87,7 @@ export default function ChatPage() {
   useEffect(scrollToBottom, [messages]);
 
   const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigId?: string) => {
-    if (!user || !userProfile) return null;
+    if (!user || !userProfile || !db) return null;
 
     const chatId = getChatId(user.uid, targetUserId);
     const chatDocRef = doc(db, 'chats', chatId);
@@ -88,7 +98,6 @@ export default function ChatPage() {
         setSelectedChatId(chatId);
         return chatId;
       } else {
-        // Create new chat
         const newChatData: Omit<ChatMetadata, 'id' | 'createdAt' | 'updatedAt' | 'lastMessageTimestamp'> & { id: string, createdAt: any, updatedAt: any, lastMessageTimestamp: any } = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -96,7 +105,6 @@ export default function ChatPage() {
             [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
             [targetUserId]: targetUsername,
           },
-          // participantProfilePictures will be populated conditionally
           lastMessage: 'Chat started.',
           lastMessageTimestamp: serverTimestamp(),
           ...(gigId && { gigId }),
@@ -117,16 +125,14 @@ export default function ChatPage() {
         
         await setDoc(chatDocRef, newChatData);
         setSelectedChatId(chatId);
-        // Manually add to chats list or wait for listener to pick it up
-        // setChats(prevChats => [newChatData as ChatMetadata, ...prevChats.filter(c => c.id !== chatId)].sort((a,b) => (b.lastMessageTimestamp?.toMillis() || 0) - (a.lastMessageTimestamp?.toMillis() || 0)));
         return chatId;
       }
     } catch (error) {
       console.error("Error getting or creating chat:", error);
-      // Handle error (e.g., show toast)
+      toast({ title: "Chat Error", description: "Could not start or find the chat.", variant: "destructive" });
       return null;
     }
-  }, [user, userProfile]);
+  }, [user, userProfile, toast]);
 
 
   // Effect to handle direct chat initiation from URL
@@ -139,13 +145,16 @@ export default function ChatPage() {
 
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
-        // Clear URL params to avoid re-triggering
         router.replace('/chat', { scroll: false });
         return;
     }
     
     if (targetUserId && user.uid !== targetUserId) {
       const fetchTargetUserAndCreateChat = async () => {
+        if (!db) {
+            toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
+            return;
+        }
         const targetUserDocRef = doc(db, 'users', targetUserId);
         const targetUserSnap = await getDoc(targetUserDocRef);
         if (targetUserSnap.exists()) {
@@ -154,29 +163,25 @@ export default function ChatPage() {
           await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigId || undefined);
         } else {
           console.error("Target user for chat not found.");
+          toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
-         // Clear URL params after processing
          router.replace('/chat', { scroll: false });
       };
       fetchTargetUserAndCreateChat();
     }
-  }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router]);
+  }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router, toast]);
 
 
   // Effect to fetch user's chat list
   useEffect(() => {
-    if (!user) {
+    if (!user || !db) {
       setIsLoadingChats(false);
       setChats([]);
       return;
     }
     setIsLoadingChats(true);
     // IMPORTANT: This query requires a composite index in Firestore.
-    // If you see an error about a missing index, Firebase will provide a link
-    // to create it in the console. The index typically involves:
-    // Collection: 'chats'
-    // Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
-    // Example link: https://console.firebase.google.com/project/<YOUR_PROJECT_ID>/firestore/indexes?create_composite=...
+    // Collection: 'chats', Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -192,15 +197,16 @@ export default function ChatPage() {
       setIsLoadingChats(false);
     }, (error) => {
       console.error("Error fetching chat list:", error);
+      toast({ title: "Chat List Error", description: "Could not load your conversations.", variant: "destructive" });
       setIsLoadingChats(false);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, toast]);
 
   // Effect to fetch messages for the selected chat
   useEffect(() => {
-    if (!selectedChatId || !user) {
+    if (!selectedChatId || !user || !db) {
       setMessages([]);
       return;
     }
@@ -217,14 +223,14 @@ export default function ChatPage() {
       })) as ChatMessage[];
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
-      // No need for explicit scrollToBottom here due to messages dependency on the other useEffect
     }, (error) => {
       console.error(`Error fetching messages for chat ${selectedChatId}:`, error);
+      toast({ title: "Message Error", description: "Could not load messages for this chat.", variant: "destructive" });
       setIsLoadingMessages(false);
     });
     
     return () => unsubscribe();
-  }, [selectedChatId, user]);
+  }, [selectedChatId, user, toast]);
 
   // Effect to redirect if not logged in
   useEffect(() => {
@@ -233,19 +239,76 @@ export default function ChatPage() {
     }
   }, [user, authLoading, router]);
 
+
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
+    setSelectedFile(null); // Clear any selected file when switching chats
+    setUploadProgress(null);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        toast({ title: "File Too Large", description: "Please select a file smaller than 10MB.", variant: "destructive" });
+        return;
+      }
+      setSelectedFile(file);
+      setMessage(''); // Clear text message input when a file is selected for simplicity
+    }
   };
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !selectedChatId || !user || !userProfile) return;
+    if ((!message.trim() && !selectedFile) || !selectedChatId || !user || !userProfile || !db || !storage) {
+        toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
+        return;
+    }
     setIsSending(true);
+    setUploadProgress(null);
+
+    let mediaUrl: string | undefined = undefined;
+    let mediaType: string | undefined = undefined;
+
+    if (selectedFile) {
+      try {
+        const file = selectedFile;
+        const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
+        const fileStorageRef = storageRef(storage, filePath);
+        const uploadTask = uploadBytesResumable(fileStorageRef, file);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            },
+            (error) => {
+              console.error("Upload error:", error);
+              toast({ title: "Upload Failed", description: `Could not upload file: ${error.message}`, variant: "destructive" });
+              reject(error);
+            },
+            async () => {
+              mediaUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              mediaType = file.type;
+              resolve();
+            }
+          );
+        });
+      } catch (error) {
+        setIsSending(false);
+        setUploadProgress(null);
+        return; // Stop if upload failed
+      }
+    }
 
     const newMessageContent: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: user.uid,
-      text: message.trim(),
       timestamp: serverTimestamp(),
     };
+
+    if (message.trim()) newMessageContent.text = message.trim();
+    if (mediaUrl) newMessageContent.mediaUrl = mediaUrl;
+    if (mediaType) newMessageContent.mediaType = mediaType;
 
     try {
       const chatDocRef = doc(db, 'chats', selectedChatId);
@@ -255,14 +318,13 @@ export default function ChatPage() {
       batch.set(doc(messagesColRef), newMessageContent);
       
       const chatUpdateData: any = {
-        lastMessage: message.trim(),
+        lastMessage: message.trim() || (selectedFile ? `Attachment: ${selectedFile.name}` : 'New message'),
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
       if (userProfile.profilePictureUrl) {
-        // Ensure participantProfilePictures exists before trying to set a property on it
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
         chatUpdateData.participantProfilePictures = {
@@ -275,9 +337,12 @@ export default function ChatPage() {
 
       await batch.commit();
       setMessage('');
+      setSelectedFile(null);
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
     } catch (error) {
       console.error("Error sending message:", error);
-      // Show toast notification
+      toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
     } finally {
       setIsSending(false);
     }
@@ -288,7 +353,6 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // The useEffect above will handle the redirect. Show a placeholder.
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
@@ -302,7 +366,7 @@ export default function ChatPage() {
     <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)]">
       <Card className={cn(
         "w-full md:w-1/3 lg:w-1/4 glass-card flex flex-col",
-        selectedChatId && 'hidden md:flex' // Hide on mobile if a chat is selected
+        selectedChatId && 'hidden md:flex' 
       )}>
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -315,7 +379,7 @@ export default function ChatPage() {
               <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
             )}
             {!isLoadingChats && chats.length === 0 && (
-              <p className="text-sm text-muted-foreground p-4 text-center">No active conversations. Start one by contacting a student or client!</p>
+              <p className="text-sm text-muted-foreground p-4 text-center">No active conversations. Start one!</p>
             )}
             {chats.map((chat) => {
               const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
@@ -348,7 +412,7 @@ export default function ChatPage() {
 
       <Card className={cn(
         "flex-grow glass-card flex flex-col h-full",
-        !selectedChatId && 'hidden md:flex' // Hide on mobile if no chat is selected
+        !selectedChatId && 'hidden md:flex' 
         )}>
         {selectedChatId && selectedChatDetails ? (
           <>
@@ -386,7 +450,20 @@ export default function ChatPage() {
                           : 'bg-secondary dark:bg-muted'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                      {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
+                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
+                          <img src={msg.mediaUrl} alt="Uploaded media" className="max-w-xs max-h-64 object-contain rounded-md mt-1 cursor-pointer hover:opacity-80" data-ai-hint="chat image" />
+                        </a>
+                      )}
+                      {msg.mediaUrl && !msg.mediaType?.startsWith('image/') && (
+                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className={`mt-1 block ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground' : 'text-accent-foreground hover:text-accent-foreground/80'} underline`}>
+                          <div className="flex items-center gap-2 p-2 rounded-md bg-black/10 dark:bg-white/10">
+                            <FileIcon className="h-5 w-5" />
+                            <span className="text-sm">View Attachment ({msg.mediaType || 'file'})</span>
+                          </div>
+                        </a>
+                      )}
                       <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
                         {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                       </p>
@@ -395,20 +472,43 @@ export default function ChatPage() {
                 ))}
                 <div ref={messagesEndRef} />
                 {!isLoadingMessages && messages.length === 0 && (
-                    <p className="text-center text-muted-foreground pt-10">Send a message to start the conversation.</p>
+                    <p className="text-center text-muted-foreground pt-10">Send a message or attachment to start the conversation.</p>
                 )}
               </CardContent>
             </ScrollArea>
             <CardFooter className="p-3 border-t">
+              {selectedFile && (
+                <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    {selectedFile.type.startsWith('image/') ? <ImageIcon className="h-5 w-5 text-muted-foreground" /> : <FileIcon className="h-5 w-5 text-muted-foreground" />}
+                    <span className="text-sm text-muted-foreground truncate">{selectedFile.name}</span> 
+                    {uploadProgress !== null && <span className="text-xs text-primary">({uploadProgress.toFixed(0)}%)</span>}
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setSelectedFile(null); setUploadProgress(null); if(fileInputRef.current) fileInputRef.current.value = ""; }}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {uploadProgress !== null && uploadProgress < 100 && (
+                 <div className="w-full h-1 bg-secondary rounded-full mb-2 overflow-hidden">
+                    <div className="bg-primary h-full transition-all duration-150" style={{width: `${uploadProgress}%`}}></div>
+                 </div>
+              )}
               <div className="flex gap-2 w-full">
                 <Input
-                  placeholder="Type your message..."
+                  type="text"
+                  placeholder={selectedFile ? "Add a caption (optional)..." : "Type your message..."}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isSending && handleSendMessage()}
-                  disabled={isSending}
+                  disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
                 />
-                <Button onClick={handleSendMessage} disabled={isSending || !message.trim()}>
+                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" />
+                 <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}>
+                    <Paperclip className="h-5 w-5" />
+                    <span className="sr-only">Attach file</span>
+                 </Button>
+                <Button onClick={handleSendMessage} disabled={isSending || (!message.trim() && !selectedFile) || (uploadProgress !== null && uploadProgress < 100)}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="sr-only">Send</span>
                 </Button>

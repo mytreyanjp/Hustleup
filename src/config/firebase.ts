@@ -4,13 +4,14 @@ import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getFunctions, Functions } from "firebase/functions";
 import { getDatabase, Database } from "firebase/database"; // If using Realtime DB for chat
+import { getStorage, FirebaseStorage } from "firebase/storage"; // Import Firebase Storage
 
 // --- User Provided Configuration ---
 const firebaseConfig: FirebaseOptions = {
-  apiKey: "AIzaSyCAW-Fm9vI1P5SwA7Zhfuf426A6l8Zrwp0",
+  apiKey: "AIzaSyCAW-Fm9vI1P5SwA7Zhfuf426A6l8Zrwp0", // User-provided key
   authDomain: "hustleup-ntp15.firebaseapp.com",
   projectId: "hustleup-ntp15",
-  storageBucket: "hustleup-ntp15.firebasestorage.app", // Corrected storage bucket
+  storageBucket: "hustleup-ntp15.appspot.com", // Corrected storage bucket
   messagingSenderId: "992524001569",
   appId: "1:992524001569:web:58e8b945cfb34000f41e60"
   // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
@@ -31,6 +32,7 @@ let auth: Auth | null = null;
 let db: Firestore | null = null;
 let functions: Functions | null = null;
 let realtimeDb: Database | null = null;
+let storage: FirebaseStorage | null = null; // Declare storage
 
 try {
     if (isConfigValid(firebaseConfig)) {
@@ -44,6 +46,7 @@ try {
         auth = getAuth(app);
         db = getFirestore(app);
         functions = getFunctions(app);
+        storage = getStorage(app); // Initialize storage
         // realtimeDb = getDatabase(app); // Uncomment if using Realtime DB
     } else {
         if (typeof window !== 'undefined') {
@@ -58,8 +61,9 @@ try {
     db = null;
     functions = null;
     realtimeDb = null;
+    storage = null; // Set storage to null on error
 }
 
 // Export potentially null services. Components using them should handle null checks.
-export { app, auth, db, functions, realtimeDb };
+export { app, auth, db, functions, realtimeDb, storage }; // Export storage
 export { isConfigValid, firebaseConfig };
