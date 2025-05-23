@@ -185,9 +185,13 @@ export default function ClientApplicantsPage() {
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 mt-2 sm:mt-0">
-                       <Button size="sm" variant="outline" asChild>
-                          <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
-                       </Button>
+                       {applicant.studentId ? (
+                          <Button size="sm" variant="outline" asChild>
+                              <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button>
+                        )}
                        <Button size="sm" asChild>
                           <Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.gigId}`}>
                               <MessageSquare className="mr-1 h-4 w-4" /> Chat
@@ -204,4 +208,3 @@ export default function ClientApplicantsPage() {
     </div>
   );
 }
-
