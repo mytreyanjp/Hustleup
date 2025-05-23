@@ -148,7 +148,7 @@ export default function ClientGigsPage() {
             <Users className="mr-1 h-4 w-4" /> {gig.applicantCount} Applicant(s)
          </div>
       </CardContent>
-      <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 border-t pt-4">
+      <CardFooter className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 border-t pt-4">
         {gig.status === 'open' && (
           <>
             <Button variant="outline" size="sm" asChild>
