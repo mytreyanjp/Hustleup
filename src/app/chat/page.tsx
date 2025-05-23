@@ -24,8 +24,8 @@ import {
   DocumentData,
   QuerySnapshot,
   writeBatch,
-  updateDoc, // Added
-  arrayUnion, // Added
+  updateDoc, 
+  arrayUnion, 
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getChatId, cn } from '@/lib/utils';
@@ -37,7 +37,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-react';
 import { useTheme } from 'next-themes';
-import type { ChatMessage, ChatMetadata } from '@/types/chat'; // Import shared types
+import type { ChatMessage, ChatMetadata } from '@/types/chat'; 
+import { Progress } from '@/components/ui/progress';
 
 
 export default function ChatPage() {
@@ -106,8 +107,8 @@ export default function ChatPage() {
           },
           lastMessage: 'Chat started.',
           lastMessageTimestamp: serverTimestamp(),
-          lastMessageSenderId: user.uid, // Initiator is the "sender" of "Chat started"
-          lastMessageReadBy: [user.uid], // Initiator has "read" it
+          lastMessageSenderId: user.uid, 
+          lastMessageReadBy: [user.uid], 
           ...(gigId && { gigId }),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -145,7 +146,7 @@ export default function ChatPage() {
 
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
-        router.replace('/chat', { scroll: false });
+        if (typeof window !== 'undefined') router.replace('/chat', { scroll: false });
         return;
     }
     
@@ -165,7 +166,7 @@ export default function ChatPage() {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
-         router.replace('/chat', { scroll: false });
+         if (typeof window !== 'undefined') router.replace('/chat', { scroll: false });
       };
       fetchTargetUserAndCreateChat();
     }
@@ -181,6 +182,7 @@ export default function ChatPage() {
     setIsLoadingChats(true);
     // IMPORTANT: This query requires a composite index in Firestore for optimal performance:
     // Collection: 'chats', Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
+    // Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQIAx2FydGljaXBhbnRzGAEaDQoJdXBkYXRlZEF0EAIaDAoIX19uYW1lX18QAg
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -228,7 +230,6 @@ export default function ChatPage() {
       setIsLoadingMessages(false);
     });
     
-    // Mark chat as read by current user when messages are loaded/chat is opened
     const markChatAsRead = async () => {
       const chatDocRef = doc(db, 'chats', selectedChatId);
       try {
@@ -236,20 +237,19 @@ export default function ChatPage() {
         if (chatSnap.exists()) {
           const chatData = chatSnap.data() as ChatMetadata;
           if (
-            chatData.lastMessageSenderId && // Ensure there's a last message
+            chatData.lastMessageSenderId && 
             chatData.lastMessageSenderId !== user.uid &&
             (!chatData.lastMessageReadBy || !chatData.lastMessageReadBy.includes(user.uid))
           ) {
             console.log(`Marking chat ${selectedChatId} as read by ${user.uid}`);
             await updateDoc(chatDocRef, {
               lastMessageReadBy: arrayUnion(user.uid),
-              updatedAt: serverTimestamp(), // Update timestamp for potential sorting
+              updatedAt: serverTimestamp(), 
             });
           }
         }
       } catch (error) {
         console.error("Error marking chat as read:", error);
-        // Not showing toast here to avoid being too noisy on background operations
       }
     };
 
@@ -284,7 +284,7 @@ export default function ChatPage() {
         return;
       }
       setSelectedFile(file);
-      setMessage('');
+      setMessage(''); 
     }
   };
 
@@ -293,8 +293,12 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async () => {
-    if ((!message.trim() && !selectedFile) || !selectedChatId || !user || !userProfile || !db || !storage) {
+    if ((!message.trim() && !selectedFile) || !selectedChatId || !user || !userProfile || !db ) {
         toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
+        return;
+    }
+    if (!storage && selectedFile) {
+        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file.", variant: "destructive" });
         return;
     }
     setIsSending(true);
@@ -304,7 +308,7 @@ export default function ChatPage() {
     let mediaUrl: string | undefined = undefined;
     let mediaType: string | undefined = undefined;
 
-    if (selectedFile) {
+    if (selectedFile && storage) {
       try {
         const file = selectedFile;
         const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
@@ -324,7 +328,12 @@ export default function ChatPage() {
               switch (error.code) {
                 case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules."; break;
                 case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
-                case 'storage/unknown': detailedErrorMessage = "An unknown error occurred during upload. Check network and Storage rules."; break;
+                case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
+                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Storage bucket not found. Verify Firebase config."; break;
+                case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase config."; break;
+                case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded."; break;
+                case 'storage/unknown': detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Check network and Storage rules.`; break;
+                default: detailedErrorMessage = `Upload error: ${error.message} (Code: ${error.code})`;
               }
               toast({ title: "Upload Failed", description: detailedErrorMessage, variant: "destructive" });
               reject(error);
@@ -347,7 +356,7 @@ export default function ChatPage() {
       } catch (error) {
         setIsSending(false);
         setUploadProgress(null);
-        return;
+        return; 
       }
     }
 
@@ -371,8 +380,8 @@ export default function ChatPage() {
         lastMessage: message.trim() || (selectedFile ? `Attachment: ${selectedFile.name}` : 'New message'),
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        lastMessageSenderId: user.uid, // Set sender of this last message
-        lastMessageReadBy: [user.uid],   // Sender has "read" their own message
+        lastMessageSenderId: user.uid, 
+        lastMessageReadBy: [user.uid],   
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
@@ -407,6 +416,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
+     // This is handled by the useEffect hook for redirection
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
@@ -563,9 +573,7 @@ export default function ChatPage() {
                 </div>
               )}
               {uploadProgress !== null && uploadProgress < 100 && (
-                 <div className="w-full h-1 bg-secondary rounded-full mb-2 overflow-hidden">
-                    <div className="bg-primary h-full transition-all duration-150" style={{width: `${uploadProgress}%`}}></div>
-                 </div>
+                 <Progress value={uploadProgress} className="w-full h-2 mb-2" />
               )}
               <div className="flex gap-2 w-full">
                 <Button 
