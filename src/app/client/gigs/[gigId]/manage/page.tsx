@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -12,8 +13,8 @@ import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, A
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { useRazorpay } from '@/hooks/use-razorpay'; // Import the Razorpay hook
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useRazorpay } from '@/hooks/use-razorpay';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 interface ApplicantInfo {
@@ -50,45 +51,41 @@ export default function ManageGigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingApplicantId, setUpdatingApplicantId] = useState<string | null>(null);
-  const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null); // Student being paid
+  const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null);
 
-  // --- Razorpay Integration ---
    const handlePaymentSuccess = async (paymentDetails: { paymentId: string; orderId?: string; signature?: string }) => {
     console.log("Razorpay Success:", paymentDetails);
-     if (!payingStudent || !gig || !user) return;
+     if (!payingStudent || !gig || !user || !userProfile) return;
 
-     setIsLoading(true); // Show loading indicator during Firestore update
+     setIsLoading(true);
      try {
-         // 1. Record the transaction in Firestore
          const transactionData = {
              clientId: user.uid,
-             clientUsername: userProfile?.username || user.email?.split('@')[0],
+             clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Client',
              studentId: payingStudent.studentId,
              studentUsername: payingStudent.studentUsername,
              gigId: gig.id,
              gigTitle: gig.title,
-             amount: gig.budget, // Use the gig's budget
-             currency: 'INR', // Assuming INR for Razorpay
+             amount: gig.budget,
+             currency: 'INR',
              status: 'succeeded',
              razorpayPaymentId: paymentDetails.paymentId,
-             razorpayOrderId: paymentDetails.orderId, // Optional
+             razorpayOrderId: paymentDetails.orderId,
              paidAt: serverTimestamp(),
          };
          await addDoc(collection(db, "transactions"), transactionData);
          console.log("Transaction recorded:", transactionData);
 
-
-          // 2. Update Gig Status to 'completed' (or handle partial payments differently)
           const gigDocRef = doc(db, 'gigs', gig.id);
           await updateDoc(gigDocRef, {
               status: 'completed',
           });
-         setGig(prev => prev ? { ...prev, status: 'completed' } : null); // Update local state
+         setGig(prev => prev ? { ...prev, status: 'completed' } : null);
 
 
          toast({
              title: "Payment Successful!",
-             description: `Payment of $${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded.`,
+             description: `Payment of ${gig.currency || 'INR'} ${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded.`,
          });
 
      } catch (err) {
@@ -99,7 +96,7 @@ export default function ManageGigPage() {
              variant: "destructive",
          });
      } finally {
-         setPayingStudent(null); // Clear paying state
+         setPayingStudent(null);
          setIsLoading(false);
      }
    };
@@ -111,45 +108,41 @@ export default function ManageGigPage() {
        description: error.description || error.reason || "An error occurred during payment.",
        variant: "destructive",
      });
-     setPayingStudent(null); // Clear paying state
+     setPayingStudent(null);
    };
 
    const { openCheckout, isLoaded: isRazorpayLoaded } = useRazorpay({
-     keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, // Get Key ID from env
+     keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
      onPaymentSuccess: handlePaymentSuccess,
      onPaymentError: handlePaymentError,
    });
 
    const initiatePayment = (student: ApplicantInfo) => {
-     if (!gig || !userProfile || !isRazorpayLoaded) {
+     if (!gig || !userProfile || !isRazorpayLoaded || !user) {
          toast({ title: "Cannot Initiate Payment", description: "Payment gateway or user details missing.", variant: "destructive"});
          return;
      };
-     setPayingStudent(student); // Mark which student is being paid
+     setPayingStudent(student);
 
      openCheckout({
        amount: gig.budget * 100, // Amount in paise
-       currency: "INR", // Or your desired currency
+       currency: "INR",
        name: "HustleUp Gig Payment",
        description: `Payment for: ${gig.title}`,
        prefill: {
          name: userProfile?.username || user?.email?.split('@')[0],
          email: user?.email || '',
-         // contact: userProfile?.phone // If you collect phone numbers
        },
        notes: {
          gigId: gig.id,
          studentId: student.studentId,
          clientId: user?.uid,
        },
-       // theme: { color: '#1A202C' } // Already handled in the hook
      });
    };
-  // --- End Razorpay Integration ---
-
 
    const fetchGigData = useCallback(async () => {
-       if (!gigId || !user) return; // Ensure gigId and user are available
+       if (!gigId || !user) return;
        setIsLoading(true);
        setError(null);
        try {
@@ -158,7 +151,6 @@ export default function ManageGigPage() {
 
          if (docSnap.exists()) {
            const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
-           // Ensure the current user is the client owner
            if (fetchedGig.clientId !== user.uid) {
              setError("You are not authorized to manage this gig.");
               setGig(null);
@@ -182,46 +174,41 @@ export default function ManageGigPage() {
       if (!user || role !== 'client') {
         router.push('/auth/login');
       } else {
-         fetchGigData(); // Fetch data only after auth check passes
+         fetchGigData();
       }
     }
   }, [authLoading, user, role, router, fetchGigData]);
 
 
-   // Function to update applicant status within the gig document
    const updateApplicantStatus = async (studentId: string, newStatus: 'accepted' | 'rejected') => {
        if (!gig) return;
        setUpdatingApplicantId(studentId);
        try {
            const gigDocRef = doc(db, 'gigs', gig.id);
-            // Create the updated applicants array
            const updatedApplicants = gig.applicants?.map(app =>
                app.studentId === studentId ? { ...app, status: newStatus } : app
            ) || [];
 
            let gigUpdateData: any = { applicants: updatedApplicants };
 
-           // If accepting, update the main gig status and selected student
            if (newStatus === 'accepted') {
                gigUpdateData.status = 'in-progress';
                gigUpdateData.selectedStudentId = studentId;
-                // Optionally reject all other pending applicants
+               // Optionally reject all other pending applicants automatically
                // updatedApplicants = updatedApplicants.map(app =>
-               //    (app.studentId !== studentId && app.status === 'pending') ? { ...app, status: 'rejected' } : app
+               //    (app.studentId !== studentId && (app.status === 'pending' || !app.status)) ? { ...app, status: 'rejected' } : app
                // );
                // gigUpdateData.applicants = updatedApplicants;
            }
 
            await updateDoc(gigDocRef, gigUpdateData);
 
-            // Update local state to reflect changes immediately
            setGig(prev => prev ? {
                 ...prev,
                 status: newStatus === 'accepted' ? 'in-progress' : prev.status,
                 selectedStudentId: newStatus === 'accepted' ? studentId : prev.selectedStudentId,
                 applicants: updatedApplicants
             } : null);
-
 
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
 
@@ -241,11 +228,15 @@ export default function ManageGigPage() {
      } catch (e) { return 'Invalid date'; }
    };
 
-    const getStatusBadgeVariant = (status: ApplicantInfo['status']): "default" | "secondary" | "destructive" | "outline" => {
+    const getStatusBadgeVariant = (status: ApplicantInfo['status'] | Gig['status']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
            case 'accepted': return 'default';
            case 'rejected': return 'destructive';
-           case 'pending':
+           case 'pending': return 'secondary';
+           case 'open': return 'default';
+           case 'in-progress': return 'secondary';
+           case 'completed': return 'outline'; // Consider 'success' if you have it, or green.
+           case 'closed': return 'destructive';
            default: return 'secondary';
        }
    };
@@ -285,10 +276,9 @@ export default function ManageGigPage() {
            <CardDescription>Manage applications and payment for this gig.</CardDescription>
            <div className="flex items-center gap-2 pt-2">
                <span className="text-sm text-muted-foreground">Status:</span>
-                <Badge variant={getStatusBadgeVariant(gig.status as any)} className="capitalize">{gig.status}</Badge>
+                <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge>
            </div>
          </CardHeader>
-          {/* Optionally add brief gig details here if needed */}
        </Card>
 
 
@@ -296,32 +286,34 @@ export default function ManageGigPage() {
        {gig.status === 'in-progress' && selectedStudent && (
          <Card className="glass-card border-green-500 dark:border-green-400">
            <CardHeader>
-             <CardTitle className="text-green-600 dark:text-green-400">Gig In Progress</CardTitle>
-             <CardDescription>You have accepted an applicant. You can initiate payment once the work is complete.</CardDescription>
+             <CardTitle className="text-green-700 dark:text-green-400">Gig In Progress With: {selectedStudent.studentUsername}</CardTitle>
+             <CardDescription>You have accepted {selectedStudent.studentUsername}'s application. Initiate payment once the work is completed to your satisfaction.</CardDescription>
            </CardHeader>
            <CardContent>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3 bg-background">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3 bg-background shadow">
                   <div className="flex items-start gap-3 flex-grow">
-                      <UserCircle className="h-8 w-8 text-muted-foreground mt-1 shrink-0" />
+                      <UserCircle className="h-10 w-10 text-muted-foreground mt-1 shrink-0" />
                       <div className="flex-grow">
-                         <p className="font-semibold">{selectedStudent.studentUsername}</p>
-                         <p className="text-xs text-muted-foreground mb-1">Accepted {formatDate(selectedStudent.appliedAt)}</p>
+                         <p className="font-semibold text-lg">{selectedStudent.studentUsername}</p>
+                         <p className="text-xs text-muted-foreground mb-1">Accepted application {formatDate(selectedStudent.appliedAt)}</p>
                       </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
                      <Button size="sm" variant="outline" asChild>
                           <Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link>
                       </Button>
                        <Button size="sm" asChild>
                           <Link href={`/chat?userId=${selectedStudent.studentId}&gigId=${gig.id}`}>
-                              <MessageSquare className="mr-1 h-4 w-4" /> Chat
+                              <MessageSquare className="mr-1 h-4 w-4" /> Chat with {selectedStudent.studentUsername}
                           </Link>
-                      </Button>
+                       </Button>
                   </div>
               </div>
            </CardContent>
-            <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 border-t pt-4">
-                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0">Ready to pay ${gig.budget.toFixed(2)} for the completed work?</p>
+            <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
+                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0">
+                    Ready to pay **${gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}?
+                </p>
                 <Button
                    size="lg"
                    onClick={() => initiatePayment(selectedStudent)}
@@ -329,7 +321,7 @@ export default function ManageGigPage() {
                    className="w-full sm:w-auto"
                  >
                    {(isLoading && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                   Pay ${gig.budget.toFixed(2)} via Razorpay
+                   Pay ${gig.budget.toFixed(2)}
                  </Button>
             </CardFooter>
          </Card>
@@ -344,6 +336,7 @@ export default function ManageGigPage() {
                 This gig has been marked as completed and payment has been processed. View transaction details in your{' '}
                  <Link href="/client/payments" className="font-medium underline">Payment History</Link>.
                  {selectedStudent && ` Student: ${selectedStudent.studentUsername}.`}
+                 {!selectedStudent && gig.selectedStudentId && ' (Student details might be loading or missing for this completed gig.)'}
              </AlertDescription>
          </Alert>
        )}
@@ -362,7 +355,6 @@ export default function ManageGigPage() {
                ) : (
                  gig.applicants.map((applicant) => (
                    <div key={applicant.studentId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3">
-                     {/* Applicant Info */}
                      <div className="flex items-start gap-3 flex-grow">
                         <UserCircle className="h-8 w-8 text-muted-foreground mt-1 shrink-0" />
                         <div className="flex-grow">
@@ -377,7 +369,6 @@ export default function ManageGigPage() {
                         </div>
                       </div>
 
-                      {/* Action Buttons */}
                       <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0">
                          <Button size="sm" variant="outline" asChild>
                              <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
@@ -394,7 +385,7 @@ export default function ManageGigPage() {
                                      variant="default"
                                      onClick={() => updateApplicantStatus(applicant.studentId, 'accepted')}
                                      disabled={updatingApplicantId === applicant.studentId || isLoading}
-                                     className="bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+                                     className="bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white"
                                  >
                                      {updatingApplicantId === applicant.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-1 h-4 w-4" />}
                                      Accept
@@ -419,7 +410,6 @@ export default function ManageGigPage() {
            </Card>
        )}
 
-        {/* Message for closed/rejected gigs */}
         {gig.status === 'closed' && (
              <Alert variant="destructive">
                 <XCircle className="h-5 w-5" />
@@ -427,10 +417,9 @@ export default function ManageGigPage() {
                 <AlertDescription>This gig is closed and no further actions can be taken.</AlertDescription>
             </Alert>
         )}
-         {/* Add similar alerts for rejected status if needed */}
-
 
      </div>
    );
 }
 
+    
