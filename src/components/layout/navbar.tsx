@@ -17,20 +17,18 @@ import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search, Users as HustlersIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation'; // Use next/navigation for App Router
+import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
-  const { user, userProfile, loading, role } = useFirebase();
+  const { user, userProfile, loading, role, totalUnreadChats } = useFirebase(); // Added totalUnreadChats
   const router = useRouter();
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/'); // Redirect to home page after sign out
-      // User state will be updated by the context listener
+      router.push('/');
     } catch (error) {
       console.error('Error signing out:', error);
-      // Handle error (e.g., show toast notification)
     }
   };
 
@@ -43,7 +41,6 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center">
         <Link href="/" className="mr-6 flex items-center space-x-2">
-          {/* Replace with SVG Logo if available */}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
           </svg>
@@ -52,12 +49,12 @@ export default function Navbar() {
 
         <nav className="flex flex-1 items-center space-x-4">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-            <Search className="mr-1 h-4 w-4" /> Gigs
+            <Search className="mr-1 h-4 w-4 hidden sm:inline-block" /> Gigs
           </Link>
 
           {role === 'client' && (
             <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-              <HustlersIcon className="mr-1 h-4 w-4" /> Hustlers
+              <HustlersIcon className="mr-1 h-4 w-4 hidden sm:inline-block" /> Hustlers
             </Link>
           )}
 
@@ -72,8 +69,14 @@ export default function Navbar() {
             </Link>
           )}
           {user && (
-            <Link href="/chat" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
-              Messages
+            <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+              <MessageSquare className="mr-1 h-4 w-4 hidden sm:inline-block" />
+              <span>Messages</span>
+              {totalUnreadChats > 0 && (
+                <span className="absolute top-0 right-0 flex h-4 w-4 -translate-y-1/3 translate-x-1/3 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none">
+                  {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                </span>
+              )}
             </Link>
           )}
         </nav>
@@ -142,9 +145,10 @@ export default function Navbar() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem asChild>
-                  <Link href="/chat">
+                  <Link href="/chat" className="relative"> {/* Added relative for potential badge */}
                     <MessageSquare className="mr-2 h-4 w-4" />
                     <span>Messages</span>
+                     {/* No separate badge here, main navbar link has it */}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>

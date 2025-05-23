@@ -3,10 +3,10 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, DocumentData } from 'firebase/firestore';
-import { auth, db } from '@/config/firebase'; // Import db and auth directly
-import { Skeleton } from '@/components/ui/skeleton'; // For loading state
+import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp } from 'firebase/firestore'; // Added collection, query, where, onSnapshot, QuerySnapshot, Timestamp
+import { auth, db, isConfigValid, firebaseConfig } from '@/config/firebase';
 import { Loader2 } from 'lucide-react';
+import type { ChatMetadata } from '@/types/chat'; // Import ChatMetadata
 
 type UserRole = 'student' | 'client' | null;
 
@@ -14,7 +14,6 @@ export interface UserProfile extends DocumentData {
   uid: string;
   email: string | null;
   role: UserRole;
-  // Add other profile fields as needed (username, bio, skills, etc.)
   username?: string;
   profilePictureUrl?: string;
   bio?: string;
@@ -27,7 +26,8 @@ interface FirebaseContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   role: UserRole;
-  refreshUserProfile: () => Promise<void>; // Added refresh function
+  refreshUserProfile: () => Promise<void>;
+  totalUnreadChats: number; // Added for unread chat count
 }
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
@@ -39,10 +39,10 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [role, setRole] = useState<UserRole>(null);
   const [firebaseInitialized, setFirebaseInitialized] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [totalUnreadChats, setTotalUnreadChats] = useState(0); // State for unread chat count
 
 
    const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
-     // Ensure db is initialized before fetching
      if (!db) {
         console.warn("Firestore (db) not initialized, skipping profile fetch.");
         setUserProfile(null);
@@ -67,14 +67,13 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
            console.log("User profile loaded:", profileData);
          } else {
            console.warn("No user profile found in Firestore for UID:", currentUser.uid);
-           // Create a basic profile structure if none exists - Adjust roles as needed
-           const basicProfile: UserProfile = { uid: currentUser.uid, email: currentUser.email, role: null }; // Default role might need adjustment
+           const basicProfile: UserProfile = { uid: currentUser.uid, email: currentUser.email, role: null };
            setUserProfile(basicProfile);
            setRole(null);
          }
        } catch (error) {
          console.error("Error fetching user profile:", error);
-          setUserProfile({ uid: currentUser.uid, email: currentUser.email, role: null }); // Fallback basic profile on error
+          setUserProfile({ uid: currentUser.uid, email: currentUser.email, role: null });
           setRole(null);
        }
      } else {
@@ -82,12 +81,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
        setRole(null);
        console.log("No current user, profile cleared.");
      }
-   }, []); // useCallback dependencies
+   }, []);
 
-   // Refresh function to be called manually when needed (e.g., after profile update)
    const refreshUserProfile = useCallback(async () => {
        if (user) {
-           setLoading(true); // Show loading indicator during refresh
+           setLoading(true);
            await fetchUserProfile(user);
            setLoading(false);
        }
@@ -96,15 +94,15 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
    useEffect(() => {
         setLoading(true);
-        let unsubscribe: (() => void) | null = null;
+        let unsubscribeAuth: (() => void) | null = null;
 
-        if (auth && db) { // Check if services are initialized
+        if (auth && db) {
             setFirebaseInitialized(true);
-            setInitializationError(null); // Clear any previous error
-            unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            setInitializationError(null);
+            unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
                 console.log("Auth state changed. Current user:", currentUser?.uid || 'None');
                 setUser(currentUser);
-                await fetchUserProfile(currentUser); // Fetch profile on auth change
+                await fetchUserProfile(currentUser);
                 setLoading(false);
             }, (error) => {
                 console.error("Auth state error:", error);
@@ -115,27 +113,58 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
                 setLoading(false);
             });
         } else {
-            // Firebase services failed to initialize or config was invalid
             console.error("Firebase auth or db is not initialized in context.");
             setFirebaseInitialized(false);
-            // Check if the config itself was the issue (less likely with hardcoded values, but good practice)
-            // We rely on the console error from firebase.ts for specifics
             setInitializationError("Failed to initialize Firebase services. Check configuration and console for details.");
             setLoading(false);
         }
-
-        // Cleanup subscription on unmount
         return () => {
-            if (unsubscribe) {
+            if (unsubscribeAuth) {
                 console.log("Unsubscribing from auth state changes.");
-                unsubscribe();
+                unsubscribeAuth();
             }
         };
-    }, [fetchUserProfile]); // Re-run if fetchUserProfile changes
+    }, [fetchUserProfile]);
 
 
-   // Show a global loading indicator while auth state is initially resolving
-   // Only render loader on the client after mount to avoid hydration issues
+    // Effect to listen for unread chat counts
+    useEffect(() => {
+      if (!user || !db) {
+        setTotalUnreadChats(0);
+        return;
+      }
+
+      const q = query(
+        collection(db, 'chats'),
+        where('participants', 'array-contains', user.uid)
+      );
+
+      const unsubscribeChats = onSnapshot(q, (querySnapshot: QuerySnapshot<DocumentData>) => {
+        let unreadCount = 0;
+        querySnapshot.forEach((docSnap) => {
+          const chat = docSnap.data() as ChatMetadata;
+          if (
+            chat.lastMessageSenderId &&
+            chat.lastMessageSenderId !== user.uid &&
+            (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user.uid))
+          ) {
+            unreadCount++;
+          }
+        });
+        console.log(`Total unread chats for ${user.uid}: ${unreadCount}`);
+        setTotalUnreadChats(unreadCount);
+      }, (error) => {
+        console.error("Error fetching chat list for unread count:", error);
+        setTotalUnreadChats(0);
+      });
+
+      return () => {
+        console.log("Unsubscribing from chat list for unread count.");
+        unsubscribeChats();
+      };
+    }, [user]); // Re-run when user logs in/out
+
+
    const [isClient, setIsClient] = useState(false);
    useEffect(() => {
        setIsClient(true);
@@ -150,8 +179,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
      );
    }
 
-   // Show an error if Firebase couldn't initialize
-   // Only render error on the client after mount
    if (!firebaseInitialized && initializationError && isClient) {
        return (
            <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
@@ -164,8 +191,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
        );
    }
 
-
-  const value = { user, userProfile, loading, role, refreshUserProfile };
+  const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats };
 
   return (
     <FirebaseContext.Provider value={value}>
@@ -181,5 +207,3 @@ export const useFirebase = () => {
   }
   return context;
 };
-
-    
