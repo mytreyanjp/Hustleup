@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -16,11 +16,22 @@ import {
 import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
-import { auth } from '@/config/firebase';
-import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass } from 'lucide-react';
+import { auth, db } from '@/config/firebase'; // Added db
+import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input'; // Import Input
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { collection, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import type { Skill } from '@/lib/constants';
+
+interface SuggestedGig {
+  id: string;
+  title: string;
+  requiredSkills: Skill[];
+  type: 'gig';
+}
 
 export default function Navbar() {
   const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
@@ -28,9 +39,49 @@ export default function Navbar() {
   const [isClient, setIsClient] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedGig[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+
+  const fetchInitialSuggestions = useCallback(async () => {
+    if (!db) return;
+    setIsLoadingSuggestions(true);
+    try {
+      const gigsCollectionRef = collection(db, 'gigs');
+      const q = query(
+        gigsCollectionRef,
+        where('status', '==', 'open'),
+        orderBy('createdAt', 'desc'),
+        limit(10) // Fetch a small number of recent open gigs
+      );
+      const querySnapshot = await getDocs(q);
+      const fetchedGigs = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        title: doc.data().title,
+        requiredSkills: doc.data().requiredSkills || [],
+        type: 'gig' as 'gig',
+      })) as SuggestedGig[];
+      setSuggestions(fetchedGigs);
+    } catch (error) {
+      console.error("Error fetching initial gig suggestions:", error);
+      setSuggestions([]);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  }, []);
+
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  useEffect(() => {
+    if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
+      fetchInitialSuggestions();
+    }
+  }, [isSuggestionsOpen, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions]);
+
 
   const handleSignOut = async () => {
     try {
@@ -52,12 +103,18 @@ export default function Navbar() {
     e.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
+      setIsSuggestionsOpen(false); // Close popover on submit
     }
   };
 
+  const filteredSuggestions = searchTerm.trim() === '' ? [] : suggestions.filter(suggestion =>
+    suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center"> {/* Increased height slightly for search bar */}
+      <div className="container flex h-16 items-center">
         <Link href="/" className="mr-4 flex items-center space-x-2">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -107,16 +164,76 @@ export default function Navbar() {
 
         <div className="flex flex-1 md:flex-none items-center justify-end space-x-2">
           {isClient && (
-            <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xs md:ml-4">
-              <SearchIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search gigs or users..."
-                className="pl-8 h-9 w-full"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </form>
+            <Popover open={isSuggestionsOpen} onOpenChange={setIsSuggestionsOpen}>
+              <PopoverTrigger asChild>
+                <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xs md:ml-4">
+                  <SearchIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    ref={searchInputRef}
+                    type="search"
+                    placeholder="Search gigs or users..."
+                    className="pl-8 h-9 w-full"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => setIsSuggestionsOpen(true)}
+                  />
+                </form>
+              </PopoverTrigger>
+              {isSuggestionsOpen && searchTerm.trim() && (
+                <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                    onOpenAutoFocus={(e) => e.preventDefault()} // Prevent focus stealing
+                >
+                  <Command shouldFilter={false}> {/* We do client-side filtering */}
+                    <CommandList>
+                      {isLoadingSuggestions && (
+                        <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading suggestions...
+                        </div>
+                      )}
+                      {!isLoadingSuggestions && filteredSuggestions.length === 0 && searchTerm.trim() !== '' && (
+                        <CommandEmpty>No direct matches. Try a broader search.</CommandEmpty>
+                      )}
+                      {!isLoadingSuggestions && filteredSuggestions.length > 0 && (
+                        <CommandGroup heading="Suggested Gigs">
+                          {filteredSuggestions.map((gig) => (
+                            <CommandItem
+                              key={gig.id}
+                              value={gig.title}
+                              onSelect={() => {
+                                router.push(`/gigs/${gig.id}`);
+                                setIsSuggestionsOpen(false); // Close popover
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Briefcase className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <span>{gig.title}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                       <CommandGroup>
+                        <CommandItem
+                            value={`search_all_${searchTerm}`}
+                            onSelect={() => {
+                                if (searchTerm.trim()) {
+                                    router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
+                                    setIsSuggestionsOpen(false); // Close popover
+                                }
+                            }}
+                            className="cursor-pointer italic"
+                            disabled={!searchTerm.trim()}
+                        >
+                            <SearchIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span>Search all for: "{searchTerm}"</span>
+                        </CommandItem>
+                       </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              )}
+            </Popover>
           )}
           <ModeToggle />
           {isClient ? (
