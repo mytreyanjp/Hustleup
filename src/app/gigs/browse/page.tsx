@@ -38,6 +38,10 @@ export default function BrowseGigsPage() {
       setError(null);
       try {
         const gigsCollectionRef = collection(db, 'gigs');
+        // IMPORTANT: This query requires a composite index in Firestore.
+        // Collection: 'gigs', Fields: 'status' (Ascending), 'createdAt' (Descending)
+        // Create index if Firebase console prompts. Example link (check console for exact):
+        // https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Cktwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9naWdzL2luZGV4ZXMvXxABGgoKBnN0YXR1cxABGg0KCWNyZWF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -49,29 +53,32 @@ export default function BrowseGigsPage() {
           ...doc.data(),
         })) as Gig[];
 
-        // Filter based on student skills if applicable, only after auth state is resolved
         if (!authLoading) {
           if (currentUser && role === 'student') {
             if (userProfile?.skills && userProfile.skills.length > 0) {
-              const studentSkills = userProfile.skills as Skill[];
+              const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
               const filtered = fetchedGigs.filter(gig =>
-                gig.requiredSkills.some(reqSkill => studentSkills.includes(reqSkill))
+                gig.requiredSkills.some(reqSkill => {
+                  const reqSkillLower = reqSkill.toLowerCase();
+                  // Bi-directional substring match for domain-like matching
+                  return studentSkillsLower.some(studentSkillLower =>
+                    studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
+                  );
+                })
               );
               setGigs(filtered);
             } else {
-              // Student is logged in but has no skills, show empty or a message
-              setGigs([]);
+              setGigs([]); // Student is logged in but has no skills
             }
           } else {
-            // Not a student, or not logged in
-            setGigs(fetchedGigs);
+            setGigs(fetchedGigs); // Not a student, or not logged in, show all open gigs
           }
         } else {
-            // Auth still loading, show all open gigs temporarily or keep gigs empty until auth resolves
-            setGigs(fetchedGigs); // Or setGigs([]) and handle loading state appropriately
+          setGigs(fetchedGigs); // Auth still loading, show all open gigs temporarily
         }
 
-      } catch (err: any) {
+      } catch (err: any)
+{
         console.error("Error fetching gigs:", err);
         setError("Failed to load gigs. Please try again later. This might be due to a missing Firestore index. Check the console for a link to create it.");
       } finally {
@@ -102,7 +109,6 @@ export default function BrowseGigsPage() {
     }
    };
 
-  // Combined loading state
   const pageIsLoading = authLoading || isLoading;
 
   if (pageIsLoading) {
@@ -135,7 +141,7 @@ export default function BrowseGigsPage() {
                 {currentUser && role === 'student' && (!userProfile?.skills || userProfile.skills.length === 0) ? (
                     <>
                         <p className="text-muted-foreground mb-4">
-                            Add skills to your profile to discover relevant freelance opportunities.
+                            Add skills to your profile to discover relevant freelance opportunities. Gigs are matched based on your skills.
                         </p>
                         <Button asChild>
                             <Link href="/student/profile">Update Your Profile Skills</Link>
