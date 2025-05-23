@@ -7,15 +7,28 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '@/config/firebase';
+import { sendPasswordResetEmail, deleteUser as deleteFirebaseAuthUser } from 'firebase/auth';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { auth, db } from '@/config/firebase';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
   const { user, loading } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -28,7 +41,8 @@ export default function SettingsPage() {
   }
 
   if (!user) {
-     return <div className="text-center py-10"><p>Please log in to view settings.</p></div>;
+     // This state should ideally not be reached if the useEffect redirect works properly
+     return <div className="text-center py-10"><p>Redirecting to login...</p></div>;
   }
 
   const handleChangePassword = async () => {
@@ -68,18 +82,45 @@ export default function SettingsPage() {
     }
   };
 
-  const handleUpdateEmail = () => {
-    toast({
-        title: "Feature Coming Soon",
-        description: "Updating your email address will be available in a future update."
-    });
+  const handleDeleteAccount = async () => {
+    if (!user || !auth || !db) {
+      toast({ title: "Error", description: "User session or Firebase services unavailable.", variant: "destructive"});
+      return;
+    }
+    setIsDeletingAccount(true);
+    try {
+      // 1. Delete Firestore user document (optional, but good practice)
+      const userDocRef = doc(db, 'users', user.uid);
+      await deleteDoc(userDocRef);
+      console.log("User document deleted from Firestore.");
+
+      // 2. Delete Firebase Auth user
+      await deleteFirebaseAuthUser(auth.currentUser!); // auth.currentUser should be the same as user from context
+
+      toast({
+        title: 'Account Deleted Successfully',
+        description: 'Your account and associated data have been removed. You will be redirected.',
+      });
+      router.push('/'); // Redirect to homepage after successful deletion
+
+    } catch (error: any) {
+      console.error('Error deleting account:', error);
+      let errorMessage = 'Failed to delete your account.';
+      if (error.code === 'auth/requires-recent-login') {
+        errorMessage = 'This operation is sensitive and requires recent authentication. Please log out and log back in, then try again.';
+      } else if (error.code === 'auth/network-request-failed') {
+         errorMessage = 'Network error. Please check your connection and try again.';
+      }
+      toast({
+        title: 'Account Deletion Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingAccount(false);
+    }
   };
-  const handleDeleteAccount = () => {
-     toast({
-        title: "Feature Coming Soon",
-        description: "Account deletion will be available in a future update. This requires careful implementation."
-    });
-  };
+
 
   return (
     <div className="max-w-2xl mx-auto py-8">
@@ -106,13 +147,6 @@ export default function SettingsPage() {
                 Change Password
               </Button>
            </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4">
-              <div>
-                 <p className="font-medium">Email Address</p>
-                 <p className="text-sm text-muted-foreground">Current: {user.email}</p>
-              </div>
-              <Button variant="outline" onClick={handleUpdateEmail} className="mt-2 sm:mt-0" disabled>Update Email (Coming Soon)</Button>
-           </div>
         </CardContent>
       </Card>
 
@@ -125,9 +159,36 @@ export default function SettingsPage() {
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
               <div>
                  <p className="font-medium">Delete Account</p>
-                 <p className="text-sm text-muted-foreground">Permanently remove your account and all associated data.</p>
+                 <p className="text-sm text-muted-foreground">Permanently remove your account and all associated data from HustleUp.</p>
               </div>
-              <Button variant="destructive" onClick={handleDeleteAccount} className="mt-2 sm:mt-0" disabled>Delete Account (Coming Soon)</Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="mt-2 sm:mt-0" disabled={isDeletingAccount}>
+                        {isDeletingAccount && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Delete My Account
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete your
+                        account, remove your data from our servers, and you will lose access to all your gigs, applications, and messages.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isDeletingAccount}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAccount}
+                        disabled={isDeletingAccount}
+                        className="bg-destructive hover:bg-destructive/90"
+                      >
+                        {isDeletingAccount ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Yes, Delete My Account
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
            </div>
         </CardContent>
       </Card>
