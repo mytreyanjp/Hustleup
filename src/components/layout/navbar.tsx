@@ -16,13 +16,13 @@ import {
 import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
-import { auth, db } from '@/config/firebase'; // Added db
-import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2 } from 'lucide-react';
+import { auth, db } from '@/config/firebase';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { collection, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
 import type { Skill } from '@/lib/constants';
 
@@ -46,7 +46,7 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db) return;
+    if (!db || suggestions.length > 0) return; // Don't fetch if already populated or db not ready
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
@@ -54,13 +54,13 @@ export default function Navbar() {
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10) // Fetch a small number of recent open gigs
+        limit(10)
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
         id: doc.id,
-        title: doc.data().title,
-        requiredSkills: doc.data().requiredSkills || [],
+        title: doc.data().title || "Untitled Gig",
+        requiredSkills: (doc.data().requiredSkills as Skill[]) || [],
         type: 'gig' as 'gig',
       })) as SuggestedGig[];
       setSuggestions(fetchedGigs);
@@ -70,7 +70,7 @@ export default function Navbar() {
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, []);
+  }, [db, suggestions.length]); // Added db and suggestions.length to dependencies
 
   useEffect(() => {
     setIsClient(true);
@@ -86,7 +86,11 @@ export default function Navbar() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/');
+      router.push('/'); // Redirect to homepage after sign out
+      // Clear any local state if needed, e.g. search term, suggestions
+      setSearchTerm('');
+      setSuggestions([]);
+      setIsSuggestionsOpen(false);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -99,17 +103,17 @@ export default function Navbar() {
     return email.substring(0, 2).toUpperCase();
   };
 
-  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSearchSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    e?.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-      setIsSuggestionsOpen(false); // Close popover on submit
+      setIsSuggestionsOpen(false);
     }
   };
 
   const filteredSuggestions = searchTerm.trim() === '' ? [] : suggestions.filter(suggestion =>
     suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
+    (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
   );
 
   return (
@@ -123,15 +127,9 @@ export default function Navbar() {
         </Link>
 
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
-          {isClient && role === 'student' ? (
-            <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-              <Compass className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Explore
-            </Link>
-          ) : (
-            <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-              <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Gigs
-            </Link>
-          )}
+          <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+            <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Gigs
+          </Link>
 
           {isClient && role === 'client' && (
             <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
@@ -174,25 +172,35 @@ export default function Navbar() {
                     placeholder="Search gigs or users..."
                     className="pl-8 h-9 w-full"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onFocus={() => setIsSuggestionsOpen(true)}
+                    onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        if (e.target.value.trim() !== '') {
+                            setIsSuggestionsOpen(true);
+                        } else {
+                            setIsSuggestionsOpen(false);
+                        }
+                    }}
+                    onFocus={() => {
+                        if (searchTerm.trim() !== '') setIsSuggestionsOpen(true);
+                        fetchInitialSuggestions(); // Fetch suggestions on focus if list is empty
+                    }}
                   />
                 </form>
               </PopoverTrigger>
-              {isSuggestionsOpen && searchTerm.trim() && (
+              {isSuggestionsOpen && (
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()} // Prevent focus stealing
+                    onOpenAutoFocus={(e) => e.preventDefault()}
                 >
-                  <Command shouldFilter={false}> {/* We do client-side filtering */}
+                  <Command shouldFilter={false}>
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading suggestions...
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading...
                         </div>
                       )}
-                      {!isLoadingSuggestions && filteredSuggestions.length === 0 && searchTerm.trim() !== '' && (
+                      {!isLoadingSuggestions && searchTerm.trim() !== '' && filteredSuggestions.length === 0 && (
                         <CommandEmpty>No direct matches. Try a broader search.</CommandEmpty>
                       )}
                       {!isLoadingSuggestions && filteredSuggestions.length > 0 && (
@@ -203,7 +211,8 @@ export default function Navbar() {
                               value={gig.title}
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
-                                setIsSuggestionsOpen(false); // Close popover
+                                setIsSuggestionsOpen(false);
+                                setSearchTerm('');
                               }}
                               className="cursor-pointer"
                             >
@@ -217,10 +226,9 @@ export default function Navbar() {
                         <CommandItem
                             value={`search_all_${searchTerm}`}
                             onSelect={() => {
-                                if (searchTerm.trim()) {
-                                    router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-                                    setIsSuggestionsOpen(false); // Close popover
-                                }
+                                handleSearchSubmit(); // Uses current searchTerm
+                                setIsSuggestionsOpen(false);
+                                // setSearchTerm(''); // Optionally clear search term after full search
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -282,29 +290,21 @@ export default function Navbar() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                   {/* Mobile Nav Links */}
-                  <div className="md:hidden">
-                    {isClient && role === 'student' ? (
-                        <DropdownMenuItem asChild>
-                            <Link href="/gigs/browse">
-                                <Compass className="mr-2 h-4 w-4" /> Explore
-                            </Link>
-                        </DropdownMenuItem>
-                    ) : (
-                        <DropdownMenuItem asChild>
-                            <Link href="/gigs/browse">
-                                <SearchIcon className="mr-2 h-4 w-4" /> Gigs
-                            </Link>
-                        </DropdownMenuItem>
-                    )}
-                     {isClient && role === 'client' && (
+                  <div className="md:hidden"> {/* Mobile Nav Links in Dropdown */}
+                    <DropdownMenuItem asChild>
+                       <Link href="/gigs/browse">
+                         {role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
+                         {role === 'student' ? 'Explore' : 'Gigs'}
+                       </Link>
+                    </DropdownMenuItem>
+                    {role === 'client' && (
                         <DropdownMenuItem asChild>
                             <Link href="/hustlers/browse">
                                 <HustlersIcon className="mr-2 h-4 w-4" /> Hustlers
                             </Link>
                         </DropdownMenuItem>
                     )}
-                    {isClient && user && (
+                    {user && (
                         <DropdownMenuItem asChild>
                             <Link href="/chat" className="relative">
                                 <MessageSquare className="mr-2 h-4 w-4" />
