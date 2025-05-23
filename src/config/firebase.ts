@@ -11,14 +11,14 @@ const firebaseConfig: FirebaseOptions = {
   apiKey: "AIzaSyCAW-Fm9vI1P5SwA7Zhfuf426A6l8Zrwp0",
   authDomain: "hustleup-ntp15.firebaseapp.com",
   projectId: "hustleup-ntp15",
-  storageBucket: "hustleup-ntp15.appspot.com",
+  storageBucket: "hustleup-ntp15.firebasestorage.app", // <-- Corrected this line
   messagingSenderId: "992524001569",
   appId: "1:992524001569:web:58e8b945cfb34000f41e60"
 };
 // --- End User Provided Configuration ---
 
 const isConfigValid = (config: FirebaseOptions): boolean => {
-    return !!(config.apiKey && config.authDomain && config.projectId && config.appId);
+    return !!(config.apiKey && config.authDomain && config.projectId && config.appId && config.storageBucket);
 };
 
 let app: FirebaseApp | null = null;
@@ -41,11 +41,11 @@ try {
         auth = getAuth(app);
         db = getFirestore(app);
         functions = getFunctions(app);
-        storage = getStorage(app);
+        storage = getStorage(app); // Initialize Firebase Storage
         googleAuthProvider = new GoogleAuthProvider(); // Initialize GoogleAuthProvider
     } else {
         if (typeof window !== 'undefined') {
-            console.error("Firebase configuration is incomplete or invalid. Firebase services will not be available.");
+            console.error("Firebase configuration is incomplete or invalid. Firebase services will not be available. Please check all required fields in firebaseConfig.");
         }
     }
 } catch (error) {
