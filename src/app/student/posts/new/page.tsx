@@ -169,11 +169,11 @@ export default function NewPostPage() {
               <FormField
                 control={form.control}
                 name="image"
-                render={({ field }) => ( // field is not directly used for input value, but for errors
+                render={({ field }) => ( 
                   <FormItem>
                     <FormLabel>Image</FormLabel>
                     <FormControl>
-                      <>
+                      <div> {/* Replaced React.Fragment with a div */}
                         <Input
                           type="file"
                           accept="image/jpeg,image/png,image/webp,image/gif"
@@ -191,7 +191,7 @@ export default function NewPostPage() {
                           <UploadCloud className="h-5 w-5" />
                           {imagePreview ? 'Change Image' : 'Select Image'}
                         </Button>
-                      </>
+                      </div>
                     </FormControl>
                     {imagePreview && (
                       <div className="mt-2 border rounded-md p-2 flex justify-center">
@@ -243,3 +243,5 @@ export default function NewPostPage() {
     </div>
   );
 }
+
+    
