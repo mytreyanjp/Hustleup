@@ -18,6 +18,7 @@ interface Gig {
   title: string;
   description: string;
   budget: number;
+  currency: string;
   deadline: Timestamp;
   requiredSkills: Skill[]; // Use Skill type
   clientId: string;
@@ -41,8 +42,7 @@ export default function BrowseGigsPage() {
         const gigsCollectionRef = collection(db, 'gigs');
         // IMPORTANT: This query requires a composite index in Firestore.
         // Collection: 'gigs', Fields: 'status' (Ascending), 'createdAt' (Descending)
-        // Create index if Firebase console prompts. Example link (check console for exact):
-        // https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Cktwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9naWdzL2luZGV4ZXMvXxABGgoKBnN0YXR1cxABGg0KCWNyZWF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
+        // This ensures only open gigs (not yet approved/in-progress/completed/closed) are shown.
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -67,6 +67,7 @@ export default function BrowseGigsPage() {
               const skillFilteredGigs = fetchedGigs.filter(gig =>
                 gig.requiredSkills.some(reqSkill => {
                   const reqSkillLower = reqSkill.toLowerCase();
+                  // Bi-directional substring match
                   return studentSkillsLower.some(studentSkillLower =>
                     studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
                   );
@@ -75,7 +76,6 @@ export default function BrowseGigsPage() {
               setGigs(skillFilteredGigs);
             } else {
               // Student is logged in but has no skills, show them the gigs they haven't applied to.
-              // Or, if you want to show no gigs if they have no skills, setGigs([])
               setGigs(fetchedGigs); 
             }
           } else {
@@ -189,7 +189,7 @@ export default function BrowseGigsPage() {
                     </div>
                  </div>
                  <div className="flex items-center text-sm text-muted-foreground mb-1">
-                     <DollarSign className="mr-1 h-4 w-4" /> Budget: ${gig.budget.toFixed(2)}
+                     <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
                  </div>
                  <div className="flex items-center text-sm text-muted-foreground">
                      <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}

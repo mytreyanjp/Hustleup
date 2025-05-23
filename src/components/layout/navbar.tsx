@@ -46,10 +46,11 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || suggestions.length > 0) return; // Don't fetch if already populated or db not ready
+    if (!db || suggestions.length > 0) return; 
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
+      // This query ensures only open gigs (not yet approved/in-progress) are fetched for suggestions.
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
@@ -70,7 +71,7 @@ export default function Navbar() {
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [db, suggestions.length]); // Added db and suggestions.length to dependencies
+  }, [db, suggestions.length]); 
 
   useEffect(() => {
     setIsClient(true);
@@ -86,8 +87,7 @@ export default function Navbar() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/'); // Redirect to homepage after sign out
-      // Clear any local state if needed, e.g. search term, suggestions
+      router.push('/'); 
       setSearchTerm('');
       setSuggestions([]);
       setIsSuggestionsOpen(false);
@@ -107,7 +107,7 @@ export default function Navbar() {
     e?.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-      setIsSuggestionsOpen(false);
+      setIsSuggestionsOpen(false); 
     }
   };
 
@@ -128,7 +128,8 @@ export default function Navbar() {
 
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-            <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Gigs
+            <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> 
+            {isClient && role === 'student' ? 'Explore' : 'Gigs'}
           </Link>
 
           {isClient && role === 'client' && (
@@ -170,7 +171,7 @@ export default function Navbar() {
                     ref={searchInputRef}
                     type="search"
                     placeholder="Search gigs or users..."
-                    className="pl-8 h-9 w-full"
+                    className={cn("pl-8 h-9 w-full", isClient ? "" : "cursor-not-allowed opacity-50")}
                     value={searchTerm}
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
@@ -182,8 +183,9 @@ export default function Navbar() {
                     }}
                     onFocus={() => {
                         if (searchTerm.trim() !== '') setIsSuggestionsOpen(true);
-                        fetchInitialSuggestions(); // Fetch suggestions on focus if list is empty
+                        fetchInitialSuggestions(); 
                     }}
+                    disabled={!isClient}
                   />
                 </form>
               </PopoverTrigger>
@@ -191,7 +193,7 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()}
+                    onOpenAutoFocus={(e) => e.preventDefault()} 
                 >
                   <Command shouldFilter={false}>
                     <CommandList>
@@ -208,11 +210,11 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title}
+                              value={gig.title} 
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
-                                setIsSuggestionsOpen(false);
-                                setSearchTerm('');
+                                setIsSuggestionsOpen(false); 
+                                setSearchTerm(''); 
                               }}
                               className="cursor-pointer"
                             >
@@ -224,11 +226,10 @@ export default function Navbar() {
                       )}
                        <CommandGroup>
                         <CommandItem
-                            value={`search_all_${searchTerm}`}
+                            value={`search_all_${searchTerm}`} 
                             onSelect={() => {
-                                handleSearchSubmit(); // Uses current searchTerm
+                                handleSearchSubmit(); 
                                 setIsSuggestionsOpen(false);
-                                // setSearchTerm(''); // Optionally clear search term after full search
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -290,7 +291,7 @@ export default function Navbar() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  <div className="md:hidden"> {/* Mobile Nav Links in Dropdown */}
+                  <div className="md:hidden"> 
                     <DropdownMenuItem asChild>
                        <Link href="/gigs/browse">
                          {role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
@@ -361,7 +362,7 @@ export default function Navbar() {
               </>
             )
           ) : (
-            <div style={{ width: '7rem' }} />
+            <div style={{ width: '7rem' }} /> 
           )}
         </div>
       </div>
