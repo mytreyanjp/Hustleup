@@ -3,16 +3,26 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore'; // Added collection, query, where, getDocs, orderBy
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3 } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide } from 'lucide-react'; // Added ImageIconLucide
 import type { UserProfile } from '@/context/firebase-context'; 
 import { useFirebase } from '@/context/firebase-context'; 
 import { Separator } from '@/components/ui/separator';
+import Link from 'next/link';
+import Image from 'next/image'; // For displaying post images
+
+interface StudentPost {
+  id: string;
+  imageUrl: string;
+  caption?: string;
+  createdAt: Timestamp;
+  // other post fields if needed
+}
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -21,7 +31,9 @@ export default function PublicProfilePage() {
   const { user: viewerUser, role: viewerRole } = useFirebase(); 
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [posts, setPosts] = useState<StudentPost[]>([]); // State for student posts
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,33 +43,50 @@ export default function PublicProfilePage() {
       return;
     }
 
-    const fetchProfile = async () => {
+    const fetchProfileAndPosts = async () => {
       setIsLoading(true);
       setError(null);
       try {
+        // Fetch profile
         const userDocRef = doc(db, 'users', userId);
         const docSnap = await getDoc(userDocRef);
 
         if (docSnap.exists()) {
            const fetchedProfile = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
-           if (fetchedProfile.role === 'student') {
+           if (fetchedProfile.role === 'student') { // Only show profiles for students
               setProfile(fetchedProfile);
+
+              // Fetch posts if it's a student profile
+              setIsLoadingPosts(true);
+              const postsQuery = query(
+                collection(db, 'student_posts'),
+                where('studentId', '==', userId),
+                orderBy('createdAt', 'desc')
+              );
+              const postsSnapshot = await getDocs(postsQuery);
+              const fetchedPosts = postsSnapshot.docs.map(postDoc => ({
+                id: postDoc.id,
+                ...postDoc.data()
+              })) as StudentPost[];
+              setPosts(fetchedPosts);
+              setIsLoadingPosts(false);
+
            } else {
-              setError("Profile not found or not viewable.");
+              setError("Profile not found or not viewable."); // e.g., trying to view a client profile via this page
               setProfile(null);
            }
         } else {
           setError("Profile not found.");
         }
       } catch (err: any) {
-        console.error("Error fetching profile:", err);
+        console.error("Error fetching profile or posts:", err);
         setError("Failed to load profile details. Please try again later.");
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchProfile();
+    fetchProfileAndPosts();
   }, [userId]);
 
    const getInitials = (email: string | null | undefined, username?: string | null) => {
@@ -85,8 +114,8 @@ export default function PublicProfilePage() {
     );
   }
 
-  if (!profile) {
-    return <div className="text-center py-10 text-muted-foreground">Profile not found.</div>;
+  if (!profile) { // Profile should be loaded if no error and not loading, implies role was not student or not found
+    return <div className="text-center py-10 text-muted-foreground">Student profile not found.</div>;
   }
 
   return (
@@ -108,27 +137,20 @@ export default function PublicProfilePage() {
                             {profile.username || 'Student Profile'}
                             <GraduationCap className="h-6 w-6 text-primary" />
                         </h1>
-                        {viewerRole === 'client' && viewerUser?.uid !== profile.uid && (
+                        {viewerUser?.uid === profile.uid ? (
+                            <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
+                                <Link href={`/student/profile`}>
+                                    Edit My Profile
+                                </Link>
+                            </Button>
+                        ) : viewerRole === 'client' ? ( // Only show contact if viewer is a client and not viewing own profile
                             <Button size="sm" asChild className="w-full sm:w-auto">
                                 <Link href={`/chat?userId=${profile.uid}`}>
                                     <MessageSquare className="mr-1 h-4 w-4" /> Contact Student
                                 </Link>
                             </Button>
-                        )}
-                         {viewerUser?.uid === profile.uid && (
-                            <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
-                                <Link href={`/student/profile`}>
-                                    Edit Profile
-                                </Link>
-                            </Button>
-                        )}
+                        ) : null}
                    </div>
-                   {/* Placeholder for stats like Posts, Followers, Following */}
-                   {/* <div className="flex justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-2">
-                       <span><span className="font-semibold text-foreground">0</span> posts</span>
-                       <span><span className="font-semibold text-foreground">0</span> followers</span>
-                       <span><span className="font-semibold text-foreground">0</span> following</span>
-                   </div> */}
                    {profile.bio && (
                         <p className="text-sm text-foreground/90 mt-2">{profile.bio}</p>
                    )}
@@ -176,12 +198,45 @@ export default function PublicProfilePage() {
            )}
         </CardContent>
         
-        {/* Placeholder for Tabbed Content (Posts, About, etc.) */}
         <Separator />
-        <div className="p-4 md:p-6 text-center text-muted-foreground">
-            <Grid3X3 className="h-8 w-8 mx-auto mb-2" />
-            <p className="text-sm">Student posts will appear here soon!</p>
-            <p className="text-xs">(Feature under development)</p>
+        <div className="p-4 md:p-6">
+            <h3 className="font-semibold mb-4 text-lg flex items-center gap-2">
+                <Grid3X3 className="h-5 w-5 text-muted-foreground" /> Posts
+            </h3>
+            {isLoadingPosts ? (
+                <div className="flex justify-center items-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : posts.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-2 md:gap-4">
+                    {posts.map(post => (
+                        <div key={post.id} className="aspect-square relative group overflow-hidden rounded-md">
+                            <Image
+                                src={post.imageUrl}
+                                alt={post.caption || `Post by ${profile.username}`}
+                                layout="fill"
+                                objectFit="cover"
+                                className="group-hover:scale-105 transition-transform duration-300"
+                                data-ai-hint="student content"
+                            />
+                            {/* Overlay for caption or link to post detail (future) */}
+                            {/* <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
+                                <p className="text-white text-xs line-clamp-2">{post.caption}</p>
+                            </div> */}
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center text-muted-foreground py-8">
+                    <ImageIconLucide className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">This student hasn't made any posts yet.</p>
+                    {viewerUser?.uid === profile.uid && (
+                        <Button asChild variant="link" className="mt-2">
+                            <Link href="/student/posts/new">Create your first post</Link>
+                        </Button>
+                    )}
+                </div>
+            )}
         </div>
       </Card>
     </div>

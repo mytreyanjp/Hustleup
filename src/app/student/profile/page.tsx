@@ -22,6 +22,7 @@ import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import { Progress } from '@/components/ui/progress';
 import type { UserProfile } from '@/context/firebase-context';
+import Link from 'next/link'; // Added Link
 
 const portfolioLinkSchema = z.object({
   value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
@@ -79,14 +80,14 @@ export default function StudentProfilePage() {
          });
          setImagePreview(userProfile.profilePictureUrl || null);
          setIsFormReady(true);
-       } else if (user) {
-         form.reset({
+       } else if (user && !userProfile) { // User exists but profile hasn't loaded or is null (new user edge case)
+         form.reset({ // Initialize with some defaults from auth if profile is missing
              username: user.email?.split('@')[0] || '',
              bio: '',
              skills: [],
              portfolioLinks: [],
          });
-         setIsFormReady(true);
+         setIsFormReady(true); // Allow form to render
        }
      }
    }, [user, userProfile, authLoading, role, router, form]);
@@ -134,7 +135,7 @@ export default function StudentProfilePage() {
         toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
         setIsUploading(false);
         setUploadProgress(null);
-        setSelectedImageFile(null);
+        setSelectedImageFile(null); // Clear selection on error
       },
       async () => {
         try {
@@ -142,11 +143,11 @@ export default function StudentProfilePage() {
           const userDocRef = doc(db, 'users', user.uid);
           await updateDoc(userDocRef, {
             profilePictureUrl: downloadURL,
-            profileUpdatedAt: new Date(),
+            profileUpdatedAt: new Date(), // Use Firestore server timestamp if preferred
           });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
-          if (refreshUserProfile) await refreshUserProfile();
-          setSelectedImageFile(null); 
+          if (refreshUserProfile) await refreshUserProfile(); // Refresh context to show new pic
+          setSelectedImageFile(null); // Clear selection on success
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
           toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
@@ -167,17 +168,24 @@ export default function StudentProfilePage() {
       const userDocRef = doc(db, 'users', user.uid);
       const updateData: Partial<UserProfile> = { 
         username: data.username,
-        bio: data.bio || '',
+        bio: data.bio || '', // Ensure empty string if undefined
         skills: data.skills || [],
-        portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
-        profileUpdatedAt: new Date(),
+        portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [], // Filter out empty strings
+        profileUpdatedAt: new Date(), // Use Firestore server timestamp if preferred
       };
 
-      // Ensure the profilePictureUrl is included if it exists in the userProfile context
-      // This handles the case where a picture was uploaded separately before hitting "Save Changes"
-      if (userProfile?.profilePictureUrl) {
-        updateData.profilePictureUrl = userProfile.profilePictureUrl;
+      // If a new image was uploaded and its URL is in imagePreview (and not yet in userProfile from context refresh)
+      // OR if userProfile context already has the latest pic URL
+      if (imagePreview && userProfile?.profilePictureUrl !== imagePreview && selectedImageFile) {
+         // This case is less likely if handleImageUpload updates context correctly,
+         // but as a fallback, or if picture was uploaded but form not saved yet.
+         // Ideally, handleImageUpload refreshes context, and then userProfile.profilePictureUrl is used.
+         // For now, assume userProfile.profilePictureUrl is the source of truth after an upload.
       }
+       if (userProfile?.profilePictureUrl) {
+           updateData.profilePictureUrl = userProfile.profilePictureUrl;
+       }
+
 
       await updateDoc(userDocRef, updateData);
 
@@ -185,7 +193,7 @@ export default function StudentProfilePage() {
         title: 'Profile Updated',
         description: 'Your profile details have been successfully saved.',
       });
-      if (refreshUserProfile) {
+      if (refreshUserProfile) { // Refresh context AFTER successful save
            await refreshUserProfile();
       }
     } catch (error: any) {
@@ -206,7 +214,7 @@ export default function StudentProfilePage() {
      return '??';
    };
 
-   if (authLoading || !isFormReady) {
+   if (authLoading || !isFormReady) { // Wait for auth and form readiness (profile data loaded)
      return (
         <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -257,6 +265,11 @@ export default function StudentProfilePage() {
                     </div>
                 )}
              </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/profile/${user?.uid}`}>View My Public Profile</Link>
+            </Button>
           </div>
         </CardHeader>
         <CardContent>

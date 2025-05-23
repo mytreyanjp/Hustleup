@@ -17,9 +17,15 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      { // Add Google profile picture domain
+      { 
         protocol: 'https',
         hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
+      { // Add Firebase Storage domain
+        protocol: 'https',
+        hostname: 'firebasestorage.googleapis.com',
         port: '',
         pathname: '/**',
       }
