@@ -78,7 +78,7 @@ export default function NewPostPage() {
       return;
     }
     if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured.", variant: "destructive" });
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Check Firebase setup.", variant: "destructive" });
       return;
     }
 
@@ -86,7 +86,6 @@ export default function NewPostPage() {
     setUploadProgress(0);
 
     try {
-      // 1. Upload image to Firebase Storage
       const file = data.image;
       const filePath = `student_post_images/${user.uid}/${Date.now()}_${file.name}`;
       const fileStorageRef = storageRef(storage, filePath);
@@ -97,23 +96,51 @@ export default function NewPostPage() {
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             setUploadProgress(progress);
+            console.log('Upload is ' + progress + '% done');
           },
           (error) => {
-            console.error("Upload error:", error);
+            console.error("Upload error object:", error);
+            let detailedErrorMessage = `Could not upload image. Code: ${error.code}. Message: ${error.message}.`;
+            switch (error.code) {
+              case 'storage/unauthorized':
+                detailedErrorMessage = "Upload failed: Permission denied. Please check Firebase Storage security rules to ensure you can write to this path.";
+                break;
+              case 'storage/canceled':
+                detailedErrorMessage = "Upload canceled by the user.";
+                break;
+              case 'storage/object-not-found':
+                detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself.";
+                break;
+              case 'storage/bucket-not-found':
+                detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config.";
+                break;
+              case 'storage/project-not-found':
+                 detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings.";
+                 break;
+              case 'storage/quota-exceeded':
+                detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space.";
+                break;
+              case 'storage/unknown':
+              default:
+                detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Please check your network connection and Firebase Storage rules.`;
+                break;
+            }
+            toast({ title: "Image Upload Failed", description: detailedErrorMessage, variant: "destructive" });
             reject(error);
           },
           async () => {
             try {
               const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
               resolve(downloadURL);
-            } catch (urlError) {
+            } catch (urlError: any) {
+              console.error("Error getting download URL:", urlError);
+              toast({ title: "Upload Successful, but URL Failed", description: `Image uploaded, but failed to get download URL: ${urlError.message}`, variant: "destructive" });
               reject(urlError);
             }
           }
         );
       });
 
-      // 2. Create post document in Firestore
       const postsCollectionRef = collection(db, 'student_posts');
       await addDoc(postsCollectionRef, {
         studentId: user.uid,
@@ -122,8 +149,8 @@ export default function NewPostPage() {
         imageUrl: imageUrl,
         caption: data.caption || '',
         createdAt: serverTimestamp(),
-        likes: [], // For future use
-        commentCount: 0, // For future use
+        likes: [],
+        commentCount: 0,
       });
 
       toast({
@@ -133,15 +160,22 @@ export default function NewPostPage() {
       router.push(`/profile/${user.uid}`);
 
     } catch (error: any) {
-      console.error('Error creating post:', error);
-      toast({
-        title: 'Failed to Create Post',
-        description: error.message || 'An unexpected error occurred.',
-        variant: 'destructive',
-      });
+      // This catch block will handle rejections from the new Promise (upload errors)
+      // or errors from addDoc itself.
+      console.error('Error creating post (outer try-catch):', error);
+      // No need for a generic toast here, as specific toasts are handled by the promise reject/resolve logic
+      // or if addDoc fails, it will be a different kind of error.
+      if (!toast.isActive(`image-upload-failed-${error.code}`)) { // Prevent duplicate toasts if already shown by promise
+         toast({
+           id: `post-creation-failed-${Date.now()}`, // unique id to prevent duplicates quickly
+           title: 'Failed to Create Post',
+           description: (error.message && error.message.includes("Upload failed")) ? "See previous error for upload details." : (error.message || 'An unexpected error occurred while saving the post.'),
+           variant: 'destructive',
+         });
+      }
     } finally {
       setIsSubmittingPost(false);
-      setUploadProgress(null);
+      setUploadProgress(null); // Reset progress
     }
   };
 
@@ -173,13 +207,14 @@ export default function NewPostPage() {
                   <FormItem>
                     <FormLabel>Image</FormLabel>
                     <FormControl>
-                      <div> {/* Replaced React.Fragment with a div */}
+                      <div>
                         <Input
                           type="file"
                           accept="image/jpeg,image/png,image/webp,image/gif"
                           ref={fileInputRef}
                           onChange={handleImageChange}
                           className="hidden"
+                          disabled={isSubmittingPost}
                         />
                         <Button
                           type="button"
@@ -231,9 +266,9 @@ export default function NewPostPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={isSubmittingPost || !form.formState.isValid}
+                disabled={isSubmittingPost || !form.formState.isValid || uploadProgress !== null && uploadProgress < 100}
               >
-                {isSubmittingPost && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {(isSubmittingPost || (uploadProgress !== null && uploadProgress < 100)) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Create Post
               </Button>
             </form>
@@ -243,5 +278,4 @@ export default function NewPostPage() {
     </div>
   );
 }
-
     
