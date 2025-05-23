@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import React, { useState, useEffect } from 'react'; // Import useState and useEffect
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -17,8 +17,9 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
-import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search, Users as HustlersIcon } from 'lucide-react';
+import { LogOut, User, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search, Users as HustlersIcon, Compass } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 export default function Navbar() {
   const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
@@ -56,13 +57,20 @@ export default function Navbar() {
         </Link>
 
         <nav className="flex flex-1 items-center space-x-4">
-          <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-            <Search className="mr-1 h-4 w-4 hidden sm:inline-block" /> Gigs
-          </Link>
+          {isClient && role === 'student' ? (
+            <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+              <Compass className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Explore
+            </Link>
+          ) : (
+            <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+               <Search className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Gigs
+            </Link>
+          )}
+
 
           {isClient && role === 'client' && (
             <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-              <HustlersIcon className="mr-1 h-4 w-4 hidden sm:inline-block" /> Hustlers
+              <HustlersIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> Hustlers
             </Link>
           )}
 
@@ -78,7 +86,7 @@ export default function Navbar() {
           )}
           {isClient && user && (
             <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-              <MessageSquare className="mr-1 h-4 w-4 hidden sm:inline-block" />
+              <MessageSquare className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
               <span>Messages</span>
               {totalUnreadChats > 0 && (
                 <span className="absolute top-0 right-0 flex h-4 w-4 -translate-y-1/3 translate-x-1/3 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none">
@@ -184,7 +192,7 @@ export default function Navbar() {
             )
           ) : (
             // Placeholder for SSR to avoid layout shifts
-            <div style={{ width: '7rem' }} /> // Approx width of login/signup buttons or avatar
+            <div style={{ width: '7rem' }} /> 
           )}
         </div>
       </div>
