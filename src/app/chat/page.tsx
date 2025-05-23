@@ -70,9 +70,9 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(scrollToBottom, [messages]);
 
@@ -89,7 +89,7 @@ export default function ChatPage() {
         return chatId;
       } else {
         // Create new chat
-        const newChatData: Omit<ChatMetadata, 'createdAt' | 'updatedAt' | 'lastMessageTimestamp'> & { createdAt: any, updatedAt: any, lastMessageTimestamp: any } = {
+        const newChatData: Omit<ChatMetadata, 'id' | 'createdAt' | 'updatedAt' | 'lastMessageTimestamp'> & { id: string, createdAt: any, updatedAt: any, lastMessageTimestamp: any } = {
           id: chatId,
           participants: [user.uid, targetUserId],
           participantUsernames: {
@@ -217,6 +217,7 @@ export default function ChatPage() {
       })) as ChatMessage[];
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
+      // No need for explicit scrollToBottom here due to messages dependency on the other useEffect
     }, (error) => {
       console.error(`Error fetching messages for chat ${selectedChatId}:`, error);
       setIsLoadingMessages(false);
@@ -224,6 +225,13 @@ export default function ChatPage() {
     
     return () => unsubscribe();
   }, [selectedChatId, user]);
+
+  // Effect to redirect if not logged in
+  useEffect(() => {
+    if (!authLoading && !user && typeof window !== 'undefined') {
+      router.push('/auth/login?redirect=/chat');
+    }
+  }, [user, authLoading, router]);
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
@@ -280,7 +288,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    if (!authLoading && typeof window !== 'undefined') router.push('/auth/login?redirect=/chat');
+    // The useEffect above will handle the redirect. Show a placeholder.
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
