@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useFirebase } from '@/context/firebase-context';
@@ -26,11 +25,13 @@ import {
   Unsubscribe,
   writeBatch,
 } from 'firebase/firestore';
-import { getChatId } from '@/lib/utils';
-import { UserProfile } from '@/context/firebase-context';
+import { getChatId, cn } from '@/lib/utils';
+import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+
 
 interface ChatMessage {
   id: string;
@@ -43,12 +44,12 @@ interface ChatMetadata {
   id: string;
   participants: string[];
   participantUsernames: { [key: string]: string };
-  participantProfilePictures?: { [key: string]: string | undefined };
+  participantProfilePictures?: { [key: string]: string }; // Optional, values must not be undefined
   lastMessage?: string;
   lastMessageTimestamp?: Timestamp | null;
   gigId?: string;
+  createdAt: Timestamp; // Added createdAt
   updatedAt: Timestamp;
-  // Add other relevant fields like unread counts if needed
 }
 
 export default function ChatPage() {
@@ -87,6 +88,14 @@ export default function ChatPage() {
         return chatId;
       } else {
         // Create new chat
+        const participantPictures: { [key: string]: string } = {};
+        if (userProfile.profilePictureUrl) {
+          participantPictures[user.uid] = userProfile.profilePictureUrl;
+        }
+        if (targetProfilePictureUrl) {
+          participantPictures[targetUserId] = targetProfilePictureUrl;
+        }
+
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -94,10 +103,7 @@ export default function ChatPage() {
             [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
             [targetUserId]: targetUsername,
           },
-          participantProfilePictures: {
-            [user.uid]: userProfile.profilePictureUrl,
-            [targetUserId]: targetProfilePictureUrl,
-          },
+          participantProfilePictures: participantPictures,
           lastMessage: 'Chat started.',
           lastMessageTimestamp: serverTimestamp() as Timestamp,
           ...(gigId && { gigId }),
@@ -124,30 +130,32 @@ export default function ChatPage() {
 
     const targetUserId = searchParams.get('userId');
     const gigId = searchParams.get('gigId');
-    const preselectChatId = searchParams.get('chatId'); // Allow pre-selecting an existing chat
+    const preselectChatId = searchParams.get('chatId');
 
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
-        return; // Don't try to create new if chatId is provided
+        // Clear URL params to avoid re-triggering
+        router.replace('/chat', undefined);
+        return;
     }
     
-    if (targetUserId && user.uid !== targetUserId) { // Don't try to chat with self
-      // Fetch target user's profile to get their username for the new chat
-      const fetchTargetUser = async () => {
+    if (targetUserId && user.uid !== targetUserId) {
+      const fetchTargetUserAndCreateChat = async () => {
         const targetUserDocRef = doc(db, 'users', targetUserId);
         const targetUserSnap = await getDoc(targetUserDocRef);
         if (targetUserSnap.exists()) {
           const targetUserData = targetUserSnap.data() as UserProfile;
-          setTargetUserForNewChat(targetUserData); // Store for potential display
+          setTargetUserForNewChat(targetUserData);
           await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigId || undefined);
         } else {
           console.error("Target user for chat not found.");
-          // Optionally redirect or show error
         }
+         // Clear URL params after processing
+         router.replace('/chat', undefined);
       };
-      fetchTargetUser();
+      fetchTargetUserAndCreateChat();
     }
-  }, [searchParams, user, userProfile, authLoading, getOrCreateChat]);
+  }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router]);
 
 
   // Effect to fetch user's chat list
@@ -161,7 +169,7 @@ export default function ChatPage() {
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
-      orderBy('updatedAt', 'desc') // Order by most recently updated
+      orderBy('updatedAt', 'desc')
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot: QuerySnapshot<DocumentData>) => {
@@ -209,14 +217,14 @@ export default function ChatPage() {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
-    router.replace('/chat', undefined); // Clear URL params if navigating within chat page
+    // If on mobile, URL params might have been cleared, but this is fine
   };
 
   const handleSendMessage = async () => {
     if (!message.trim() || !selectedChatId || !user || !userProfile) return;
     setIsSending(true);
 
-    const newMessage: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
+    const newMessageContent: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: user.uid,
       text: message.trim(),
       timestamp: serverTimestamp(),
@@ -226,17 +234,23 @@ export default function ChatPage() {
       const chatDocRef = doc(db, 'chats', selectedChatId);
       const messagesColRef = collection(chatDocRef, 'messages');
       
-      // Batch write: add message and update chat document atomically
       const batch = writeBatch(db);
-      batch.set(doc(messagesColRef), newMessage); // Auto-generates ID for new message
-      batch.update(chatDocRef, {
+      batch.set(doc(messagesColRef), newMessageContent);
+      
+      const chatUpdateData: any = {
         lastMessage: message.trim(),
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        // Ensure the current user's username is up-to-date in participantUsernames
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
-        [`participantProfilePictures.${user.uid}`]: userProfile.profilePictureUrl,
-      });
+      };
+
+      if (userProfile.profilePictureUrl) {
+        chatUpdateData[`participantProfilePictures.${user.uid}`] = userProfile.profilePictureUrl;
+      }
+      // If we wanted to be able to REMOVE a profile picture, we'd need to use FieldValue.delete()
+      // but for now, just not setting it if it's undefined is fine.
+
+      batch.update(chatDocRef, chatUpdateData);
 
       await batch.commit();
       setMessage('');
@@ -254,7 +268,6 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // Redirect to login if not authenticated, but wait for authLoading to finish
     if (!authLoading) router.push('/auth/login?redirect=/chat');
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
@@ -267,8 +280,10 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)]">
-      {/* Chat List Sidebar */}
-      <Card className={`w-full md:w-1/3 lg:w-1/4 glass-card flex flex-col ${selectedChatId && 'hidden md:flex'}`}>
+      <Card className={cn(
+        "w-full md:w-1/3 lg:w-1/4 glass-card flex flex-col",
+        selectedChatId && 'hidden md:flex' // Hide on mobile if a chat is selected
+      )}>
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2 text-lg">
             <MessageSquare className="h-5 w-5" /> Conversations
@@ -301,7 +316,7 @@ export default function ChatPage() {
                     <p className="font-medium text-sm truncate">{chatPartnerUsername}</p>
                     <p className="text-xs text-muted-foreground truncate">{chat.lastMessage}</p>
                      <p className="text-xs text-muted-foreground/70">
-                        {chat.lastMessageTimestamp ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : ''}
+                        {chat.lastMessageTimestamp ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
                     </p>
                   </div>
                 </div>
@@ -311,8 +326,10 @@ export default function ChatPage() {
         </ScrollArea>
       </Card>
 
-      {/* Chat Message Area */}
-      <Card className={`flex-grow glass-card flex-col h-full ${!selectedChatId && 'hidden md:flex'}`}>
+      <Card className={cn(
+        "flex-grow glass-card flex flex-col h-full",
+        !selectedChatId && 'hidden md:flex' // Hide on mobile if no chat is selected
+        )}>
         {selectedChatId && selectedChatDetails ? (
           <>
             <CardHeader className="border-b flex flex-row items-center justify-between p-3">
@@ -384,7 +401,7 @@ export default function ChatPage() {
             <p className="text-muted-foreground">
                 {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
             </p>
-            {targetUserForNewChat && (
+            {targetUserForNewChat && !selectedChatId && (
                  <p className="text-sm mt-2">Starting chat with {targetUserForNewChat.username}...</p>
             )}
           </div>
@@ -394,24 +411,6 @@ export default function ChatPage() {
   );
 }
 
-// Helper component for Avatar, can be moved to ui/avatar if needed
-const Avatar = ({ className, src, alt, children }: { className?: string, src?: string, alt?: string, children?: React.ReactNode }) => {
-    return (
-        <div className={cn("relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full items-center justify-center bg-muted", className)}>
-            {src ? (
-                <img src={src} alt={alt || 'User Avatar'} className="aspect-square h-full w-full object-cover" />
-            ) : (
-                children
-            )}
-        </div>
-    );
-};
-
-const AvatarFallback = ({ children, className }: { children: React.ReactNode, className?: string }) => {
-    return <div className={cn("flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium", className)}>{children}</div>;
-};
-
-const AvatarImage = ({ src, alt, className }: { src?: string, alt?: string, className?: string }) => {
-    if (!src) return null;
-    return <img src={src} alt={alt || 'User'} className={cn("aspect-square h-full w-full", className)} />;
-};
+// Avatar components are now imported from @/components/ui/avatar
+// If the global Avatar component is different, ensure this page uses the correct one.
+// For simplicity, assuming global ui/avatar is used.
