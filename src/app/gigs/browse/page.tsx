@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -35,6 +36,14 @@ export default function BrowseGigsPage() {
       try {
         const gigsCollectionRef = collection(db, 'gigs');
         // Query for open gigs, ordered by creation date (newest first)
+        // IMPORTANT: This query requires a composite index in Firestore.
+        // If you see an error about a missing index, Firebase will provide a link
+        // to create it in the console. The index typically involves:
+        // Collection: 'gigs'
+        // Fields: 'status' (Ascending), 'createdAt' (Descending)
+        // Example link from a past error for this query structure:
+        // https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=...
+        // (Replace YOUR_PROJECT_ID with your actual project ID if the link in the error is different)
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -48,7 +57,7 @@ export default function BrowseGigsPage() {
         setGigs(fetchedGigs);
       } catch (err: any) {
         console.error("Error fetching gigs:", err);
-        setError("Failed to load gigs. Please try again later.");
+        setError("Failed to load gigs. Please try again later. This might be due to a missing Firestore index. Check the console for a link to create it.");
       } finally {
         setIsLoading(false);
       }
