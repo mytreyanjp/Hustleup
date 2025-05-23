@@ -4,39 +4,126 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Search, Wallet, UserCircle, Edit, Loader2 } from 'lucide-react'; // Added Loader2
+import { FileText, Search, Wallet, UserCircle, Edit, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import type { Skill } from '@/lib/constants';
+
+interface Gig {
+  id: string;
+  title: string;
+  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  requiredSkills: Skill[];
+  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+  // other gig properties
+}
 
 export default function StudentDashboardPage() {
-  const { user, userProfile, loading, role } = useFirebase();
+  const { user, userProfile, loading: authLoading, role } = useFirebase();
   const router = useRouter();
 
-  // Protect route: Redirect if not loading, not logged in, or not a student
+  const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
+  const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  // Protect route
   useEffect(() => {
-    if (!loading) { // Only check after initial context loading is done
+    if (!authLoading) {
       if (!user || role !== 'student') {
-        router.push('/auth/login'); // Or show an unauthorized page
+        router.push('/auth/login?redirect=/student/dashboard');
       }
     }
-  }, [user, role, loading, router]);
+  }, [user, role, authLoading, router]);
 
-  // Calculate profile completion (example logic)
+  // Fetch dashboard stats
+  useEffect(() => {
+    if (user && userProfile && role === 'student') {
+      const fetchStudentDashboardStats = async () => {
+        setIsLoadingStats(true);
+        try {
+          // 1. Fetch available gigs based on student skills
+          const gigsCollectionRef = collection(db, 'gigs');
+          const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
+          const openGigsSnapshot = await getDocs(openGigsQuery);
+          const allOpenGigs = openGigsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Gig));
+
+          let matchingGigs = 0;
+          if (userProfile.skills && userProfile.skills.length > 0) {
+            const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
+            matchingGigs = allOpenGigs.filter(gig =>
+              gig.requiredSkills.some(reqSkill => {
+                const reqSkillLower = reqSkill.toLowerCase();
+                return studentSkillsLower.some(studentSkillLower =>
+                  studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
+                );
+              })
+            ).length;
+          } else {
+            // If student has no skills, they technically can't match any skill-based gigs by this logic.
+            // Or, show all open gigs and prompt to add skills. For now, strict matching.
+            matchingGigs = 0;
+          }
+          setAvailableGigsCount(matchingGigs);
+
+          // 2. Fetch active applications
+          // This requires fetching all gigs and checking the applicants array.
+          // This is not perfectly scalable. A dedicated 'applications' collection would be better.
+          const allGigsSnapshot = await getDocs(collection(db, 'gigs'));
+          let currentActiveApplications = 0;
+          allGigsSnapshot.forEach(doc => {
+            const gig = doc.data() as Gig;
+            if (gig.applicants) {
+              const studentApplication = gig.applicants.find(app => app.studentId === user.uid);
+              if (studentApplication && (studentApplication.status === 'pending' || studentApplication.status === 'accepted')) {
+                currentActiveApplications++;
+              }
+            }
+          });
+          setActiveApplicationsCount(currentActiveApplications);
+
+        } catch (error) {
+          console.error("Error fetching student dashboard stats:", error);
+          setAvailableGigsCount(0); // Fallback on error
+          setActiveApplicationsCount(0); // Fallback on error
+        } finally {
+          setIsLoadingStats(false);
+        }
+      };
+      fetchStudentDashboardStats();
+    } else if (!authLoading && userProfile === null && user && role === 'student') {
+      // Profile might still be loading or is genuinely null (e.g. new user, Firestore doc not created yet)
+      // Set stats to 0 or a loading indicator until profile is confirmed
+      setIsLoadingStats(false);
+      setAvailableGigsCount(0);
+      setActiveApplicationsCount(0);
+    }
+  }, [user, userProfile, role, authLoading]);
+
+
   const getProfileCompletion = () => {
     if (!userProfile) return 0;
     let score = 0;
-    const totalFields = 4; // username, bio, skills, portfolioLinks
-    if (userProfile.username && userProfile.username !== userProfile.email?.split('@')[0]) score++;
-    if (userProfile.bio) score++;
+    const totalFields = 4; // Consider username, bio, skills, portfolioLinks
+    
+    // Check if username is set and different from a default (e.g., email prefix)
+    if (userProfile.username && user?.email && userProfile.username !== user.email.split('@')[0]) {
+      score++;
+    } else if (userProfile.username && !user?.email) { // Username exists, no email to compare (less likely)
+      score++;
+    }
+
+    if (userProfile.bio && userProfile.bio.trim() !== '') score++;
     if (userProfile.skills && userProfile.skills.length > 0) score++;
-    if (userProfile.portfolioLinks && userProfile.portfolioLinks.length > 0) score++;
+    if (userProfile.portfolioLinks && userProfile.portfolioLinks.filter(link => link.trim() !== '').length > 0) score++;
+    
     return Math.round((score / totalFields) * 100);
   };
   const profileCompletion = getProfileCompletion();
 
-  // Show loading state from context
-  if (loading) {
+  if (authLoading || (isLoadingStats && user && role === 'student' && userProfile)) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -44,8 +131,6 @@ export default function StudentDashboardPage() {
     );
   }
 
-  // If context is loaded, but user is not a student (or not logged in), show placeholder.
-  // The useEffect above will handle the redirect.
   if (!user || role !== 'student') {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
@@ -54,7 +139,6 @@ export default function StudentDashboardPage() {
     );
   }
 
-  // If all checks pass, render dashboard
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -68,7 +152,7 @@ export default function StudentDashboardPage() {
 
        <Card className="glass-card">
          <CardHeader>
-           <CardTitle>Welcome, {userProfile?.username || 'Student'}!</CardTitle>
+           <CardTitle>Welcome, {userProfile?.username || user.email?.split('@')[0] || 'Student'}!</CardTitle>
            <CardDescription>Manage your profile, applications, and earnings here.</CardDescription>
          </CardHeader>
          <CardContent>
@@ -90,9 +174,11 @@ export default function StudentDashboardPage() {
             <Search className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div> {/* TODO: Fetch actual count */}
+            <div className="text-2xl font-bold">
+                {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : availableGigsCount}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Find new opportunities to showcase your skills.
+              Opportunities matching your skills.
             </p>
             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
               <Link href="/gigs/browse">Browse Gigs</Link>
@@ -106,9 +192,11 @@ export default function StudentDashboardPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div> {/* TODO: Fetch actual count */}
+            <div className="text-2xl font-bold">
+                {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeApplicationsCount}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Track the status of your gig applications.
+              Applications that are pending or accepted.
             </p>
              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
                  <Link href="/student/applications">View Applications</Link>
@@ -140,9 +228,12 @@ export default function StudentDashboardPage() {
          </CardHeader>
          <CardContent>
            <p className="text-sm text-muted-foreground">No new messages.</p>
-           {/* TODO: Implement recent messages preview */}
+           {/* TODO: Implement recent messages preview from chat data */}
          </CardContent>
        </Card>
     </div>
   );
 }
+
+
+    
