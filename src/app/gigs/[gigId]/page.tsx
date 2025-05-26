@@ -3,14 +3,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -20,7 +20,7 @@ interface Gig {
   title: string;
   description: string;
   budget: number;
-  currency: string; // Added currency
+  currency: string;
   deadline: Timestamp; // Firestore Timestamp
   requiredSkills: string[];
   clientId: string;
@@ -34,15 +34,17 @@ export default function GigDetailPage() {
   const params = useParams();
   const gigId = params.gigId as string;
   const router = useRouter();
-  const { user, userProfile, loading: authLoading, role } = useFirebase();
+  const { user, userProfile, loading: authLoading, role, refreshUserProfile } = useFirebase();
   const { toast } = useToast();
 
   const [gig, setGig] = useState<Gig | null>(null);
-  const [isLoadingGig, setIsLoadingGig] = useState(true); // Renamed for clarity
+  const [isLoadingGig, setIsLoadingGig] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applicationMessage, setApplicationMessage] = useState('');
   const [isApplying, setIsApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isTogglingBookmark, setIsTogglingBookmark] = useState(false);
 
   const fetchGigData = useCallback(async () => {
     if (!gigId) {
@@ -58,14 +60,13 @@ export default function GigDetailPage() {
 
       if (docSnap.exists()) {
         const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
-        // Ensure currency is set, default to INR if missing from older data
         if (!fetchedGig.currency) {
             fetchedGig.currency = "INR";
         }
         setGig(fetchedGig);
       } else {
         setError("Gig not found.");
-        setGig(null); // Ensure gig is null if not found
+        setGig(null);
       }
     } catch (err: any) {
       console.error("Error fetching gig:", err);
@@ -81,31 +82,28 @@ export default function GigDetailPage() {
   }, [fetchGigData]);
 
   useEffect(() => {
-    // Determine if the current student has applied once gig data is loaded and user/role are known
-    if (gig && user && role === 'student') {
-      if (gig.applicants) {
-        setHasApplied(gig.applicants.some(app => app.studentId === user.uid));
-      } else {
-        setHasApplied(false); // No applicants array means not applied yet
-      }
+    if (gig && user && role === 'student' && userProfile) {
+      setHasApplied(gig.applicants?.some(app => app.studentId === user.uid) || false);
+      setIsBookmarked(userProfile.bookmarkedGigIds?.includes(gig.id) || false);
     } else {
-      setHasApplied(false); // Default to false if not a student, or no user/gig
+      setHasApplied(false);
+      setIsBookmarked(false);
     }
-  }, [gig, user, role]);
+  }, [gig, user, role, userProfile]);
 
 
   const handleApply = async () => {
-    if (!user || role !== 'student' || !gig || hasApplied || gig.status !== 'open') return;
+    if (!user || !userProfile || role !== 'student' || !gig || hasApplied || gig.status !== 'open') return;
 
     setIsApplying(true);
     try {
       const gigDocRef = doc(db, 'gigs', gigId);
       const newApplicant = {
         studentId: user.uid,
-        studentUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Student',
+        studentUsername: userProfile.username || user.email?.split('@')[0] || 'Unknown Student',
         message: applicationMessage.trim() || '',
         appliedAt: Timestamp.now(),
-        status: 'pending', // Initial status
+        status: 'pending',
       };
 
       await updateDoc(gigDocRef, {
@@ -113,9 +111,7 @@ export default function GigDetailPage() {
       });
 
       setHasApplied(true);
-      // Optimistically update gig state or re-fetch
       setGig(prevGig => prevGig ? { ...prevGig, applicants: [...(prevGig.applicants || []), newApplicant] } : null);
-
       toast({
         title: 'Application Sent!',
         description: 'Your application has been submitted to the client.',
@@ -133,6 +129,38 @@ export default function GigDetailPage() {
       setIsApplying(false);
     }
   };
+  
+  const handleToggleBookmark = async () => {
+    if (!user || !userProfile || role !== 'student' || !gig) return;
+    if (!db) {
+        toast({ title: "Database Error", description: "Cannot update bookmark.", variant: "destructive" });
+        return;
+    }
+
+    setIsTogglingBookmark(true);
+    const userDocRef = doc(db, 'users', user.uid);
+    try {
+      if (isBookmarked) {
+        await updateDoc(userDocRef, {
+          bookmarkedGigIds: arrayRemove(gig.id)
+        });
+        toast({ title: "Bookmark Removed", description: `"${gig.title}" removed from your bookmarks.` });
+      } else {
+        await updateDoc(userDocRef, {
+          bookmarkedGigIds: arrayUnion(gig.id)
+        });
+        toast({ title: "Gig Bookmarked!", description: `"${gig.title}" added to your bookmarks.` });
+      }
+      setIsBookmarked(!isBookmarked); // Optimistically update UI
+      if(refreshUserProfile) await refreshUserProfile(); // Refresh context
+    } catch (err: any) {
+      console.error("Error toggling bookmark:", err);
+      toast({ title: "Bookmark Error", description: `Could not update bookmark: ${err.message}`, variant: "destructive" });
+    } finally {
+      setIsTogglingBookmark(false);
+    }
+  };
+
 
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -185,7 +213,21 @@ export default function GigDetailPage() {
 
        <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-2xl md:text-3xl">{gig.title}</CardTitle>
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+            <CardTitle className="text-2xl md:text-3xl flex-grow">{gig.title}</CardTitle>
+            {role === 'student' && gig.status === 'open' && (
+                <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={handleToggleBookmark} 
+                    disabled={isTogglingBookmark || authLoading || isLoadingGig}
+                    title={isBookmarked ? "Remove Bookmark" : "Bookmark Gig"}
+                    className="shrink-0"
+                >
+                    {isTogglingBookmark ? <Loader2 className="h-5 w-5 animate-spin" /> : (isBookmarked ? <BookmarkCheck className="h-5 w-5 text-primary" /> : <Bookmark className="h-5 w-5" />)}
+                </Button>
+            )}
+          </div>
           <CardDescription className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
              <span>Posted by <span className="font-medium text-foreground">{gig.clientUsername || 'Client'}</span></span>
              <span>{formatDate(gig.createdAt)}</span>
@@ -226,15 +268,19 @@ export default function GigDetailPage() {
                 return <p className="text-sm text-muted-foreground w-full text-center">This gig is no longer accepting applications ({gig.status}).</p>;
               }
 
-              if (!user) { // Not logged in, gig is open
+              if (!user) { 
                 return (
                   <Button asChild className="w-full sm:w-auto">
                     <Link href={`/auth/login?redirect=/gigs/${gigId}`}>Login or Sign Up to Apply</Link>
                   </Button>
                 );
               }
+              
+              if (user && !role && !authLoading && userProfile === null) {
+                  return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type...</p>;
+              }
 
-              // User is logged in, gig is open. Now check roles.
+
               if (role === 'student') {
                 if (hasApplied) {
                   return <p className="text-sm text-green-600 font-medium text-center w-full">✅ You have already applied to this gig.</p>;
@@ -274,11 +320,8 @@ export default function GigDetailPage() {
                 } else {
                   return <p className="text-sm text-muted-foreground w-full text-center">You are viewing this as a client. Only students can apply.</p>;
                 }
-              } else if (user && !role && !authLoading) { // User logged in, gig open, role not yet determined but auth loaded
-                  return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type to apply...</p>;
               }
               
-              // Fallback, though should ideally be covered by above conditions
               return <p className="text-sm text-muted-foreground w-full text-center">Application status unavailable.</p>;
            })()}
         </CardFooter>
@@ -292,7 +335,7 @@ export default function GigDetailPage() {
            </CardHeader>
            <CardContent>
              <ul className="space-y-3">
-               {gig.applicants.slice(0, 3).map((applicant) => ( // Show a few applicants, link to manage page for full list
+               {gig.applicants.slice(0, 3).map((applicant) => ( 
                  <li key={applicant.studentId} className="flex items-center justify-between p-3 border rounded-md">
                    <div className="flex items-center gap-3">
                      <UserCircle className="h-6 w-6 text-muted-foreground" />
@@ -330,3 +373,5 @@ export default function GigDetailPage() {
     </div>
   );
 }
+
+    

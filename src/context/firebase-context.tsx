@@ -19,6 +19,7 @@ export interface UserProfile extends DocumentData {
   bio?: string;
   skills?: string[];
   portfolioLinks?: string[];
+  bookmarkedGigIds?: string[]; // Added for gig bookmarks
 }
 
 interface FirebaseContextType {
@@ -56,7 +57,12 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
          console.log("Fetching profile for UID:", currentUser.uid);
          const docSnap = await getDoc(userDocRef);
          if (docSnap.exists()) {
-           const profileData = { uid: currentUser.uid, email: currentUser.email, ...docSnap.data() } as UserProfile;
+           const profileData = { 
+             uid: currentUser.uid, 
+             email: currentUser.email, 
+             ...docSnap.data(),
+             bookmarkedGigIds: docSnap.data().bookmarkedGigIds || [] // Initialize if missing
+           } as UserProfile;
            setUserProfile(profileData);
            if (profileData.role === 'student' || profileData.role === 'client') {
              setRole(profileData.role);
@@ -67,13 +73,23 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
            console.log("User profile loaded:", profileData);
          } else {
            console.warn("No user profile found in Firestore for UID:", currentUser.uid);
-           const basicProfile: UserProfile = { uid: currentUser.uid, email: currentUser.email, role: null };
+           const basicProfile: UserProfile = { 
+             uid: currentUser.uid, 
+             email: currentUser.email, 
+             role: null,
+             bookmarkedGigIds: [] // Initialize for new/missing profiles
+           };
            setUserProfile(basicProfile);
            setRole(null);
          }
        } catch (error) {
          console.error("Error fetching user profile:", error);
-          setUserProfile({ uid: currentUser.uid, email: currentUser.email, role: null });
+          setUserProfile({ 
+            uid: currentUser.uid, 
+            email: currentUser.email, 
+            role: null,
+            bookmarkedGigIds: [] // Initialize on error
+          });
           setRole(null);
        }
      } else {
@@ -207,3 +223,5 @@ export const useFirebase = () => {
   }
   return context;
 };
+
+    

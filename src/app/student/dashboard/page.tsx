@@ -4,7 +4,7 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Search, Wallet, UserCircle, Edit, Loader2, PlusCircle } from 'lucide-react'; // Added PlusCircle
+import { FileText, Search, Wallet, UserCircle, Edit, Loader2, PlusCircle, Bookmark } from 'lucide-react'; // Added PlusCircle, Bookmark
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -27,6 +27,7 @@ export default function StudentDashboardPage() {
 
   const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
   const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
+  const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   // Protect route
@@ -68,12 +69,12 @@ export default function StudentDashboardPage() {
               })
             ).length;
           } else {
-            matchingGigs = allOpenGigs.length; // Show all open, unapplied gigs if student has no skills
+            matchingGigs = allOpenGigs.length; 
           }
           setAvailableGigsCount(matchingGigs);
 
           // 2. Fetch active applications
-          const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs')); // Re-fetch or use existing if structure allows better query
+          const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs')); 
           let currentActiveApplications = 0;
           allGigsForAppsSnapshot.forEach(doc => {
             const gig = doc.data() as Gig;
@@ -86,10 +87,15 @@ export default function StudentDashboardPage() {
           });
           setActiveApplicationsCount(currentActiveApplications);
 
+          // 3. Count bookmarked gigs
+          setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
+
+
         } catch (error) {
           console.error("Error fetching student dashboard stats:", error);
           setAvailableGigsCount(0); 
           setActiveApplicationsCount(0);
+          setBookmarkedGigsCount(0);
         } finally {
           setIsLoadingStats(false);
         }
@@ -99,6 +105,7 @@ export default function StudentDashboardPage() {
       setIsLoadingStats(false);
       setAvailableGigsCount(0);
       setActiveApplicationsCount(0);
+      setBookmarkedGigsCount(0);
     }
   }, [user, userProfile, role, authLoading]);
 
@@ -172,7 +179,7 @@ export default function StudentDashboardPage() {
          </CardContent>
        </Card>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Available Gigs</CardTitle>
@@ -208,6 +215,24 @@ export default function StudentDashboardPage() {
              </Button>
           </CardContent>
         </Card>
+        
+        <Card className="glass-card">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Bookmarked Gigs</CardTitle>
+            <Bookmark className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+                {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : bookmarkedGigsCount}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Gigs you've saved for later.
+            </p>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                 <Link href="/student/bookmarks">View Bookmarks</Link>
+             </Button>
+          </CardContent>
+        </Card>
 
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -239,3 +264,5 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
+
+    
