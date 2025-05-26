@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp } from 'firebase/firestore'; // Added collection, query, where, onSnapshot, QuerySnapshot, Timestamp
-import { auth, db, isConfigValid, firebaseConfig } from '@/config/firebase';
+import { auth, db } from '@/config/firebase';
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat'; // Import ChatMetadata
 
@@ -19,7 +19,9 @@ export interface UserProfile extends DocumentData {
   bio?: string;
   skills?: string[];
   portfolioLinks?: string[];
-  bookmarkedGigIds?: string[]; // Added for gig bookmarks
+  bookmarkedGigIds?: string[];
+  averageRating?: number; // New field for average star rating
+  totalRatings?: number;  // New field for total number of ratings
 }
 
 interface FirebaseContextType {
@@ -61,7 +63,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
              uid: currentUser.uid, 
              email: currentUser.email, 
              ...docSnap.data(),
-             bookmarkedGigIds: docSnap.data().bookmarkedGigIds || [] // Initialize if missing
+             bookmarkedGigIds: docSnap.data().bookmarkedGigIds || [],
+             averageRating: docSnap.data().averageRating || 0,
+             totalRatings: docSnap.data().totalRatings || 0,
            } as UserProfile;
            setUserProfile(profileData);
            if (profileData.role === 'student' || profileData.role === 'client') {
@@ -77,7 +81,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
              uid: currentUser.uid, 
              email: currentUser.email, 
              role: null,
-             bookmarkedGigIds: [] // Initialize for new/missing profiles
+             bookmarkedGigIds: [],
+             averageRating: 0,
+             totalRatings: 0,
            };
            setUserProfile(basicProfile);
            setRole(null);
@@ -88,7 +94,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             uid: currentUser.uid, 
             email: currentUser.email, 
             role: null,
-            bookmarkedGigIds: [] // Initialize on error
+            bookmarkedGigIds: [],
+            averageRating: 0,
+            totalRatings: 0,
           });
           setRole(null);
        }
@@ -223,5 +231,3 @@ export const useFirebase = () => {
   }
   return context;
 };
-
-    

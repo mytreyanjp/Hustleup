@@ -59,17 +59,27 @@ export default function CompleteProfilePage() {
 
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      await setDoc(userDocRef, {
+      const userProfileData: any = {
         uid: user.uid,
         email: user.email,
         username: data.username,
         role: data.role,
         profilePictureUrl: user.photoURL || '', // Save Google photo URL
         createdAt: serverTimestamp(),
-        // Initialize other role-specific fields
-        ...(data.role === 'student' ? { skills: [], portfolioLinks: [], bio: '' } : {}),
-        ...(data.role === 'client' ? { companyName: '', website: '' } : {}),
-      });
+      };
+
+      if (data.role === 'student') {
+        userProfileData.skills = [];
+        userProfileData.portfolioLinks = [];
+        userProfileData.bio = '';
+        userProfileData.averageRating = 0;
+        userProfileData.totalRatings = 0;
+      } else if (data.role === 'client') {
+        userProfileData.companyName = '';
+        userProfileData.website = '';
+      }
+      
+      await setDoc(userDocRef, userProfileData);
 
       toast({
         title: 'Profile Completed!',

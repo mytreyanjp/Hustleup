@@ -8,11 +8,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { createUserWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo } from 'firebase/auth'; // Added Google sign-in
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore'; // Added getDoc
 import { auth, db, googleAuthProvider } from '@/config/firebase'; // Import googleAuthProvider
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// import { Label } from '@/components/ui/label'; // Label seems unused here
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -92,16 +92,27 @@ export default function SignupPage() {
       const user = userCredential.user;
 
       const userDocRef = doc(db, 'users', user.uid);
-      await setDoc(userDocRef, {
+      const userProfileData: any = {
         uid: user.uid,
         email: user.email,
         role: data.role,
         username: data.username || user.email?.split('@')[0] || `user_${user.uid.substring(0, 5)}`,
-        profilePictureUrl: '', // Default empty, Google sign-up will use Google's photo
+        profilePictureUrl: '', 
         createdAt: serverTimestamp(),
-        ...(data.role === 'student' ? { skills: [], portfolioLinks: [], bio: '' } : {}),
-        ...(data.role === 'client' ? { companyName: '', website: '' } : {}),
-      });
+      };
+
+      if (data.role === 'student') {
+        userProfileData.skills = [];
+        userProfileData.portfolioLinks = [];
+        userProfileData.bio = '';
+        userProfileData.averageRating = 0;
+        userProfileData.totalRatings = 0;
+      } else if (data.role === 'client') {
+        userProfileData.companyName = '';
+        userProfileData.website = '';
+      }
+
+      await setDoc(userDocRef, userProfileData);
 
       toast({
         title: 'Account Created Successfully!',
@@ -111,7 +122,6 @@ export default function SignupPage() {
 
     } catch (error: any) {
       console.error('Signup error:', error);
-      // ... (existing error handling)
       let errorMessage = 'An unexpected error occurred during signup.';
       if (error.code) {
         switch (error.code) {
@@ -163,24 +173,21 @@ export default function SignupPage() {
       const user = result.user;
       const additionalUserInfo = getAdditionalUserInfo(result);
 
-      // Check if user document already exists (e.g., if they logged in via Google before completing email signup)
       const userDocRef = doc(db, 'users', user.uid);
       const docSnap = await getDoc(userDocRef);
 
       if (docSnap.exists()) {
-        // User already exists, possibly from a previous Google sign-in attempt or direct login
         toast({
           title: 'Welcome Back!',
           description: `Signed in as ${user.displayName || user.email}.`,
         });
-        router.push('/'); // Redirect to homepage, which will handle role-based dashboard redirect
+        router.push('/'); 
       } else if (additionalUserInfo?.isNewUser || !docSnap.exists()) {
-        // New user via Google, or user auth record exists but no Firestore profile (e.g. from prior login page Google signin)
         toast({
           title: 'Account Created with Google!',
           description: 'Please complete your profile to get started.',
         });
-        router.push('/auth/complete-profile'); // Redirect to complete profile page
+        router.push('/auth/complete-profile'); 
       }
     } catch (error: any) {
       console.error('Google Sign-Up error:', error);

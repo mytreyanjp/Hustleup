@@ -3,20 +3,21 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { useFirebase } from '@/context/firebase-context';
+import { useFirebase, type UserProfile } from '@/context/firebase-context'; // Import UserProfile
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useRazorpay } from '@/hooks/use-razorpay';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getChatId } from '@/lib/utils';
-
+import { StarRating } from '@/components/ui/star-rating'; // Import StarRating
 
 interface ApplicantInfo {
     studentId: string;
@@ -38,9 +39,25 @@ interface Gig {
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: ApplicantInfo[];
-  selectedStudentId?: string | null; // Track hired student
-  currency: string; // Currency will always be INR
+  selectedStudentId?: string | null; 
+  currency: string; 
+  // Fields for storing review directly on the gig for the selected student (alternative to separate reviews collection)
+  // reviewForSelectedStudent?: { rating: number; comment?: string; reviewedAt: Timestamp }; 
 }
+
+interface Review {
+  id: string; // Firestore doc ID
+  gigId: string;
+  gigTitle: string;
+  clientId: string;
+  clientUsername: string;
+  studentId: string;
+  studentUsername: string;
+  rating: number; // 1-5
+  comment?: string;
+  createdAt: Timestamp;
+}
+
 
 export default function ManageGigPage() {
   const params = useParams();
@@ -54,6 +71,12 @@ export default function ManageGigPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingApplicantId, setUpdatingApplicantId] = useState<string | null>(null);
   const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null);
+
+  const [rating, setRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [hasBeenReviewed, setHasBeenReviewed] = useState(false);
+
 
    const handlePaymentSuccess = async (paymentDetails: { paymentId: string; orderId?: string; signature?: string }) => {
     console.log("Razorpay Success:", paymentDetails);
@@ -69,7 +92,7 @@ export default function ManageGigPage() {
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
-             currency: "INR", // Hardcode to INR
+             currency: "INR", 
              status: 'succeeded',
              razorpayPaymentId: paymentDetails.paymentId,
              razorpayOrderId: paymentDetails.orderId,
@@ -143,36 +166,54 @@ export default function ManageGigPage() {
      });
    };
 
-   const fetchGigData = useCallback(async () => {
-       if (!gigId || !user) return;
-       setIsLoading(true);
-       setError(null);
-       try {
-         const gigDocRef = doc(db, 'gigs', gigId);
-         const docSnap = await getDoc(gigDocRef);
+    const fetchGigAndReviewStatus = useCallback(async () => {
+        if (!gigId || !user || !db) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            const gigDocRef = doc(db, 'gigs', gigId);
+            const docSnap = await getDoc(gigDocRef);
 
-         if (docSnap.exists()) {
-           const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
-           if (fetchedGig.clientId !== user.uid) {
-             setError("You are not authorized to manage this gig.");
-              setGig(null);
-           } else {
-              // Ensure currency is INR if it's missing from older data (should be set for new gigs)
-              if (!fetchedGig.currency) {
-                fetchedGig.currency = "INR";
-              }
-              setGig(fetchedGig);
-           }
-         } else {
-           setError("Gig not found.");
-         }
-       } catch (err: any) {
-         console.error("Error fetching gig:", err);
-         setError("Failed to load gig details.");
-       } finally {
-         setIsLoading(false);
-       }
-   }, [gigId, user]);
+            if (docSnap.exists()) {
+                const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
+                if (fetchedGig.clientId !== user.uid) {
+                    setError("You are not authorized to manage this gig.");
+                    setGig(null);
+                } else {
+                    if (!fetchedGig.currency) {
+                        fetchedGig.currency = "INR";
+                    }
+                    setGig(fetchedGig);
+
+                    // Check if review exists for this gig and selected student
+                    if (fetchedGig.status === 'completed' && fetchedGig.selectedStudentId) {
+                        const reviewsQuery = query(
+                            collection(db, 'reviews'),
+                            where('gigId', '==', gigId),
+                            where('clientId', '==', user.uid),
+                            where('studentId', '==', fetchedGig.selectedStudentId)
+                        );
+                        const reviewsSnapshot = await getDocs(reviewsQuery);
+                        if (!reviewsSnapshot.empty) {
+                            setHasBeenReviewed(true);
+                            const reviewData = reviewsSnapshot.docs[0].data();
+                            setRating(reviewData.rating);
+                            setReviewComment(reviewData.comment || "");
+                        } else {
+                            setHasBeenReviewed(false);
+                        }
+                    }
+                }
+            } else {
+                setError("Gig not found.");
+            }
+        } catch (err: any) {
+            console.error("Error fetching gig or review status:", err);
+            setError("Failed to load gig details or review status.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [gigId, user]);
 
 
   useEffect(() => {
@@ -180,10 +221,10 @@ export default function ManageGigPage() {
       if (!user || role !== 'client') {
         router.push('/auth/login');
       } else {
-         fetchGigData();
+         fetchGigAndReviewStatus();
       }
     }
-  }, [authLoading, user, role, router, fetchGigData]);
+  }, [authLoading, user, role, router, fetchGigAndReviewStatus]);
 
 
   const sendApplicationStatusNotification = async (
@@ -200,7 +241,6 @@ export default function ManageGigPage() {
     try {
       const batch = writeBatch(db);
 
-      // Ensure chat document exists or create it
       const chatSnap = await getDoc(chatDocRef);
       if (!chatSnap.exists()) {
         const newChatData: any = {
@@ -212,7 +252,6 @@ export default function ManageGigPage() {
           },
           gigId: gigData.id,
           createdAt: serverTimestamp(),
-          // Last message fields will be set by the new message
         };
         if (userProfile.profilePictureUrl) {
            newChatData.participantProfilePictures = { [user.uid]: userProfile.profilePictureUrl };
@@ -220,20 +259,17 @@ export default function ManageGigPage() {
         batch.set(chatDocRef, newChatData);
       }
 
-      // Add the notification message
       const newMessageRef = doc(collection(db, 'chats', chatId, 'messages'));
       batch.set(newMessageRef, {
-        senderId: user.uid, // Client is sending the notification
+        senderId: user.uid, 
         text: messageText,
         timestamp: serverTimestamp(),
       });
 
-      // Update the main chat document
       batch.update(chatDocRef, {
         lastMessage: messageText,
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        // Update client's profile picture in chat if not already there or changed
         ...(userProfile.profilePictureUrl && {
             [`participantProfilePictures.${user.uid}`]: userProfile.profilePictureUrl,
         }),
@@ -288,7 +324,6 @@ export default function ManageGigPage() {
 
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
 
-           // Send notification after successful status update
            await sendApplicationStatusNotification(applicant, gig, newStatus);
 
        } catch (err: any) {
@@ -298,6 +333,61 @@ export default function ManageGigPage() {
            setUpdatingApplicantId(null);
        }
    };
+
+    const handleSubmitReview = async () => {
+        if (!gig || !gig.selectedStudentId || !user || !userProfile || !db) return;
+        if (rating === 0) {
+            toast({ title: "Rating Required", description: "Please select a star rating.", variant: "destructive" });
+            return;
+        }
+        setIsSubmittingReview(true);
+        const selectedStudentInfo = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
+        if (!selectedStudentInfo) {
+             toast({ title: "Error", description: "Selected student details not found.", variant: "destructive"});
+             setIsSubmittingReview(false);
+             return;
+        }
+
+        try {
+            const reviewData: Omit<Review, 'id' | 'createdAt'> & { createdAt: any } = {
+                gigId: gig.id,
+                gigTitle: gig.title,
+                clientId: user.uid,
+                clientUsername: userProfile.username || user.email?.split('@')[0] || 'Client',
+                studentId: gig.selectedStudentId,
+                studentUsername: selectedStudentInfo.studentUsername,
+                rating: rating,
+                comment: reviewComment.trim() || '',
+                createdAt: serverTimestamp(),
+            };
+            await addDoc(collection(db, "reviews"), reviewData);
+
+            // Client-side aggregation for student's profile (simplified)
+            const studentDocRef = doc(db, 'users', gig.selectedStudentId);
+            const studentSnap = await getDoc(studentDocRef);
+            if (studentSnap.exists()) {
+                const studentData = studentSnap.data() as UserProfile;
+                const currentTotalRatings = studentData.totalRatings || 0;
+                const currentAverageRating = studentData.averageRating || 0;
+                
+                const newTotalRatings = currentTotalRatings + 1;
+                const newAverageRating = ((currentAverageRating * currentTotalRatings) + rating) / newTotalRatings;
+
+                await updateDoc(studentDocRef, {
+                    averageRating: newAverageRating,
+                    totalRatings: newTotalRatings,
+                });
+            }
+
+            toast({ title: "Review Submitted", description: "Thank you for your feedback!" });
+            setHasBeenReviewed(true); // Hide form after submission
+        } catch (err) {
+            console.error("Error submitting review:", err);
+            toast({ title: "Review Failed", description: "Could not submit your review.", variant: "destructive" });
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
 
 
    const formatDate = (timestamp: Timestamp | undefined): string => {
@@ -410,22 +500,69 @@ export default function ManageGigPage() {
          </Card>
        )}
 
-        {/* Completed Gig Section */}
-       {gig.status === 'completed' && (
-          <Alert variant="default" className="border-green-500 dark:border-green-400">
-             <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-             <AlertTitle className="text-green-700 dark:text-green-300">Gig Completed & Paid</AlertTitle>
-             <AlertDescription>
-                This gig has been marked as completed and payment has been processed. View transaction details in your{' '}
-                 <Link href="/client/payments" className="font-medium underline">Payment History</Link>.
-                 {selectedStudent && ` Student: ${selectedStudent.studentUsername}.`}
-                 {!selectedStudent && gig.selectedStudentId && ' (Student details might be loading or missing for this completed gig.)'}
-             </AlertDescription>
-         </Alert>
+        {/* Completed Gig & Review Section */}
+       {gig.status === 'completed' && selectedStudent && (
+          <Card className="glass-card border-green-500 dark:border-green-400">
+            <CardHeader>
+                 <CardTitle className="text-green-700 dark:text-green-400">Gig Completed!</CardTitle>
+                 <CardDescription>
+                    This gig with {selectedStudent.studentUsername} has been paid. You can now rate your experience.
+                 </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {hasBeenReviewed ? (
+                    <Alert variant="default" className='border-blue-500'>
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="text-blue-700 dark:text-blue-300">Review Submitted</AlertTitle>
+                        <AlertDescription>
+                            You have already rated {selectedStudent.studentUsername} for this gig.
+                            <div className="mt-2">
+                                <StarRating value={rating} isEditable={false} size={20}/>
+                                {reviewComment && <p className="text-sm italic mt-1">Your comment: "{reviewComment}"</p>}
+                            </div>
+                        </AlertDescription>
+                    </Alert>
+                ) : (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-medium">Rate {selectedStudent.studentUsername}</h3>
+                        <div>
+                            <StarRating value={rating} onValueChange={setRating} size={28} isEditable={!isSubmittingReview} />
+                            {rating === 0 && <p className="text-xs text-muted-foreground mt-1">Select a star rating.</p>}
+                        </div>
+                        <Textarea
+                            placeholder={`Share your experience working with ${selectedStudent.studentUsername} (optional)...`}
+                            value={reviewComment}
+                            onChange={(e) => setReviewComment(e.target.value)}
+                            rows={3}
+                            disabled={isSubmittingReview}
+                        />
+                        <Button onClick={handleSubmitReview} disabled={isSubmittingReview || rating === 0}>
+                            {isSubmittingReview && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Submit Review
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+             <CardFooter>
+                <p className="text-xs text-muted-foreground">
+                    View payment details in your <Link href="/client/payments" className="underline">Payment History</Link>.
+                </p>
+             </CardFooter>
+          </Card>
        )}
+        {gig.status === 'completed' && !selectedStudent && (
+             <Alert variant="default" className="border-green-500 dark:border-green-400">
+                 <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                 <AlertTitle className="text-green-700 dark:text-green-300">Gig Completed & Paid</AlertTitle>
+                 <AlertDescription>
+                    This gig has been marked as completed and payment has been processed.
+                    (Selected student details for review not available.)
+                 </AlertDescription>
+             </Alert>
+        )}
 
 
-       {/* Applicants List Section (Only if gig is open or no one is selected yet) */}
+       {/* Applicants List Section */}
        {gig.status === 'open' && (
            <Card className="glass-card">
              <CardHeader>

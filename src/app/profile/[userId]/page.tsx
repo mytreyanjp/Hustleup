@@ -9,12 +9,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide } from 'lucide-react'; // Added ImageIconLucide
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon } from 'lucide-react'; // Added ImageIconLucide, StarIcon
 import type { UserProfile } from '@/context/firebase-context'; 
 import { useFirebase } from '@/context/firebase-context'; 
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import Image from 'next/image'; // For displaying post images
+import { StarRating } from '@/components/ui/star-rating'; // Import StarRating
 
 interface StudentPost {
   id: string;
@@ -52,7 +53,12 @@ export default function PublicProfilePage() {
         const docSnap = await getDoc(userDocRef);
 
         if (docSnap.exists()) {
-           const fetchedProfile = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+           const fetchedProfile = { 
+               uid: docSnap.id, 
+               ...docSnap.data(),
+               averageRating: docSnap.data().averageRating || 0, // Ensure defaults
+               totalRatings: docSnap.data().totalRatings || 0,   // Ensure defaults
+            } as UserProfile;
            if (fetchedProfile.role === 'student') { // Only show profiles for students
               setProfile(fetchedProfile);
 
@@ -151,6 +157,14 @@ export default function PublicProfilePage() {
                             </Button>
                         ) : null}
                    </div>
+                    {profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
+                        <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
+                            <StarRating value={profile.averageRating} size={18} isEditable={false} />
+                            <span className="text-sm text-muted-foreground">
+                                ({profile.averageRating.toFixed(1)} from {profile.totalRatings} rating{profile.totalRatings !== 1 ? 's' : ''})
+                            </span>
+                        </div>
+                    )}
                    {profile.bio && (
                         <p className="text-sm text-foreground/90 mt-2">{profile.bio}</p>
                    )}
@@ -242,5 +256,3 @@ export default function PublicProfilePage() {
     </div>
   );
 }
-
-    
