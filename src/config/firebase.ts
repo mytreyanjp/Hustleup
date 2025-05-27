@@ -77,7 +77,10 @@ let githubAuthProvider: GithubAuthProvider | null = null;
 
 if (missingEnvVars.length > 0) {
   firebaseInitializationDetails.areEnvVarsMissing = true;
-  const msg = `Missing Firebase configuration environment variables: ${missingEnvVars.join(', ')}. Please ensure they are set in your .env.local file and the Next.js development server is restarted.`;
+  const currentConfigValues = Object.fromEntries(
+    Object.entries(firebaseConfig).map(([key, value]) => [key, value === undefined ? "UNDEFINED" : value])
+  );
+  const msg = `Missing Firebase configuration. Please ensure all NEXT_PUBLIC_FIREBASE_ prefixed variables are set in your .env.local file (root directory) and the Next.js server is RESTARTED.\nMissing vars: ${missingEnvVars.join(', ')}\nCurrently read config values: ${JSON.stringify(currentConfigValues, null, 2)}`;
   firebaseInitializationDetails.errorMessage = msg;
   if (typeof window !== 'undefined') { // Only log on client-side, server logs are handled by Next.js
     console.error("Firebase Config Error (Missing Vars):", msg);
@@ -92,23 +95,23 @@ if (missingEnvVars.length > 0) {
     auth = getAuth(app);
     db = getFirestore(app);
     // Only initialize functions if you intend to use them, to avoid unnecessary setup/errors.
-    // functions = getFunctions(app); 
+    // functions = getFunctions(app);
     storage = getStorage(app); // Initialize storage
     googleAuthProvider = new GoogleAuthProvider();
     appleAuthProvider = new OAuthProvider('apple.com');
     githubAuthProvider = new GithubAuthProvider();
 
 
-    if (app && auth && db && storage) { // Check if core services are missing storage
+    if (app && auth && db && storage) {
       firebaseInitializationDetails.isSuccessfullyInitialized = true;
-      console.log("Firebase initialized successfully with API Key:", firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0,6)+"..." : "Not found");
+      console.log("Firebase initialized successfully.");
     } else {
       firebaseInitializationDetails.didCoreServicesFail = true;
       const missingServices = [];
       if (!app) missingServices.push("App");
       if (!auth) missingServices.push("Auth");
       if (!db) missingServices.push("Firestore (db)");
-      if (!storage) missingServices.push("Storage"); // Added storage check
+      if (!storage) missingServices.push("Storage");
       const msg = `Core Firebase services (${missingServices.join('/') || 'unknown'}) did not initialize correctly. This can happen if environment variables are present but contain invalid values (e.g., incorrect API key format), or if there's a network issue preventing connection to Firebase services.`;
       firebaseInitializationDetails.errorMessage = msg;
       if (typeof window !== 'undefined') console.error("Firebase Config Error (Service Init Failure):", msg);
@@ -117,7 +120,10 @@ if (missingEnvVars.length > 0) {
     }
   } catch (error: any) {
     firebaseInitializationDetails.didCoreServicesFail = true;
-    const msg = `Firebase core services initialization failed: ${error.message} (Code: ${error.code}). This often indicates an issue with the Firebase project configuration (e.g., an invalid API key, or a service like Firestore/Storage not being enabled in the Firebase console) or a network problem. Please verify your .env.local values and Firebase project settings.`;
+    const currentConfigValuesForCatch = Object.fromEntries(
+        Object.entries(firebaseConfig).map(([key, value]) => [key, value === undefined ? "UNDEFINED" : value])
+    );
+    const msg = `Firebase core services initialization failed: ${error.message} (Code: ${error.code}). This often indicates an issue with the Firebase project configuration values (e.g., an invalid API key, or a service like Firestore/Storage not being enabled in the Firebase console) or a network problem. Please verify your .env.local values and Firebase project settings.\nCurrently read config values: ${JSON.stringify(currentConfigValuesForCatch, null, 2)}`;
     firebaseInitializationDetails.errorMessage = msg;
     if (typeof window !== 'undefined') console.error("Firebase Config Error (Catch Block):", msg);
     app = null; auth = null; db = null; functions = null; /*realtimeDb = null;*/ storage = null;
@@ -125,6 +131,4 @@ if (missingEnvVars.length > 0) {
   }
 }
 
-// Conditional export for Functions if you enable it
-// export { app, auth, db, functions, realtimeDb, storage, googleAuthProvider, appleAuthProvider, githubAuthProvider, firebaseConfig };
 export { app, auth, db, functions, storage, googleAuthProvider, appleAuthProvider, githubAuthProvider, firebaseConfig };
