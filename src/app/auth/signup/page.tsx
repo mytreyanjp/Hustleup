@@ -7,16 +7,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { createUserWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential, OAuthProvider } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithPopup, OAuthProvider } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { auth, db, googleAuthProvider, appleAuthProvider, githubAuthProvider } from '@/config/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Briefcase, AlertTriangle } from 'lucide-react';
+import { Loader2, User, Briefcase, AlertTriangle, Building, Globe, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const signupSchema = z.object({
@@ -24,7 +25,46 @@ const signupSchema = z.object({
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
   role: z.enum(['student', 'client'], { required_error: 'You must select a role' }),
   username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, {message: 'Username cannot exceed 30 characters'}),
+  companyName: z.string().max(100, { message: 'Company name cannot exceed 100 characters' }).optional(),
+  website: z.string().url({ message: 'Please enter a valid URL for your website (e.g., https://example.com)' }).max(100).optional().or(z.literal('')),
+  companyDescription: z.string().max(500, { message: 'Company description cannot exceed 500 characters' }).optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'client') {
+    if (!data.companyName || data.companyName.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['companyName'],
+        message: 'Company name is required for clients.',
+      });
+    }
+    if (!data.website || data.website.trim() === '') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['website'],
+            message: 'Company website is required for clients.',
+        });
+    } else {
+        try {
+            // Ensure website parsing doesn't throw for empty string if it passed optional().or(z.literal(''))
+            if (data.website) z.string().url().parse(data.website);
+        } catch (e) {
+            ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['website'],
+            message: 'Please enter a valid URL (e.g., https://example.com).',
+            });
+        }
+    }
+    if (!data.companyDescription || data.companyDescription.trim().length < 20) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['companyDescription'],
+        message: 'Company description is required for clients and must be at least 20 characters.',
+      });
+    }
+  }
 });
+
 
 type SignupFormValues = z.infer<typeof signupSchema>;
 
@@ -65,8 +105,14 @@ export default function SignupPage() {
       password: '',
       role: initialRole,
       username: '',
+      companyName: '',
+      website: '',
+      companyDescription: '',
     },
+    mode: 'onChange',
   });
+
+  const selectedRole = form.watch("role");
 
    useEffect(() => {
      if (!auth || !db) {
@@ -122,9 +168,9 @@ export default function SignupPage() {
         userProfileData.bio = '';
         userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
-        userProfileData.companyName = ''; 
-        userProfileData.website = ''; 
-        userProfileData.companyDescription = ''; 
+        userProfileData.companyName = data.companyName || ''; 
+        userProfileData.website = data.website || ''; 
+        userProfileData.companyDescription = data.companyDescription || '';
       }
 
       await setDoc(userDocRef, userProfileData);
@@ -297,10 +343,7 @@ export default function SignupPage() {
                        <RadioGroup
                          onValueChange={(value) => {
                            field.onChange(value);
-                           if (value === 'client') {
-                             // Optionally prefill username if client and if that makes sense for your UX
-                             // form.setValue('username', user.email?.split('@')[0] || '');
-                           }
+                           form.trigger(['companyName', 'website', 'companyDescription']);
                          }}
                          defaultValue={field.value}
                          className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4"
@@ -337,9 +380,9 @@ export default function SignupPage() {
                    <FormItem>
                      <FormLabel>Username (Public)</FormLabel>
                      <FormControl>
-                       <Input placeholder={form.getValues("role") === "client" ? "e.g., AcmeCorp" : "e.g., creative_coder"} {...field} />
+                       <Input placeholder={selectedRole === "client" ? "e.g., Your Name (Contact Person)" : "e.g., creative_coder"} {...field} />
                      </FormControl>
-                     <FormDescription>This will be shown on your profile.</FormDescription>
+                     <FormDescription>This will be shown on your profile. {selectedRole === "client" && "This is typically your personal name, not the company name."}</FormDescription>
                      <FormMessage />
                    </FormItem>
                  )}
@@ -374,9 +417,60 @@ export default function SignupPage() {
                 )}
               />
 
+              {selectedRole === 'client' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="companyName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1'>
+                            <Building className="h-4 w-4 text-muted-foreground" /> Company Name
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Acme Innovations Inc." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1'>
+                            <Globe className="h-4 w-4 text-muted-foreground" /> Company Website
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://yourcompany.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                   <FormField
+                    control={form.control}
+                    name="companyDescription"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1'>
+                           <Info className="h-4 w-4 text-muted-foreground" /> About Your Company
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="Tell students about your company, its mission, and the types of projects you typically offer (min 20 characters)." {...field} rows={4}/>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+
               <Button type="submit" className="w-full" disabled={isLoading || isOAuthLoading || !!firebaseError}>
                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Account with Email
+                Create Account
               </Button>
             </form>
           </Form>
@@ -447,3 +541,5 @@ export default function SignupPage() {
     </div>
   );
 }
+
+    
