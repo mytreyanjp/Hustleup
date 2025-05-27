@@ -23,7 +23,7 @@ const signupSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
   role: z.enum(['student', 'client'], { required_error: 'You must select a role' }),
-  username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, {message: 'Username cannot exceed 30 characters'}).optional(),
+  username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, {message: 'Username cannot exceed 30 characters'}),
 });
 
 type SignupFormValues = z.infer<typeof signupSchema>;
@@ -111,7 +111,6 @@ export default function SignupPage() {
         username: data.username || user.email?.split('@')[0] || `user_${user.uid.substring(0, 5)}`,
         profilePictureUrl: '', 
         createdAt: serverTimestamp(),
-        bookmarkedGigIds: [],
         averageRating: 0,
         totalRatings: 0,
       };
@@ -120,6 +119,7 @@ export default function SignupPage() {
         userProfileData.skills = [];
         userProfileData.portfolioLinks = [];
         userProfileData.bio = '';
+        userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
         userProfileData.companyName = '';
         userProfileData.website = '';
@@ -189,15 +189,12 @@ export default function SignupPage() {
       const docSnap = await getDoc(userDocRef);
 
       if (docSnap.exists() && docSnap.data()?.role) {
-        // User exists and has a role, proceed to dashboard
         toast({
           title: 'Welcome Back!',
-          description: `Signed in as ${user.displayName || user.email}.`,
+          description: `Signed in as ${user.displayName || user.email}. Redirecting...`,
         });
-        router.push('/'); // Homepage will redirect to dashboard
+        router.push('/'); 
       } else {
-        // New user or existing user without a role (e.g., Google signed in before but didn't complete profile)
-        // The complete-profile page will handle creating the user document.
         toast({
           title: `Account Created with ${providerName}!`,
           description: 'Please complete your profile to get started.',
@@ -210,7 +207,7 @@ export default function SignupPage() {
       if (error.code) {
          switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists, likely created with a different sign-in method. Please log in using that original method, or sign up with a different email address.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. Please log in using your original sign-in method, or sign up with a different email.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-Up cancelled.`;
@@ -270,7 +267,13 @@ export default function SignupPage() {
                      <FormLabel>I want to join as a...</FormLabel>
                      <FormControl>
                        <RadioGroup
-                         onValueChange={field.onChange}
+                         onValueChange={(value) => {
+                           field.onChange(value);
+                           if (value === 'client') {
+                             // Optionally prefill username if client and if that makes sense for your UX
+                             // form.setValue('username', user.email?.split('@')[0] || '');
+                           }
+                         }}
                          defaultValue={field.value}
                          className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4"
                        >
@@ -306,7 +309,7 @@ export default function SignupPage() {
                    <FormItem>
                      <FormLabel>Username (Public)</FormLabel>
                      <FormControl>
-                       <Input placeholder="e.g., creative_coder" {...field} />
+                       <Input placeholder={form.getValues("role") === "client" ? "e.g., AcmeCorp" : "e.g., creative_coder"} {...field} />
                      </FormControl>
                      <FormDescription>This will be shown on your profile.</FormDescription>
                      <FormMessage />

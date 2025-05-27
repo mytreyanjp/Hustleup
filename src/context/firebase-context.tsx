@@ -16,12 +16,15 @@ export interface UserProfile extends DocumentData {
   role: UserRole;
   username?: string;
   profilePictureUrl?: string;
-  bio?: string;
-  skills?: string[];
-  portfolioLinks?: string[];
-  bookmarkedGigIds?: string[];
-  averageRating?: number;
-  totalRatings?: number;
+  bio?: string; // Student bio
+  skills?: string[]; // Student skills
+  portfolioLinks?: string[]; // Student portfolio links
+  bookmarkedGigIds?: string[]; // Student bookmarked gigs
+  averageRating?: number; // Student average rating
+  totalRatings?: number; // Student total ratings
+  // Client-specific fields
+  companyName?: string;
+  website?: string;
 }
 
 interface FirebaseContextType {
@@ -79,7 +82,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           const basicProfile: UserProfile = {
             uid: currentUser.uid,
             email: currentUser.email,
-            role: null,
+            role: null, // This will prompt for profile completion
             bookmarkedGigIds: [],
             averageRating: 0,
             totalRatings: 0,
@@ -118,7 +121,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     let unsubscribeAuth: (() => void) | null = null;
 
-    // Check the detailed initialization status from firebase.ts
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
       if (firebaseInitializationDetails.areEnvVarsMissing) {
@@ -138,7 +140,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setFirebaseActuallyInitialized(true);
-    setInitializationError(null); // Clear any previous errors if initialization is now successful
+    setInitializationError(null); 
 
     if (auth) {
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -155,7 +157,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       });
     } else {
-      // This case should ideally not be reached if isSuccessfullyInitialized is true
       const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
       console.error(authErrorMessage);
       setInitializationError(authErrorMessage);
@@ -169,7 +170,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         unsubscribeAuth();
       }
     };
-  }, [fetchUserProfile]); // fetchUserProfile is stable due to useCallback
+  }, [fetchUserProfile]); 
 
   useEffect(() => {
     if (!user || !db) {
@@ -209,14 +210,13 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user]);
 
-  // Client-side check to prevent rendering on server if window is not defined
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
   }, []);
 
 
-  if (loading && isClient) { // Only show full-screen loader on client after mount
+  if (loading && isClient) { 
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -224,7 +224,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  // Display detailed error message if Firebase initialization failed
   if (!firebaseActuallyInitialized && initializationError && isClient) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">

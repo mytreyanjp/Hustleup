@@ -15,11 +15,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Briefcase } from 'lucide-react';
+import { Loader2, User, Briefcase, Building, Globe } from 'lucide-react'; // Added Building, Globe
 
 const completeProfileSchema = z.object({
   username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, { message: 'Username cannot exceed 30 characters'}),
   role: z.enum(['student', 'client'], { required_error: 'You must select a role' }),
+  companyName: z.string().max(100, { message: 'Company name cannot exceed 100 characters' }).optional(),
+  website: z.string().url({ message: 'Please enter a valid URL for your website (e.g., https://example.com)' }).max(100).optional().or(z.literal('')),
 });
 
 type CompleteProfileFormValues = z.infer<typeof completeProfileSchema>;
@@ -35,16 +37,18 @@ export default function CompleteProfilePage() {
     defaultValues: {
       username: '',
       role: undefined,
+      companyName: '',
+      website: '',
     },
   });
+
+  const selectedRole = form.watch("role");
 
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
-        // Not logged in, should not be here
         router.push('/auth/login');
       } else {
-        // Pre-fill username if available from Google display name
         form.setValue('username', user.displayName || user.email?.split('@')[0] || '');
       }
     }
@@ -64,31 +68,31 @@ export default function CompleteProfilePage() {
         email: user.email,
         username: data.username,
         role: data.role,
-        profilePictureUrl: user.photoURL || '', // Save Google photo URL
+        profilePictureUrl: user.photoURL || '',
         createdAt: serverTimestamp(),
+        averageRating: 0,
+        totalRatings: 0,
       };
 
       if (data.role === 'student') {
         userProfileData.skills = [];
         userProfileData.portfolioLinks = [];
         userProfileData.bio = '';
-        userProfileData.averageRating = 0;
-        userProfileData.totalRatings = 0;
+        userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
-        userProfileData.companyName = '';
-        userProfileData.website = '';
+        userProfileData.companyName = data.companyName || '';
+        userProfileData.website = data.website || '';
       }
       
-      await setDoc(userDocRef, userProfileData);
+      await setDoc(userDocRef, userProfileData, { merge: true }); // Use merge to be safe
 
       toast({
         title: 'Profile Completed!',
         description: 'Your account is ready. Redirecting...',
       });
 
-      if (refreshUserProfile) await refreshUserProfile(); // Refresh context to get new role
+      if (refreshUserProfile) await refreshUserProfile();
 
-      // Redirect based on role
       router.push(data.role === 'student' ? '/student/dashboard' : '/client/dashboard');
 
     } catch (error: any) {
@@ -136,7 +140,7 @@ export default function CompleteProfilePage() {
                   <FormItem>
                     <FormLabel>Username (Public)</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., creative_coder" {...field} />
+                      <Input placeholder="e.g., creative_coder or YourCompanyName" {...field} />
                     </FormControl>
                     <FormDescription>This will be shown on your profile.</FormDescription>
                     <FormMessage />
@@ -180,6 +184,37 @@ export default function CompleteProfilePage() {
                   </FormItem>
                 )}
               />
+
+              {selectedRole === 'client' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="companyName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company Name (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Acme Corp" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company Website (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://yourcompany.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
 
               <Button type="submit" className="w-full" disabled={isSubmitting || authLoading}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
