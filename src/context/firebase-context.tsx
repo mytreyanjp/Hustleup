@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp } from 'firebase/firestore';
-import { auth, db, isConfigValid } from '@/config/firebase'; // Import isConfigValid
+import { auth, db, firebaseInitializationDetails } from '@/config/firebase'; // Import firebaseInitializationDetails
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat';
 
@@ -40,13 +40,14 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<UserRole>(null);
-  const [firebaseInitialized, setFirebaseInitialized] = useState(false);
+  const [firebaseActuallyInitialized, setFirebaseActuallyInitialized] = useState(false); // Renamed from firebaseInitialized
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
-    if (!db) {
-      console.warn("Firestore (db) not initialized, skipping profile fetch.");
+    // Ensure db is available (it might be null if firebaseInitializationDetails.isSuccessfullyInitialized is false)
+    if (!db) { 
+      console.warn("Firestore (db) not initialized, skipping profile fetch. This is expected if Firebase setup failed.");
       setUserProfile(null);
       setRole(null);
       return;
@@ -118,10 +119,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     let unsubscribeAuth: (() => void) | null = null;
 
-    if (!isConfigValid) {
-      console.error("Firebase Context: Firebase configuration is invalid due to missing environment variables.");
-      setInitializationError("Firebase configuration is invalid. Required environment variables are missing. Please check your .env.local file and restart the development server.");
-      setFirebaseInitialized(false);
+    if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
+      console.error("Firebase Context: Firebase services not initialized.", firebaseInitializationDetails.errorMessage);
+      // Use the detailed error message from firebaseInitializationDetails
+      setInitializationError(firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred. Check .env.local and restart.");
+      setFirebaseActuallyInitialized(false);
       setLoading(false);
       setUser(null);
       setUserProfile(null);
@@ -129,11 +131,10 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // If isConfigValid is true, then auth and db should be initialized.
-    setFirebaseInitialized(true);
-    setInitializationError(null); // Clear any previous errors
+    setFirebaseActuallyInitialized(true);
+    setInitializationError(null); 
 
-    if (auth) { // Check if auth is available after config validation
+    if (auth) { 
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
         console.log("Auth state changed. Current user:", currentUser?.uid || 'None');
         setUser(currentUser);
@@ -148,10 +149,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       });
     } else {
-      // This case should ideally not be hit if isConfigValid is true and auth initializes
-      console.error("Firebase context: Auth service is null despite config appearing valid.");
-      setInitializationError("Failed to initialize Firebase Auth service. Check configuration.");
-      setFirebaseInitialized(false);
+      console.error("Firebase context: Auth service is unexpectedly null after successful initialization check.");
+      setInitializationError("Failed to initialize Firebase Auth service after initial checks passed.");
+      setFirebaseActuallyInitialized(false);
       setLoading(false);
     }
     
@@ -161,10 +161,10 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         unsubscribeAuth();
       }
     };
-  }, [fetchUserProfile, isConfigValid]); // Added isConfigValid to dependency array
+  }, [fetchUserProfile]); 
 
   useEffect(() => {
-    if (!user || !db) {
+    if (!user || !db) { // db might be null if main init failed
       setTotalUnreadChats(0);
       return;
     }
@@ -212,28 +212,27 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (!firebaseInitialized && initializationError && isClient) {
+  if (!firebaseActuallyInitialized && initializationError && isClient) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
         <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
           <h2 className="text-xl font-semibold mb-2">Configuration Error</h2>
           <p className="text-sm">{initializationError}</p>
-          <p className="text-xs mt-4">Please ensure Firebase is configured correctly (check <code>.env.local</code>) and restart the application.</p>
+          <p className="text-xs mt-4">Please ensure Firebase is configured correctly (check <code>.env.local</code> and all variable values) and restart the application.</p>
         </div>
       </div>
     );
   }
-
-  // Fallback error if services are somehow null after loading and no specific initializationError was caught by the !isConfigValid check
-   if (!loading && isClient && (!auth || !db) && !initializationError) {
+  
+   if (!loading && isClient && (!auth || !db) && !initializationError && firebaseActuallyInitialized) {
      return (
        <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
          <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
-            <h2 className="text-xl font-semibold mb-2">Configuration Error</h2>
+            <h2 className="text-xl font-semibold mb-2">Runtime Error</h2>
             <p className="text-sm">
-              There seems to be an issue with the Firebase services initialization. Please check the environment variables (<code>.env.local</code>) and ensure they are correct. Restart the development server after making changes.
+              Core Firebase services (Auth/Firestore) became unavailable after initial setup. This is unexpected.
             </p>
-           <p className="text-xs mt-4">Core Firebase services (Auth/Firestore) are not available.</p>
+           <p className="text-xs mt-4">Please try refreshing the page or check your network connection.</p>
          </div>
        </div>
      );
@@ -255,5 +254,3 @@ export const useFirebase = () => {
   }
   return context;
 };
-
-    
