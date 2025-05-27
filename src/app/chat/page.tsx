@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile } from 'lucide-react'; // Added ImageIconLucide, FileIcon, X
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile } from 'lucide-react';
 import { db, storage } from '@/config/firebase';
 import {
   collection,
@@ -27,7 +27,7 @@ import {
   updateDoc,
   arrayUnion,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Renamed 'ref' to 'storageRefFn'
 import { getChatId, cn } from '@/lib/utils';
 import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
@@ -118,7 +118,7 @@ export default function ChatPage() {
         if (userProfile.profilePictureUrl) {
           participantPictures[user.uid] = userProfile.profilePictureUrl;
         }
-        if (targetProfilePictureUrl) { // Check if targetProfilePictureUrl is defined
+        if (targetProfilePictureUrl) { 
           participantPictures[targetUserId] = targetProfilePictureUrl;
         }
         if (Object.keys(participantPictures).length > 0) {
@@ -182,7 +182,7 @@ export default function ChatPage() {
     setIsLoadingChats(true);
     // IMPORTANT: This query requires a composite index in Firestore for optimal performance:
     // Collection: 'chats', Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
-    // Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQIAx2FydGljaXBhbnRzGAEaDQoJdXBkYXRlZEF0EAIaDAoIX19uYW1lX18QAg
+    // Create Index Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQIAx2FydGljaXBhbnRzGAEaDQoJdXBkYXRlZEF0EAIaDAoIX19uYW1lX18QAg
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -198,7 +198,7 @@ export default function ChatPage() {
       setIsLoadingChats(false);
     }, (error) => {
       console.error("Error fetching chat list:", error);
-      toast({ title: "Chat List Error", description: "Could not load your conversations. Check Firestore index.", variant: "destructive" });
+      toast({ title: "Chat List Error", description: "Could not load your conversations. This may be due to a missing Firestore index. Please check your Firebase console.", variant: "destructive" });
       setIsLoadingChats(false);
     });
 
@@ -244,8 +244,6 @@ export default function ChatPage() {
             console.log(`Marking chat ${selectedChatId} as read by ${user.uid}`);
             await updateDoc(chatDocRef, {
               lastMessageReadBy: arrayUnion(user.uid),
-              // Do not update 'updatedAt' here as it might reorder chats unnecessarily.
-              // Or, if you want it to bump, keep serverTimestamp()
             });
           }
         }
@@ -263,8 +261,8 @@ export default function ChatPage() {
 
 
   useEffect(() => {
-    if (!authLoading && !user && typeof window !== 'undefined') {
-      router.push('/auth/login?redirect=/chat');
+    if (!authLoading && !user) {
+      if (typeof window !== 'undefined') router.push('/auth/login?redirect=/chat');
     }
   }, [user, authLoading, router]);
 
@@ -280,12 +278,12 @@ export default function ChatPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 10 * 1024 * 1024) {
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
         toast({ title: "File Too Large", description: "Please select a file smaller than 10MB.", variant: "destructive" });
         return;
       }
       setSelectedFile(file);
-      setMessage('');
+      setMessage(''); // Clear message when file is selected
     }
   };
 
@@ -299,8 +297,8 @@ export default function ChatPage() {
         return;
     }
     if (!storage && selectedFile) {
-        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup.", variant: "destructive" });
-        setIsSending(false); // Ensure button is re-enabled
+        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup. If on Spark plan, ensure it allows Storage configuration or upgrade.", variant: "destructive", duration: 10000 });
+        setIsSending(false); 
         return;
     }
     setIsSending(true);
@@ -314,30 +312,37 @@ export default function ChatPage() {
       try {
         const file = selectedFile;
         const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
-        const fileStorageRef = storageRef(storage, filePath);
+        const fileStorageRef = storageRefFn(storage, filePath); // Use renamed import
         const uploadTask = uploadBytesResumable(fileStorageRef, file);
+        console.log("Chat File Upload: Task created for path", filePath);
 
         await new Promise<void>((resolve, reject) => {
           uploadTask.on('state_changed',
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               setUploadProgress(progress);
-              console.log('Upload is ' + progress + '% done');
+              console.log('Upload is ' + progress + '% done. State: ' + snapshot.state);
             },
-            (error) => {
-              console.error("Upload error object:", error);
-              let detailedErrorMessage = `Could not upload file. Code: ${error.code}. Message: ${error.message}.`;
+            (error: any) => {
+              console.error("Firebase Storage Upload Error (chat):", error);
+              console.error("Error Code:", error.code);
+              console.error("Error Message:", error.message);
+              if (error.serverResponse) {
+                console.error("Server Response:", error.serverResponse);
+              }
+              console.error("Full Error Object:", JSON.stringify(error, null, 2));
+              
+              let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
               switch (error.code) {
-                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules. If on Spark plan, ensure it allows Storage configuration or upgrade."; break;
+                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; break;
                 case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
                 case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
                 case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Storage bucket not found. Verify Firebase config (storageBucket value)."; break;
                 case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase config."; break;
                 case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded."; break;
-                case 'storage/unknown': detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Check network and Storage rules.`; break;
-                default: detailedErrorMessage = `Upload error: ${error.message} (Code: ${error.code})`;
+                case 'storage/unknown': default: detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; break;
               }
-              toast({ title: "Upload Failed", description: detailedErrorMessage, variant: "destructive" });
+              toast({ title: "Upload Failed", description: detailedErrorMessage, variant: "destructive", duration: 15000 });
               reject(error);
             },
             async () => {
@@ -349,19 +354,15 @@ export default function ChatPage() {
                 resolve();
               } catch (urlError: any) {
                 console.error("Error getting download URL:", urlError);
-                toast({ title: "Upload Failed", description: `File uploaded, but could not get URL: ${urlError.message}`, variant: "destructive" });
+                toast({ title: "Upload Failed", description: `File uploaded, but could not get URL: ${urlError.message}`, variant: "destructive", duration: 10000 });
                 reject(urlError);
               }
             }
           );
         });
       } catch (error) {
-        // This catch block handles errors from the new Promise (e.g., if reject(error) was called)
-        // or if any synchronous part before the promise threw an error.
         setIsSending(false);
         setUploadProgress(null);
-        // The toast for the specific upload error is already shown inside the promise's error handler.
-        // No need to show another generic toast here unless this catch is for a different type of error.
         return;
       }
     }
@@ -387,11 +388,11 @@ export default function ChatPage() {
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
-        lastMessageReadBy: [user.uid],
+        lastMessageReadBy: [user.uid], // Sender has read it
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
-      if (userProfile.profilePictureUrl) { // Check if profilePictureUrl is defined
+      if (userProfile.profilePictureUrl) { 
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
         chatUpdateData.participantProfilePictures = {
@@ -399,7 +400,6 @@ export default function ChatPage() {
           [user.uid]: userProfile.profilePictureUrl,
         };
       }
-
 
       batch.update(chatDocRef, chatUpdateData);
 
@@ -421,7 +421,6 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // This is handled by the useEffect hook for redirection which runs after render
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
 
@@ -440,6 +439,9 @@ export default function ChatPage() {
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2 text-lg">
             <MessageSquare className="h-5 w-5" /> Conversations
+            {totalUnreadChats > 0 && (
+              <Badge variant="destructive" className="ml-auto">{totalUnreadChats}</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <ScrollArea className="flex-grow">
@@ -586,6 +588,7 @@ export default function ChatPage() {
                   size="icon"
                   onClick={() => setShowEmojiPicker(prev => !prev)}
                   disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
+                  title="Add emoji"
                 >
                     <Smile className="h-5 w-5" />
                     <span className="sr-only">Add emoji</span>
@@ -599,11 +602,11 @@ export default function ChatPage() {
                   disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
                 />
                  <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" />
-                 <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}>
+                 <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isSending || (uploadProgress !== null && uploadProgress < 100)} title="Attach file">
                     <Paperclip className="h-5 w-5" />
                     <span className="sr-only">Attach file</span>
                  </Button>
-                <Button onClick={handleSendMessage} disabled={isSending || (!message.trim() && !selectedFile) || (uploadProgress !== null && uploadProgress < 100)}>
+                <Button onClick={handleSendMessage} disabled={isSending || (!message.trim() && !selectedFile) || (uploadProgress !== null && uploadProgress < 100)} title="Send message">
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="sr-only">Send</span>
                 </Button>

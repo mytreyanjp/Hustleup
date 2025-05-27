@@ -78,7 +78,7 @@ export default function NewPostPage() {
       return;
     }
     if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Please check Firebase setup in your project and ensure Storage is enabled.", variant: "destructive" });
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Please check Firebase setup in your project and ensure Storage is enabled. If on Spark plan, ensure it allows Storage configuration or upgrade.", variant: "destructive", duration: 10000 });
       console.error("Firebase Storage object is null or undefined. Check Firebase configuration and initialization.");
       setIsSubmittingPost(false);
       return;
@@ -106,16 +106,19 @@ export default function NewPostPage() {
             setUploadProgress(progress);
             console.log(`Upload is ${progress}% done. State: ${snapshot.state}. Bytes transferred: ${snapshot.bytesTransferred} of ${snapshot.totalBytes}`);
           },
-          (error) => {
+          (error: any) => { // Changed to 'any' to access serverResponse
             console.error("Firebase Storage Upload Error (student post):", error);
             console.error("Error Code:", error.code);
             console.error("Error Message:", error.message);
+            if (error.serverResponse) {
+              console.error("Server Response:", error.serverResponse);
+            }
             console.error("Full Error Object:", JSON.stringify(error, null, 2));
 
-            let detailedErrorMessage = `Could not upload image. Code: ${error.code}. Message: ${error.message}.`;
+            let detailedErrorMessage = `Could not upload image. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
              switch (error.code) {
                 case 'storage/unauthorized': 
-                  detailedErrorMessage = "Upload failed: Permission denied. Please check your Firebase Storage rules. Ensure they allow authenticated users to write to 'student_post_images/{studentId}/...'. Also, ensure you are on a Firebase plan (e.g., Blaze) that allows setting these rules if you cannot access the Rules tab in the Storage console."; 
+                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'student_post_images/{studentId}/...'. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
                   break;
                 case 'storage/canceled': 
                   detailedErrorMessage = "Upload canceled by the user."; 
@@ -140,7 +143,7 @@ export default function NewPostPage() {
                   break;
                 case 'storage/unknown':
                 default: 
-                  detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Please check your network connection and Firebase Storage rules. Firebase message: ${error.message}`; 
+                  detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
                   break;
             }
             toast({ 
@@ -148,7 +151,7 @@ export default function NewPostPage() {
               title: "Image Upload Failed", 
               description: detailedErrorMessage, 
               variant: "destructive",
-              duration: 10000 // Keep toast longer for errors
+              duration: 15000 // Keep toast longer for critical errors
             });
             reject(error);
           },
@@ -160,7 +163,7 @@ export default function NewPostPage() {
               resolve(downloadURL);
             } catch (urlError: any) {
               console.error("Error getting download URL for student post:", urlError);
-              toast({ title: "Upload Successful, but URL Failed", description: `Image uploaded, but failed to get download URL: ${urlError.message}`, variant: "destructive" });
+              toast({ title: "Upload Successful, but URL Failed", description: `Image uploaded, but failed to get download URL: ${urlError.message}`, variant: "destructive", duration: 10000 });
               reject(urlError);
             }
           }
@@ -176,8 +179,8 @@ export default function NewPostPage() {
         imageUrl: imageUrl,
         caption: data.caption || '',
         createdAt: serverTimestamp(),
-        likes: [], // Initialize likes array
-        commentCount: 0, // Initialize comment count
+        likes: [], 
+        commentCount: 0, 
       });
 
       toast({
@@ -188,13 +191,13 @@ export default function NewPostPage() {
 
     } catch (error: any) {
       console.error('Error creating post (outer try-catch):', error);
-      // Avoid showing a generic toast if a specific upload error toast is already active
       if (!toast.isActive(`image-upload-failed-student-post-${error.code || 'unknown'}`)) {
          toast({
            id: `post-creation-failed-student-post-${Date.now()}`,
            title: 'Failed to Create Post',
            description: (error.message && error.message.includes("Upload failed")) ? "See previous error for upload details." : (error.message || 'An unexpected error occurred while saving the post.'),
            variant: 'destructive',
+           duration: 10000
          });
       }
     } finally {
