@@ -86,6 +86,9 @@ export default function LoginPage() {
            case 'auth/invalid-credential':
             errorMessage = 'Invalid email or password.';
             break;
+          case 'auth/operation-not-allowed':
+            errorMessage = 'Email/Password sign-in is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).';
+            break;
           default:
             errorMessage = `Login failed: ${error.message}`;
         }
@@ -110,7 +113,6 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // Check if user document exists in Firestore
       const userDocRef = doc(db, 'users', user.uid);
       const userDocSnap = await getDoc(userDocRef);
 
@@ -148,6 +150,12 @@ export default function LoginPage() {
             break;
           case 'auth/operation-not-supported-in-this-environment':
             errorMessage = `${providerName} Sign-In is not supported in this browser or environment.`;
+            break;
+          case 'auth/operation-not-allowed':
+            errorMessage = `${providerName} Sign-In is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).`;
+            break;
+          case 'auth/unauthorized-domain':
+            errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
           default:
             errorMessage = `${providerName} Sign-In error: ${error.message}`;

@@ -148,7 +148,7 @@ export default function SignupPage() {
             errorMessage = 'Password is too weak. Please choose a stronger password.';
             break;
           case 'auth/operation-not-allowed': 
-             errorMessage = 'Email/Password sign-up is currently disabled.';
+             errorMessage = 'Email/Password sign-up is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).';
              break;
           case 'auth/configuration-not-found': 
              errorMessage = 'Firebase Authentication configuration is missing or incomplete. Please ensure Email/Password sign-in is enabled in your Firebase project.';
@@ -223,6 +223,12 @@ export default function SignupPage() {
             break;
           case 'auth/operation-not-supported-in-this-environment':
             errorMessage = `${providerName} Sign-In is not supported in this browser or environment.`;
+            break;
+          case 'auth/operation-not-allowed':
+            errorMessage = `${providerName} Sign-In is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).`;
+            break;
+          case 'auth/unauthorized-domain':
+            errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
           default:
             errorMessage = `${providerName} Sign-Up error: ${error.message}`;
