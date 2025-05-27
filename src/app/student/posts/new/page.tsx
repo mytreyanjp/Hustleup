@@ -78,46 +78,85 @@ export default function NewPostPage() {
       return;
     }
     if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup.", variant: "destructive" });
-      setIsSubmittingPost(false); // Ensure button is re-enabled
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Please check Firebase setup in your project and ensure Storage is enabled.", variant: "destructive" });
+      console.error("Firebase Storage object is null or undefined. Check Firebase configuration and initialization.");
+      setIsSubmittingPost(false);
       return;
     }
 
     setIsSubmittingPost(true);
     setUploadProgress(0);
+    console.log("Attempting to upload image for student post...");
 
     try {
       const file = data.image;
       const filePath = `student_post_images/${user.uid}/${Date.now()}_${file.name}`;
-      const fileStorageRef = storageRef(storage, filePath);
-      const uploadTask = uploadBytesResumable(fileStorageRef, file);
+      const fileStorageRefInstance = storageRef(storage, filePath);
+      
+      console.log(`Uploading to Firebase Storage path: ${filePath}`);
+      console.log("File details:", { name: file.name, size: file.size, type: file.type });
+
+      const uploadTask = uploadBytesResumable(fileStorageRefInstance, file);
+      console.log("Upload task created.");
 
       const imageUrl = await new Promise<string>((resolve, reject) => {
         uploadTask.on('state_changed',
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             setUploadProgress(progress);
-            console.log('Upload is ' + progress + '% done');
+            console.log(`Upload is ${progress}% done. State: ${snapshot.state}. Bytes transferred: ${snapshot.bytesTransferred} of ${snapshot.totalBytes}`);
           },
           (error) => {
-            console.error("Upload error object for student post:", error);
+            console.error("Firebase Storage Upload Error (student post):", error);
+            console.error("Error Code:", error.code);
+            console.error("Error Message:", error.message);
+            console.error("Full Error Object:", JSON.stringify(error, null, 2));
+
             let detailedErrorMessage = `Could not upload image. Code: ${error.code}. Message: ${error.message}.`;
              switch (error.code) {
-                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. Check Firebase Storage rules. If on Spark plan, ensure it allows Storage configuration or upgrade."; break;
-                case 'storage/canceled': detailedErrorMessage = "Upload canceled by the user."; break;
-                case 'storage/object-not-found': detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself or incorrect rules."; break;
-                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config."; break;
-                case 'storage/project-not-found': detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings."; break;
-                case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space."; break;
+                case 'storage/unauthorized': 
+                  detailedErrorMessage = "Upload failed: Permission denied. Please check your Firebase Storage rules. Ensure they allow authenticated users to write to 'student_post_images/{studentId}/...'. Also, ensure you are on a Firebase plan (e.g., Blaze) that allows setting these rules if you cannot access the Rules tab in the Storage console."; 
+                  break;
+                case 'storage/canceled': 
+                  detailedErrorMessage = "Upload canceled by the user."; 
+                  break;
+                case 'storage/object-not-found': 
+                  detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself or incorrect rules."; 
+                  break;
+                case 'storage/bucket-not-found': 
+                  detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config and that Storage is enabled in Firebase Console."; 
+                  break;
+                case 'storage/project-not-found': 
+                  detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings."; 
+                  break;
+                case 'storage/quota-exceeded': 
+                  detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space."; 
+                  break;
+                case 'storage/retry-limit-exceeded':
+                  detailedErrorMessage = "Upload failed after multiple retries. Check network connection and Firebase Storage status.";
+                  break;
+                case 'storage/invalid-argument':
+                  detailedErrorMessage = "Upload failed: Invalid argument provided to storage operation. This might be an issue with the file path or metadata.";
+                  break;
                 case 'storage/unknown':
-                default: detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Please check your network connection and Firebase Storage rules. Firebase message: ${error.message}`; break;
+                default: 
+                  detailedErrorMessage = `An unknown error occurred during upload. Code: ${error.code}. Please check your network connection and Firebase Storage rules. Firebase message: ${error.message}`; 
+                  break;
             }
-            toast({ id: `image-upload-failed-student-post-${error.code || 'unknown'}`, title: "Image Upload Failed", description: detailedErrorMessage, variant: "destructive" });
+            toast({ 
+              id: `image-upload-failed-student-post-${error.code || 'unknown'}`, 
+              title: "Image Upload Failed", 
+              description: detailedErrorMessage, 
+              variant: "destructive",
+              duration: 10000 // Keep toast longer for errors
+            });
             reject(error);
           },
           async () => {
+            console.log("Upload task completed successfully. Getting download URL...");
             try {
               const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              console.log("Download URL obtained:", downloadURL);
               resolve(downloadURL);
             } catch (urlError: any) {
               console.error("Error getting download URL for student post:", urlError);
@@ -128,6 +167,7 @@ export default function NewPostPage() {
         );
       });
 
+      console.log("Image URL for Firestore:", imageUrl);
       const postsCollectionRef = collection(db, 'student_posts');
       await addDoc(postsCollectionRef, {
         studentId: user.uid,
@@ -136,8 +176,8 @@ export default function NewPostPage() {
         imageUrl: imageUrl,
         caption: data.caption || '',
         createdAt: serverTimestamp(),
-        likes: [],
-        commentCount: 0,
+        likes: [], // Initialize likes array
+        commentCount: 0, // Initialize comment count
       });
 
       toast({
@@ -148,6 +188,7 @@ export default function NewPostPage() {
 
     } catch (error: any) {
       console.error('Error creating post (outer try-catch):', error);
+      // Avoid showing a generic toast if a specific upload error toast is already active
       if (!toast.isActive(`image-upload-failed-student-post-${error.code || 'unknown'}`)) {
          toast({
            id: `post-creation-failed-student-post-${Date.now()}`,
