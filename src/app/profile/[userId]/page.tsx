@@ -63,7 +63,8 @@ export default function PublicProfilePage() {
               setIsLoadingPosts(true);
               // IMPORTANT: This query requires a composite index in Firestore.
               // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
-              // Create it via the link in the Firebase console error message if it's missing.
+              // Create it via the link in the Firebase console error message if it's missing:
+              // https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=ClRwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvc3R1ZGVudF9wb3N0cy9pbmRleGVzL18QARoNCglzdHVkZW50SWQQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -93,8 +94,8 @@ export default function PublicProfilePage() {
   }, [userId]);
 
    const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
+     if (profile?.role === 'client' && companyName && companyName.trim() !== '') return companyName.substring(0, 2).toUpperCase();
      if (username && username.trim() !== '') return username.substring(0, 2).toUpperCase();
-     if (companyName && companyName.trim() !== '') return companyName.substring(0, 2).toUpperCase();
      if (email) return email.substring(0, 2).toUpperCase();
      return '??';
    };
@@ -123,6 +124,7 @@ export default function PublicProfilePage() {
   }
 
   const isOwnProfile = viewerUser?.uid === profile.uid;
+  const displayName = profile.role === 'client' ? (profile.companyName || profile.username || 'Client Profile') : (profile.username || 'Student Profile');
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
@@ -134,29 +136,29 @@ export default function PublicProfilePage() {
         <CardHeader className="p-4 md:p-6">
            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
                <Avatar className="h-20 w-20 sm:h-32 sm:w-32 text-4xl border-2 border-background shadow-md">
-                  <AvatarImage src={profile.profilePictureUrl} alt={profile.username || profile.companyName || 'User'} />
+                  <AvatarImage src={profile.profilePictureUrl} alt={displayName} />
                    <AvatarFallback>{getInitials(profile.email, profile.username, profile.companyName)}</AvatarFallback>
                </Avatar>
                <div className="sm:flex-1 space-y-2 text-center sm:text-left">
                    <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
                         <h1 className="text-2xl font-bold flex items-center gap-2">
-                            {profile.username || (profile.role === 'client' ? profile.companyName || 'Client Profile' : 'Student Profile')}
+                            {displayName}
                             {profile.role === 'student' && <GraduationCap className="h-6 w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-6 w-6 text-primary" />}
                         </h1>
                         {isOwnProfile ? (
                             <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
-                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> {/* TODO: Create /client/profile/edit */}
+                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> {/* TODO: Create /client/profile/edit if needed */}
                                     Edit My Profile
                                 </Link>
                             </Button>
-                        ) : viewerUser && profile.role === 'student' ? ( 
+                        ) : viewerUser && profile.role && ( // Ensure profile.role exists
                             <Button size="sm" asChild className="w-full sm:w-auto">
                                 <Link href={`/chat?userId=${profile.uid}`}>
                                     <MessageSquare className="mr-1 h-4 w-4" /> Contact {profile.role === 'student' ? 'Student' : 'Client'}
                                 </Link>
                             </Button>
-                        ) : null}
+                        )}
                    </div>
                     {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
                         <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
@@ -169,8 +171,8 @@ export default function PublicProfilePage() {
                    {profile.role === 'student' && profile.bio && (
                         <p className="text-sm text-foreground/90 mt-2">{profile.bio}</p>
                    )}
-                   {profile.role === 'client' && profile.companyName && profile.username !== profile.companyName && (
-                        <p className="text-md font-semibold text-foreground/90 mt-1">{profile.companyName}</p>
+                   {profile.role === 'client' && profile.companyName && profile.username && profile.username !== profile.companyName && (
+                        <p className="text-md text-muted-foreground mt-1">Contact: {profile.username}</p>
                    )}
                    {profile.role === 'client' && profile.website && (
                        <a
@@ -271,10 +273,9 @@ export default function PublicProfilePage() {
 
         {profile.role === 'client' && (
            <CardContent className="p-4 md:p-6">
-                <h3 className="font-semibold mb-2 text-lg">About {profile.companyName || profile.username}</h3>
+                <h3 className="font-semibold mb-2 text-lg">About {displayName}</h3>
                 <p className="text-sm text-muted-foreground">
-                    {/* In the future, clients might have a bio or description field too. */}
-                    This client posts gigs on HustleUp. You can view their open gigs if available.
+                    This client posts gigs on HustleUp.
                 </p>
                 {/* Future: List client's open gigs here */}
            </CardContent>
