@@ -268,7 +268,7 @@ export default function ChatPage() {
 
 
   useEffect(() => {
-    if (!authLoading && !user && typeof window !== 'undefined') { // Added typeof window check
+    if (!authLoading && !user && typeof window !== 'undefined') { 
        router.push('/auth/login?redirect=/chat');
     }
   }, [user, authLoading, router]);
@@ -345,7 +345,7 @@ export default function ChatPage() {
 
               switch (error.code) {
                 case 'storage/unauthorized': 
-                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
+                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. Also ensure you are correctly logged in. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
                   break;
                 case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
                 case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
@@ -353,9 +353,9 @@ export default function ChatPage() {
                 case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase config."; break;
                 case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded."; break;
                 default:
-                  if (error.message && error.message.toLowerCase().includes('network request failed') || error.code === 'storage/unknown' || !error.code) {
+                  if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                     toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
                     duration = 20000; 
                   } else {
                     detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
@@ -441,7 +441,6 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // useEffect will handle the redirect
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
 
@@ -649,3 +648,5 @@ export default function ChatPage() {
     </div>
   );
 }
+
+    
