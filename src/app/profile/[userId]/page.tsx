@@ -61,6 +61,9 @@ export default function PublicProfilePage() {
 
            if (fetchedProfile.role === 'student') {
               setIsLoadingPosts(true);
+              // IMPORTANT: This query requires a composite index in Firestore.
+              // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
+              // Create it via the link in the Firebase console error message if it's missing.
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -242,7 +245,7 @@ export default function PublicProfilePage() {
                             <div key={post.id} className="aspect-square relative group overflow-hidden rounded-md">
                                 <Image
                                     src={post.imageUrl}
-                                    alt={post.caption || `Post by ${profile.username}`}
+                                    alt={post.caption || `Post by ${profile.username || 'user'}`}
                                     layout="fill"
                                     objectFit="cover"
                                     className="group-hover:scale-105 transition-transform duration-300"
