@@ -121,8 +121,8 @@ export default function SignupPage() {
         userProfileData.bio = '';
         userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
-        userProfileData.companyName = '';
-        userProfileData.website = '';
+        userProfileData.companyName = ''; // Initialize empty, user completes in next step or profile edit
+        userProfileData.website = ''; // Initialize empty
       }
 
       await setDoc(userDocRef, userProfileData);
@@ -182,7 +182,6 @@ export default function SignupPage() {
     }
     setIsOAuthLoading(true);
     try {
-      // Specific provider customization for Apple if needed (e.g., scopes)
       if (providerName === "Apple" && appleAuthProvider) {
         (appleAuthProvider as OAuthProvider).addScope('email');
         (appleAuthProvider as OAuthProvider).addScope('name');
@@ -214,7 +213,7 @@ export default function SignupPage() {
       if (error.customData) {
         console.error(`${providerName} Sign-Up error customData:`, error.customData);
       }
-       if (error.credential) { // This often contains useful info for OAuth errors
+       if (error.credential) { 
         console.error(`${providerName} Sign-Up error credential:`, JSON.stringify(error.credential));
       }
 
@@ -243,18 +242,22 @@ export default function SignupPage() {
           case 'auth/invalid-credential':
              errorMessage = `Invalid credential provided for ${providerName} Sign-In. This might indicate a configuration issue with the provider on the Firebase or ${providerName} developer console. Full error: ${error.message}`;
              break;
-          case 'auth/oauth-provider-error': // Generic OAuth error
+          case 'auth/oauth-provider-error': 
              errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
              break;
           default:
-            errorMessage = `${providerName} Sign-Up error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code})`;
+            if (providerName === "Apple") {
+                errorMessage = `Apple Sign-In failed. This often indicates an issue with the complex setup required in both the Apple Developer portal and Firebase. Please double-check all App IDs, Services IDs, private keys, and team configurations. (Code: ${error.code || 'N/A'}, Message: ${error.message || 'No specific message'})`;
+            } else {
+                 errorMessage = `${providerName} Sign-Up error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code || 'N/A'})`;
+            }
         }
       }
       toast({
         title: `${providerName} Sign-Up Failed`,
         description: errorMessage,
         variant: 'destructive',
-        duration: 10000, // Longer duration for more complex error messages
+        duration: 10000, 
       });
     } finally {
       setIsOAuthLoading(false);

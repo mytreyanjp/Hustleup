@@ -110,7 +110,6 @@ export default function LoginPage() {
     }
     setIsOAuthLoading(true);
     try {
-      // Specific provider customization for Apple if needed (e.g., scopes)
       if (providerName === "Apple" && appleAuthProvider) {
         (appleAuthProvider as OAuthProvider).addScope('email');
         (appleAuthProvider as OAuthProvider).addScope('name');
@@ -123,14 +122,12 @@ export default function LoginPage() {
       const userDocSnap = await getDoc(userDocRef);
 
       if (userDocSnap.exists() && userDocSnap.data()?.role) {
-        // User exists and has a role, proceed to dashboard
         toast({
           title: 'Login Successful',
           description: `Welcome back, ${user.displayName || user.email}!`,
         });
-        router.push('/'); // Homepage will redirect to dashboard
+        router.push('/'); 
       } else {
-        // New user or existing user without a role (e.g., signed up but didn't complete profile)
         toast({
           title: `Welcome ${user.displayName || user.email}!`,
           description: 'Please complete your profile to continue.',
@@ -144,16 +141,15 @@ export default function LoginPage() {
       if (error.customData) {
         console.error(`${providerName} Sign-In error customData:`, error.customData);
       }
-      if (error.credential) { // This often contains useful info for OAuth errors
+      if (error.credential) { 
         console.error(`${providerName} Sign-In error credential:`, JSON.stringify(error.credential));
       }
-
 
       let errorMessage = `${providerName} Sign-In failed. Please try again.`;
       if (error.code) {
         switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. It was created using a different sign-in method (e.g., password, or another social provider). Please sign in using your original method.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. It was created using a different sign-in method (e.g., password, or another social provider). Please sign in using your original method, or try linking accounts if supported.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-In cancelled.`;
@@ -174,18 +170,22 @@ export default function LoginPage() {
           case 'auth/invalid-credential':
              errorMessage = `Invalid credential provided for ${providerName} Sign-In. This might indicate a configuration issue with the provider on the Firebase or ${providerName} developer console. Full error: ${error.message}`;
              break;
-          case 'auth/oauth-provider-error': // Generic OAuth error
+          case 'auth/oauth-provider-error': 
              errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
              break;
           default:
-            errorMessage = `${providerName} Sign-In error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code})`;
+            if (providerName === "Apple") {
+                errorMessage = `Apple Sign-In failed. This often indicates an issue with the complex setup required in both the Apple Developer portal and Firebase. Please double-check all App IDs, Services IDs, private keys, and team configurations. (Code: ${error.code || 'N/A'}, Message: ${error.message || 'No specific message'})`;
+            } else {
+                errorMessage = `${providerName} Sign-In error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code || 'N/A'})`;
+            }
         }
       }
       toast({
         title: `${providerName} Sign-In Failed`,
         description: errorMessage,
         variant: 'destructive',
-        duration: 10000, // Longer duration for more complex error messages
+        duration: 10000, 
       });
     } finally {
       setIsOAuthLoading(false);
@@ -266,7 +266,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthSignIn(appleAuthProvider, "Apple")}
-              disabled={isLoading || isOAuthLoading || !appleAuthProvider} // Disable if provider not configured
+              disabled={isLoading || isOAuthLoading || !appleAuthProvider} 
             >
               {isOAuthLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -280,7 +280,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthSignIn(githubAuthProvider, "GitHub")}
-              disabled={isLoading || isOAuthLoading || !githubAuthProvider} // Disable if provider not configured
+              disabled={isLoading || isOAuthLoading || !githubAuthProvider} 
             >
               {isOAuthLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
