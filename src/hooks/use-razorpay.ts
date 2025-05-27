@@ -72,11 +72,11 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
     document.body.appendChild(script);
 
     return () => {
-      const scriptElement = document.getElementById('razorpay-checkout-script');
-      if (scriptElement && document.body.contains(scriptElement)) {
-          // Optional: Remove script on unmount, though usually not necessary
-          // document.body.removeChild(scriptElement);
-      }
+      // Optional: Script removal on unmount, generally not strictly needed.
+      // const scriptElement = document.getElementById('razorpay-checkout-script');
+      // if (scriptElement && document.body.contains(scriptElement)) {
+      //     document.body.removeChild(scriptElement);
+      // }
     };
   }, [toast]);
 
@@ -88,15 +88,16 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
       return;
     }
     if (!keyId) {
-      toast({ title: 'Configuration Error', description: 'Razorpay Key ID is missing.', variant: 'destructive'});
+      toast({ title: 'Configuration Error', description: 'Razorpay Key ID is missing. Please check NEXT_PUBLIC_RAZORPAY_KEY_ID in .env.local', variant: 'destructive'});
       console.error('Razorpay Key ID is not configured.');
       return;
     }
 
-    // Razorpay's standard checkout modal supports various payment methods including UPI (GPay, PhonePe, etc.),
-    // credit/debit cards, net banking, and wallets, depending on your Razorpay account configuration.
-    // End-users (clients paying for gigs) do NOT need their own Razorpay account; they use their existing
-    // payment methods (e.g., GPay app, bank card). Razorpay handles the secure routing.
+    // As a developer, you need a Razorpay merchant account (with KYC) to generate API keys and manage payments.
+    // Your app's end-users (clients paying for gigs) DO NOT need their own Razorpay account.
+    // They use their existing payment methods (UPI apps like GPay, PhonePe; Cards; Netbanking) within the Razorpay modal.
+    // The availability of specific payment methods (like UPI, cards, wallets) is configured in YOUR Razorpay Merchant Dashboard.
+    // This client-side code initiates Razorpay's standard checkout process.
 
     const razorpayOptions: RazorpayOptions = {
       ...options,
@@ -110,34 +111,41 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
           });
       },
        modal: {
-        ...options.modal, // Preserve existing modal options
+        ...options.modal, 
         ondismiss: () => {
-            console.log('Razorpay checkout modal dismissed.');
-            toast({ title: 'Payment Cancelled', description: 'The payment process was cancelled.'});
-             // You might want a specific callback for dismissal vs. error
+            console.log('Razorpay checkout modal dismissed by user.');
+            // toast({ title: 'Payment Cancelled', description: 'The payment process was cancelled.'});
              onPaymentError({ code: 'PAYMENT_CANCELLED', description: 'User closed the payment modal.' });
              if (options.modal?.ondismiss) {
-                 options.modal.ondismiss(); // Call original ondismiss if provided
+                 options.modal.ondismiss(); 
              }
         }
        },
-        // Set theme color from primary CSS variable
-        // Note: This requires the CSS variable to be accessible globally
         theme: {
            ...options.theme,
-           // Using a fixed primary color for consistency with the theme
-           // Ensure this color contrasts well with Razorpay's modal elements.
-           // The value "hsl(var(--primary))" doesn't work directly here as it's a CSS variable.
-           // Use the actual HSL values or a hex code for the primary theme color.
-           // For --primary: 225 27% 14%; -> dark blue
-           color: '#1A237E' // Example: A dark blue, adjust to your theme's primary
+           // This color is for theming the Razorpay modal.
+           // Example: A dark blue, adjust to your theme's primary.
+           color: '#1A237E' 
         }
     };
+
+    // Log the options being passed to Razorpay for debugging
+    console.log("Attempting to initialize Razorpay with options:", {
+        key: keyId, // For debugging, you might see your key here.
+        amount: razorpayOptions.amount,
+        currency: razorpayOptions.currency,
+        name: razorpayOptions.name,
+        description: razorpayOptions.description,
+        prefill_name: razorpayOptions.prefill?.name,
+        prefill_email: razorpayOptions.prefill?.email,
+        notes: razorpayOptions.notes,
+        theme_color: razorpayOptions.theme?.color,
+      });
 
      try {
         const rzp = new window.Razorpay(razorpayOptions);
         rzp.on('payment.failed', (response: any) => {
-            console.error('Razorpay Payment Failed:', response);
+            console.error('Razorpay Payment Failed Callback. Response:', response);
             onPaymentError({
                  code: response.error?.code,
                  description: response.error?.description,
@@ -148,9 +156,10 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
             });
         });
         rzp.open();
+        console.log("Razorpay rzp.open() called.");
      } catch (error) {
-        console.error("Error initializing Razorpay:", error);
-        toast({ title: 'Payment Error', description: 'Could not initialize the payment gateway.', variant: 'destructive'});
+        console.error("Error initializing Razorpay instance:", error);
+        toast({ title: 'Payment Error', description: 'Could not initialize the payment gateway. Check console for details.', variant: 'destructive'});
         onPaymentError(error);
      }
 
