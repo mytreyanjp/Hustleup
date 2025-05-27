@@ -25,6 +25,7 @@ export interface UserProfile extends DocumentData {
   // Client-specific fields
   companyName?: string;
   website?: string;
+  companyDescription?: string; // Added for client's company description
 }
 
 interface FirebaseContextType {
@@ -125,7 +126,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
       if (firebaseInitializationDetails.areEnvVarsMissing) {
         console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Details: ${firebaseInitializationDetails.errorMessage}`;
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
         console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This can happen if environment variables are present but contain invalid values (e.g., incorrect API key format), or if there's a network issue preventing connection to Firebase services. Original error: ${firebaseInitializationDetails.errorMessage}`;

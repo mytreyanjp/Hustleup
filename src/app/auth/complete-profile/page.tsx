@@ -11,18 +11,58 @@ import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea'; // Added Textarea
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Briefcase, Building, Globe } from 'lucide-react'; // Added Building, Globe
+import { Loader2, User, Briefcase, Building, Globe, Info } from 'lucide-react'; // Added Info
 
 const completeProfileSchema = z.object({
   username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, { message: 'Username cannot exceed 30 characters'}),
   role: z.enum(['student', 'client'], { required_error: 'You must select a role' }),
   companyName: z.string().max(100, { message: 'Company name cannot exceed 100 characters' }).optional(),
   website: z.string().url({ message: 'Please enter a valid URL for your website (e.g., https://example.com)' }).max(100).optional().or(z.literal('')),
+  companyDescription: z.string().max(500, { message: 'Company description cannot exceed 500 characters' }).optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'client') {
+    if (!data.companyName || data.companyName.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['companyName'],
+        message: 'Company name is required for clients.',
+      });
+    }
+    // Validate website: required and must be a valid URL if provided
+    if (!data.website || data.website.trim() === '') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['website'],
+            message: 'Company website is required for clients.',
+        });
+    } else {
+        // Re-validate URL because optional().or(z.literal('')) bypasses initial URL check if empty
+        try {
+            z.string().url().parse(data.website);
+        } catch (e) {
+            ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['website'],
+            message: 'Please enter a valid URL (e.g., https://example.com).',
+            });
+        }
+    }
+
+    if (!data.companyDescription || data.companyDescription.trim().length < 20) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['companyDescription'],
+        message: 'Company description is required for clients and must be at least 20 characters.',
+      });
+    }
+  }
 });
+
 
 type CompleteProfileFormValues = z.infer<typeof completeProfileSchema>;
 
@@ -39,7 +79,9 @@ export default function CompleteProfilePage() {
       role: undefined,
       companyName: '',
       website: '',
+      companyDescription: '',
     },
+    mode: 'onChange', // Validate on change to give immediate feedback for conditional fields
   });
 
   const selectedRole = form.watch("role");
@@ -68,8 +110,9 @@ export default function CompleteProfilePage() {
         email: user.email,
         username: data.username,
         role: data.role,
-        profilePictureUrl: user.photoURL || '',
+        profilePictureUrl: user.photoURL || '', // Use Google/OAuth photoURL if available
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // Add updatedAt
         averageRating: 0,
         totalRatings: 0,
       };
@@ -80,11 +123,12 @@ export default function CompleteProfilePage() {
         userProfileData.bio = '';
         userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
-        userProfileData.companyName = data.companyName || '';
-        userProfileData.website = data.website || '';
+        userProfileData.companyName = data.companyName; // Now required
+        userProfileData.website = data.website; // Now required
+        userProfileData.companyDescription = data.companyDescription; // Now required
       }
       
-      await setDoc(userDocRef, userProfileData, { merge: true }); // Use merge to be safe
+      await setDoc(userDocRef, userProfileData, { merge: true });
 
       toast({
         title: 'Profile Completed!',
@@ -130,7 +174,7 @@ export default function CompleteProfilePage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Email: <span className="text-muted-foreground">{user.email}</span></p>
-                {user.displayName && <p className="text-sm font-medium">Name: <span className="text-muted-foreground">{user.displayName}</span></p>}
+                {user.displayName && <p className="text-sm font-medium">Name (from provider): <span className="text-muted-foreground">{user.displayName}</span></p>}
               </div>
 
               <FormField
@@ -140,7 +184,7 @@ export default function CompleteProfilePage() {
                   <FormItem>
                     <FormLabel>Username (Public)</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., creative_coder or YourCompanyName" {...field} />
+                      <Input placeholder="e.g., creative_coder or YourName" {...field} />
                     </FormControl>
                     <FormDescription>This will be shown on your profile.</FormDescription>
                     <FormMessage />
@@ -156,7 +200,11 @@ export default function CompleteProfilePage() {
                     <FormLabel>I want to join as a...</FormLabel>
                     <FormControl>
                       <RadioGroup
-                        onValueChange={field.onChange}
+                        onValueChange={(value) => {
+                            field.onChange(value);
+                            // Trigger revalidation when role changes as other fields depend on it
+                            form.trigger(['companyName', 'website', 'companyDescription']);
+                        }}
                         defaultValue={field.value}
                         className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4"
                       >
@@ -192,9 +240,11 @@ export default function CompleteProfilePage() {
                     name="companyName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Company Name (Optional)</FormLabel>
+                        <FormLabel className='flex items-center gap-1'>
+                            <Building className="h-4 w-4 text-muted-foreground" /> Company Name
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Acme Corp" {...field} />
+                          <Input placeholder="e.g., Acme Innovations Inc." {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -205,9 +255,26 @@ export default function CompleteProfilePage() {
                     name="website"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Company Website (Optional)</FormLabel>
+                        <FormLabel className='flex items-center gap-1'>
+                            <Globe className="h-4 w-4 text-muted-foreground" /> Company Website
+                        </FormLabel>
                         <FormControl>
                           <Input placeholder="https://yourcompany.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                   <FormField
+                    control={form.control}
+                    name="companyDescription"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className='flex items-center gap-1'>
+                           <Info className="h-4 w-4 text-muted-foreground" /> About Your Company
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="Tell students about your company, its mission, and the types of projects you typically offer (min 20 characters)." {...field} rows={4}/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>

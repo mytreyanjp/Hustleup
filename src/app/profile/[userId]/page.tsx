@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info } from 'lucide-react'; // Added Info
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -93,7 +93,6 @@ export default function PublicProfilePage() {
   }, [userId]);
 
    const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
-     // Prioritize companyName for client fallback if username isn't distinct enough or is just an email part
      if (profile?.role === 'client' && companyName && companyName.trim() !== '') return companyName.substring(0, 2).toUpperCase();
      if (username && username.trim() !== '') return username.substring(0, 2).toUpperCase();
      if (email) return email.substring(0, 2).toUpperCase();
@@ -124,8 +123,6 @@ export default function PublicProfilePage() {
   }
 
   const isOwnProfile = viewerUser?.uid === profile.uid;
-  // For clients, displayName is companyName if available, otherwise username.
-  // For students, displayName is username.
   const displayName = profile.role === 'client'
     ? (profile.companyName || profile.username || 'Client Profile')
     : (profile.username || 'Student Profile');
@@ -146,7 +143,7 @@ export default function PublicProfilePage() {
                <div className="sm:flex-1 space-y-1 text-center sm:text-left">
                    <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
                         <h1 className="text-2xl font-bold flex items-center gap-2">
-                            {displayName} {/* This is the Company Name for clients if available */}
+                            {displayName}
                             {profile.role === 'student' && <GraduationCap className="h-6 w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-6 w-6 text-primary" />}
                         </h1>
@@ -165,7 +162,6 @@ export default function PublicProfilePage() {
                         )}
                    </div>
 
-                   {/* Student specific details */}
                    {profile.role === 'student' && profile.bio && (
                         <p className="text-sm text-foreground/90 mt-1">{profile.bio}</p>
                    )}
@@ -177,11 +173,9 @@ export default function PublicProfilePage() {
                             </span>
                         </div>
                     )}
-                    {/* Common Detail: Email, displayed for all roles if not viewing own profile */}
                     {!isOwnProfile && profile.email && (
                         <p className="text-xs text-muted-foreground mt-1">Email: {profile.email}</p>
                     )}
-                    {/* For own profile, email is usually known or in settings */}
                     {isOwnProfile && profile.email && (
                         <p className="text-xs text-muted-foreground mt-1">Your Email (private): {profile.email}</p>
                     )}
@@ -191,41 +185,53 @@ export default function PublicProfilePage() {
 
         <Separator />
 
-        {/* Client Specific Section */}
         {profile.role === 'client' && (
-            <CardContent className="p-4 md:p-6 space-y-3">
-                <h3 className="font-semibold text-lg text-muted-foreground">Company Details</h3>
-                {/* The main H1 tag already displays the company name if available via 'displayName'.
-                    This section is for supplementary details or to reiterate if the client's username is distinct. */}
+            <CardContent className="p-4 md:p-6 space-y-4">
+                <h3 className="font-semibold text-lg text-muted-foreground mb-2">Company Details</h3>
                 {profile.companyName && profile.username && profile.companyName !== profile.username && displayName === profile.companyName && (
                      <p className="text-sm"><span className="font-medium text-card-foreground">Primary Contact:</span> {profile.username}</p>
                 )}
 
                 {profile.website ? (
-                  <div className="flex items-center gap-1.5">
-                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <a
-                      href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline break-all"
-                    >
-                      {profile.website}
-                    </a>
+                  <div className="flex items-start gap-2 mb-2">
+                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
+                    <div>
+                        <p className="text-xs text-muted-foreground">Website</p>
+                        <a
+                        href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline break-all"
+                        >
+                        {profile.website}
+                        </a>
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 mb-2">
                     <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground">Website not provided.</p>
                   </div>
                 )}
-                {/* Future: List client's open gigs here */}
-                <p className="text-sm text-muted-foreground mt-2">This client posts gigs on HustleUp. Students can apply to their open opportunities.</p>
+
+                {profile.companyDescription ? (
+                    <div className="flex items-start gap-2">
+                        <Info className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
+                        <div>
+                            <p className="text-xs text-muted-foreground">About Company</p>
+                            <p className="text-sm whitespace-pre-wrap">{profile.companyDescription}</p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1.5">
+                        <Info className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                        <p className="text-sm text-muted-foreground">Company description not provided.</p>
+                    </div>
+                )}
             </CardContent>
         )}
 
 
-        {/* Student Specific Section */}
         {profile.role === 'student' && (
           <>
             <CardContent className="p-4 md:p-6 space-y-6">
@@ -308,6 +314,3 @@ export default function PublicProfilePage() {
     </div>
   );
 }
-
-
-    

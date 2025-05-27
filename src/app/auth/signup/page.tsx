@@ -111,6 +111,7 @@ export default function SignupPage() {
         username: data.username || user.email?.split('@')[0] || `user_${user.uid.substring(0, 5)}`,
         profilePictureUrl: '', 
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         averageRating: 0,
         totalRatings: 0,
       };
@@ -121,8 +122,9 @@ export default function SignupPage() {
         userProfileData.bio = '';
         userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
-        userProfileData.companyName = ''; // Initialize empty, user completes in next step or profile edit
-        userProfileData.website = ''; // Initialize empty
+        userProfileData.companyName = ''; 
+        userProfileData.website = ''; 
+        userProfileData.companyDescription = ''; 
       }
 
       await setDoc(userDocRef, userProfileData);
@@ -131,9 +133,10 @@ export default function SignupPage() {
         title: 'Account Created Successfully!',
         description: `Welcome to HustleUp as a ${data.role}. Redirecting...`,
       });
+      
       router.push(data.role === 'student' ? '/student/dashboard' : '/client/dashboard');
 
-    } catch (error: any) {
+    } catch (error: any) { // Added opening brace for catch block
       console.error('Signup error:', error);
       let errorMessage = 'An unexpected error occurred during signup.';
       if (error.code) {
@@ -194,12 +197,14 @@ export default function SignupPage() {
       const docSnap = await getDoc(userDocRef);
 
       if (docSnap.exists() && docSnap.data()?.role) {
+        // User exists and has a role, likely a returning user.
         toast({
           title: 'Welcome Back!',
           description: `Signed in as ${user.displayName || user.email}. Redirecting...`,
         });
         router.push('/'); 
       } else {
+        // New user via OAuth, or existing user without a role (needs profile completion)
         toast({
           title: `Account Created with ${providerName}!`,
           description: 'Please complete your profile to get started.',
@@ -221,7 +226,7 @@ export default function SignupPage() {
       if (error.code) {
          switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. Please log in using your original sign-in method, or sign up with a different email.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. Please log in using your original sign-in method.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-Up cancelled.`;
