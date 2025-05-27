@@ -39,10 +39,10 @@ interface Gig {
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: ApplicantInfo[];
-  selectedStudentId?: string | null; 
-  currency: string; 
+  selectedStudentId?: string | null;
+  currency: "INR";
   // Fields for storing review directly on the gig for the selected student (alternative to separate reviews collection)
-  // reviewForSelectedStudent?: { rating: number; comment?: string; reviewedAt: Timestamp }; 
+  // reviewForSelectedStudent?: { rating: number; comment?: string; reviewedAt: Timestamp };
 }
 
 interface Review {
@@ -92,7 +92,7 @@ export default function ManageGigPage() {
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
-             currency: "INR", 
+             currency: "INR",
              status: 'succeeded',
              razorpayPaymentId: paymentDetails.paymentId,
              razorpayOrderId: paymentDetails.orderId,
@@ -151,9 +151,9 @@ export default function ManageGigPage() {
 
      openCheckout({
        amount: gig.budget * 100, // Amount in paise
-       currency: "INR", // Explicitly use INR
+       currency: "INR",
        name: "HustleUp Gig Payment",
-       description: `Payment for: ${gig.title}`,
+       description: `Gig: ${gig.title}. Use any supported method via Razorpay (Cards, UPI/GPay, etc.).`,
        prefill: {
          name: userProfile?.username || user?.email?.split('@')[0],
          email: user?.email || '',
@@ -181,7 +181,7 @@ export default function ManageGigPage() {
                     setGig(null);
                 } else {
                     if (!fetchedGig.currency) {
-                        fetchedGig.currency = "INR";
+                        fetchedGig.currency = "INR"; // Should always be INR now
                     }
                     setGig(fetchedGig);
 
@@ -261,7 +261,7 @@ export default function ManageGigPage() {
 
       const newMessageRef = doc(collection(db, 'chats', chatId, 'messages'));
       batch.set(newMessageRef, {
-        senderId: user.uid, 
+        senderId: user.uid,
         text: messageText,
         timestamp: serverTimestamp(),
       });
@@ -369,7 +369,7 @@ export default function ManageGigPage() {
                 const studentData = studentSnap.data() as UserProfile;
                 const currentTotalRatings = studentData.totalRatings || 0;
                 const currentAverageRating = studentData.averageRating || 0;
-                
+
                 const newTotalRatings = currentTotalRatings + 1;
                 const newAverageRating = ((currentAverageRating * currentTotalRatings) + rating) / newTotalRatings;
 
@@ -404,7 +404,7 @@ export default function ManageGigPage() {
            case 'pending': return 'secondary';
            case 'open': return 'default';
            case 'in-progress': return 'secondary';
-           case 'completed': return 'outline'; 
+           case 'completed': return 'outline';
            case 'closed': return 'destructive';
            default: return 'secondary';
        }

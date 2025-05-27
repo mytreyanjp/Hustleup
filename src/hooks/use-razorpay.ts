@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
@@ -91,6 +92,10 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
       console.error('Razorpay Key ID is not configured.');
       return;
     }
+
+    // Razorpay's standard checkout modal supports various payment methods including UPI (GPay, PhonePe, etc.),
+    // credit/debit cards, net banking, and wallets, depending on your Razorpay account configuration.
+    // No specific client-side code is usually needed to "enable" GPay if UPI is enabled for your Razorpay merchant account.
 
     const razorpayOptions: RazorpayOptions = {
       ...options,
