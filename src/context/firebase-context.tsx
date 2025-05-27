@@ -40,13 +40,12 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<UserRole>(null);
-  const [firebaseActuallyInitialized, setFirebaseActuallyInitialized] = useState(false); // Renamed from firebaseInitialized
+  const [firebaseActuallyInitialized, setFirebaseActuallyInitialized] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
-    // Ensure db is available (it might be null if firebaseInitializationDetails.isSuccessfullyInitialized is false)
-    if (!db) { 
+    if (!db) {
       console.warn("Firestore (db) not initialized, skipping profile fetch. This is expected if Firebase setup failed.");
       setUserProfile(null);
       setRole(null);
@@ -120,9 +119,15 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     let unsubscribeAuth: (() => void) | null = null;
 
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
-      console.error("Firebase Context: Firebase services not initialized.", firebaseInitializationDetails.errorMessage);
-      // Use the detailed error message from firebaseInitializationDetails
-      setInitializationError(firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred. Check .env.local and restart.");
+      let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
+      if (firebaseInitializationDetails.areEnvVarsMissing) {
+        console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
+        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Details: ${firebaseInitializationDetails.errorMessage}`;
+      } else if (firebaseInitializationDetails.didCoreServicesFail) {
+        console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
+        specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This might be due to invalid values in your .env.local or a network issue. Details: ${firebaseInitializationDetails.errorMessage}`;
+      }
+      setInitializationError(specificErrorMessage);
       setFirebaseActuallyInitialized(false);
       setLoading(false);
       setUser(null);
@@ -132,9 +137,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setFirebaseActuallyInitialized(true);
-    setInitializationError(null); 
+    setInitializationError(null);
 
-    if (auth) { 
+    if (auth) {
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
         console.log("Auth state changed. Current user:", currentUser?.uid || 'None');
         setUser(currentUser);
@@ -154,17 +159,17 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       setFirebaseActuallyInitialized(false);
       setLoading(false);
     }
-    
+
     return () => {
       if (unsubscribeAuth) {
         console.log("Unsubscribing from auth state changes.");
         unsubscribeAuth();
       }
     };
-  }, [fetchUserProfile]); 
+  }, [fetchUserProfile]);
 
   useEffect(() => {
-    if (!user || !db) { // db might be null if main init failed
+    if (!user || !db) {
       setTotalUnreadChats(0);
       return;
     }
@@ -217,13 +222,17 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
         <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
           <h2 className="text-xl font-semibold mb-2">Configuration Error</h2>
-          <p className="text-sm">{initializationError}</p>
-          <p className="text-xs mt-4">Please ensure Firebase is configured correctly (check <code>.env.local</code> and all variable values) and restart the application.</p>
+          <p className="text-sm whitespace-pre-wrap">{initializationError}</p>
+          {firebaseInitializationDetails.areEnvVarsMissing && (
+            <p className="text-xs mt-4">
+              <strong>Action Required:</strong> Check your <code>.env.local</code> file in the project root. Ensure all <code>NEXT_PUBLIC_FIREBASE_...</code> variables are correctly set. Then, <strong>restart your Next.js development server.</strong>
+            </p>
+          )}
         </div>
       </div>
     );
   }
-  
+
    if (!loading && isClient && (!auth || !db) && !initializationError && firebaseActuallyInitialized) {
      return (
        <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
