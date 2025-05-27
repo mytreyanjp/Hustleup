@@ -7,9 +7,9 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { signInWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo } from 'firebase/auth';
-import { auth, googleAuthProvider, db } from '@/config/firebase'; // Import googleAuthProvider and db
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+import { signInWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential } from 'firebase/auth';
+import { auth, googleAuthProvider, appleAuthProvider, githubAuthProvider, db } from '@/config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,11 +32,25 @@ const GoogleIcon = () => (
   </svg>
 );
 
+// SVG for Apple Icon
+const AppleIcon = () => (
+    <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="apple" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512">
+        <path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C39.2 141.6 0 184.8 0 246.4c0 37.5 19.7 74.7 50.4 99.5C34.3 368 19.8 405.2 19.8 442.6c0 6.7 .6 13.4 1.7 19.9H192v-29.3H17.4c-.8-6.5-1.4-13.2-1.4-20.2 .1-33.9 14.6-60.5 40.8-79.2 25.2-17.9 50.5-27.5 76.8-27.5 27.7 0 53.5 11.7 76.8 31.4 22.3 18.9 35.9 45.8 35.9 77.9 .1 21.3-5.3 42.8-15.1 63.2H318.7c1.6-11.6 2.4-23.6 2.4-36C321.1 300.1 318.9 284.2 318.7 268.7zM226.1 184c-15.5-16.4-35.5-25.3-55.7-25.3-21.3 0-42.5 10.2-59.3 26.8-17.2 16.8-29.3 39.9-30.1 64.6H287c-.7-24.4-12.5-47.1-29.9-63.2-5.2-4.8-11.3-9.1-17.9-12.9-1.1-.6-2.2-1.2-3.1-1.8z"></path>
+    </svg>
+);
+
+// SVG for GitHub Icon
+const GitHubIcon = () => (
+    <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="github" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512">
+        <path fill="currentColor" d="M165.9 397.4c0 2-1.3 3.2-3.2 3.2h-3.2c-1.3 0-3.2-1.3-3.2-3.2V297.2c0-2 1.3-3.2 3.2-3.2h3.2c1.3 0 3.2 1.3 3.2 3.2v100.2zm100.2 0c0 2-1.3 3.2-3.2 3.2h-3.2c-1.3 0-3.2-1.3-3.2-3.2V297.2c0-2 1.3-3.2 3.2-3.2h3.2c1.3 0 3.2 1.3 3.2 3.2v100.2zm100.2 0c0 2-1.3 3.2-3.2 3.2h-3.2c-1.3 0-3.2-1.3-3.2-3.2V297.2c0-2 1.3-3.2 3.2-3.2h3.2c1.3 0 3.2 1.3 3.2 3.2v100.2zm-300.5-78.3c0-2.3-1.3-4.5-3.2-4.5h-3.2c-1.3 0-3.2 2.3-3.2 4.5v73.6c0 2.3 1.3 4.5 3.2 4.5h3.2c1.3 0 3.2-2.3 3.2-4.5v-73.6zm100.2 0c0-2.3-1.3-4.5-3.2-4.5h-3.2c-1.3 0-3.2 2.3-3.2 4.5v73.6c0 2.3 1.3 4.5 3.2 4.5h3.2c1.3 0 3.2-2.3 3.2-4.5v-73.6zm100.2 0c0-2.3-1.3-4.5-3.2-4.5h-3.2c-1.3 0-3.2 2.3-3.2 4.5v73.6c0 2.3 1.3 4.5 3.2 4.5h3.2c1.3 0 3.2-2.3 3.2-4.5v-73.6zM248 8C111 8 0 119 0 256s111 248 248 248 248-111 248-248S385 8 248 8zm121.6 352.9c-15.2 15.2-34.3 24.8-56.2 24.8H172.9c-21.9 0-41-9.7-56.2-24.8A83.52 83.52 0 0 1 97 280.1c0-26.2 12.5-47.8 29.4-63.2 15.2-13.2 34.3-21.3 56.2-21.3h100.2c21.9 0 41 8.1 56.2 21.3 17 15.4 29.4 37 29.4 63.2-.1 26.2-12.6 47.8-29.5 63.2z"></path>
+    </svg>
+);
+
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -85,47 +99,67 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    setIsGoogleLoading(true);
-    if (!auth || !googleAuthProvider || !db) {
-      toast({ title: 'Error', description: 'Firebase not configured for Google Sign-In.', variant: 'destructive' });
-      setIsGoogleLoading(false);
+  const handleOAuthSignIn = async (provider: typeof googleAuthProvider | typeof appleAuthProvider | typeof githubAuthProvider, providerName: string) => {
+    if (!provider || !auth || !db) {
+      toast({ title: 'Error', description: `Firebase not configured for ${providerName} Sign-In.`, variant: 'destructive' });
+      setIsOAuthLoading(false);
       return;
     }
+    setIsOAuthLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleAuthProvider);
+      const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      const additionalUserInfo = getAdditionalUserInfo(result);
+      
+      // Check if user document exists in Firestore
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDoc(userDocRef);
 
-      if (additionalUserInfo?.isNewUser) {
-        // New user, redirect to complete profile page
-        toast({
-          title: 'Welcome!',
-          description: 'Please complete your profile to get started.',
-        });
-        router.push('/auth/complete-profile');
-      } else {
-        // Existing user
+      if (userDocSnap.exists() && userDocSnap.data()?.role) {
+        // User exists and has a role, proceed to dashboard
         toast({
           title: 'Login Successful',
           description: `Welcome back, ${user.displayName || user.email}!`,
         });
-        router.push('/');
+        router.push('/'); // Homepage will redirect to dashboard
+      } else {
+        // New user or existing user without a role (e.g., signed up but didn't complete profile)
+        toast({
+          title: `Welcome ${user.displayName || user.email}!`,
+          description: 'Please complete your profile to continue.',
+        });
+        router.push('/auth/complete-profile');
       }
     } catch (error: any) {
-      console.error('Google Sign-In error:', error);
-      let errorMessage = 'Google Sign-In failed.';
-      if (error.code === 'auth/account-exists-with-different-credential') {
-        errorMessage = 'An account already exists with the same email address but different sign-in credentials. Try signing in with the original method.';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = 'Google Sign-In cancelled.';
+      console.error(`${providerName} Sign-In error:`, error);
+      let errorMessage = `${providerName} Sign-In failed.`;
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/account-exists-with-different-credential':
+            errorMessage = 'An account already exists with this email. Try another sign-in method.';
+            break;
+          case 'auth/popup-closed-by-user':
+            errorMessage = `${providerName} Sign-In cancelled.`;
+            break;
+          case 'auth/cancelled-popup-request':
+            errorMessage = 'Multiple pop-ups were opened. Please try again.';
+            break;
+          case 'auth/popup-blocked':
+            errorMessage = 'Pop-up was blocked by the browser. Please allow pop-ups for this site.';
+            break;
+          case 'auth/operation-not-supported-in-this-environment':
+            errorMessage = `${providerName} Sign-In is not supported in this browser or environment.`;
+            break;
+          default:
+            errorMessage = `${providerName} Sign-In error: ${error.message}`;
+        }
       }
       toast({
-        title: 'Google Sign-In Failed',
+        title: `${providerName} Sign-In Failed`,
         description: errorMessage,
         variant: 'destructive',
       });
-      setIsGoogleLoading(false);
+    } finally {
+      setIsOAuthLoading(false);
     }
   };
 
@@ -135,7 +169,7 @@ export default function LoginPage() {
        <Card className="w-full max-w-md glass-card">
          <CardHeader className="text-center">
           <CardTitle className="text-2xl">Welcome Back!</CardTitle>
-          <CardDescription>Enter your credentials or sign in with Google.</CardDescription>
+          <CardDescription>Enter your credentials or sign in with a provider.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -166,7 +200,7 @@ export default function LoginPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || isOAuthLoading}>
                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                  Log In
               </Button>
@@ -183,20 +217,50 @@ export default function LoginPage() {
               </span>
             </div>
           </div>
+          
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => handleOAuthSignIn(googleAuthProvider, "Google")}
+              disabled={isLoading || isOAuthLoading}
+            >
+              {isOAuthLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <GoogleIcon />
+              )}
+              Sign in with Google
+            </Button>
 
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={handleGoogleSignIn}
-            disabled={isLoading || isGoogleLoading}
-          >
-            {isGoogleLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <GoogleIcon />
-            )}
-            Sign in with Google
-          </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => handleOAuthSignIn(appleAuthProvider, "Apple")}
+              disabled={isLoading || isOAuthLoading || !appleAuthProvider} // Disable if provider not configured
+            >
+              {isOAuthLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <AppleIcon />
+              )}
+              Sign in with Apple
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => handleOAuthSignIn(githubAuthProvider, "GitHub")}
+              disabled={isLoading || isOAuthLoading || !githubAuthProvider} // Disable if provider not configured
+            >
+              {isOAuthLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <GitHubIcon />
+              )}
+              Sign in with GitHub
+            </Button>
+          </div>
 
 
           <div className="mt-4 text-center text-sm">
