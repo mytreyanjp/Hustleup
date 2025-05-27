@@ -29,9 +29,10 @@ export default function BrowseHustlersPage() {
       try {
         const usersRef = collection(db, 'users');
         // Query for users where role is 'student' and order by username (optional)
-        // IMPORTANT: This query requires a composite index in Firestore for optimal performance if ordering by a field other than document ID.
+        // IMPORTANT: This query requires a composite index in Firestore:
         // Collection: 'users', Fields: 'role' (Ascending), 'username' (Ascending)
         // Create Index Link: You might get a console error with a link if this is needed.
+        // Example link from error: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3VwHMvdXNlcnMvaW5kZXhlcy9fEAEaCAoEcm9sZRABGgwKCHVzZXJuYW1lEAEaDAoIX19uYW1lX18QAQ
         const q = query(usersRef, where('role', '==', 'student'), orderBy('username', 'asc'));
         const querySnapshot = await getDocs(q);
 
@@ -42,7 +43,7 @@ export default function BrowseHustlersPage() {
         setStudents(fetchedStudents);
       } catch (err: any) {
         console.error("Error fetching students:", err);
-        setError("Failed to load student profiles. This might be due to a missing Firestore index. Please check your Firebase console for errors.");
+        setError("Failed to load student profiles. This might be due to a missing Firestore index. Please check your Firebase console for errors and create the required index if prompted.");
       } finally {
         setIsLoading(false);
       }
