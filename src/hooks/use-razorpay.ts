@@ -95,7 +95,8 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
 
     // Razorpay's standard checkout modal supports various payment methods including UPI (GPay, PhonePe, etc.),
     // credit/debit cards, net banking, and wallets, depending on your Razorpay account configuration.
-    // No specific client-side code is usually needed to "enable" GPay if UPI is enabled for your Razorpay merchant account.
+    // End-users (clients paying for gigs) do NOT need their own Razorpay account; they use their existing
+    // payment methods (e.g., GPay app, bank card). Razorpay handles the secure routing.
 
     const razorpayOptions: RazorpayOptions = {
       ...options,
@@ -124,7 +125,12 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
         // Note: This requires the CSS variable to be accessible globally
         theme: {
            ...options.theme,
-           color: '#1A202C' // Use primary color directly
+           // Using a fixed primary color for consistency with the theme
+           // Ensure this color contrasts well with Razorpay's modal elements.
+           // The value "hsl(var(--primary))" doesn't work directly here as it's a CSS variable.
+           // Use the actual HSL values or a hex code for the primary theme color.
+           // For --primary: 225 27% 14%; -> dark blue
+           color: '#1A237E' // Example: A dark blue, adjust to your theme's primary
         }
     };
 
@@ -152,3 +158,4 @@ export const useRazorpay = ({ keyId, onPaymentSuccess, onPaymentError }: UseRazo
 
   return { openCheckout, isLoaded };
 };
+
