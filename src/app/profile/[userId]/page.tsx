@@ -3,19 +3,19 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore'; 
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe } from 'lucide-react'; 
-import type { UserProfile } from '@/context/firebase-context'; 
-import { useFirebase } from '@/context/firebase-context'; 
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe } from 'lucide-react';
+import type { UserProfile } from '@/context/firebase-context';
+import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
-import Image from 'next/image'; 
-import { StarRating } from '@/components/ui/star-rating'; 
+import Image from 'next/image';
+import { StarRating } from '@/components/ui/star-rating';
 
 interface StudentPost {
   id: string;
@@ -28,10 +28,10 @@ export default function PublicProfilePage() {
   const params = useParams();
   const userId = params.userId as string;
   const router = useRouter();
-  const { user: viewerUser, role: viewerRole } = useFirebase(); 
+  const { user: viewerUser, role: viewerRole } = useFirebase();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [posts, setPosts] = useState<StudentPost[]>([]); 
+  const [posts, setPosts] = useState<StudentPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +51,8 @@ export default function PublicProfilePage() {
         const docSnap = await getDoc(userDocRef);
 
         if (docSnap.exists()) {
-           const fetchedProfile = { 
-               uid: docSnap.id, 
+           const fetchedProfile = {
+               uid: docSnap.id,
                ...docSnap.data(),
                averageRating: docSnap.data().averageRating || 0,
                totalRatings: docSnap.data().totalRatings || 0,
@@ -93,6 +93,7 @@ export default function PublicProfilePage() {
   }, [userId]);
 
    const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
+     // Prioritize companyName for client fallback if username isn't distinct enough or is just an email part
      if (profile?.role === 'client' && companyName && companyName.trim() !== '') return companyName.substring(0, 2).toUpperCase();
      if (username && username.trim() !== '') return username.substring(0, 2).toUpperCase();
      if (email) return email.substring(0, 2).toUpperCase();
@@ -118,12 +119,16 @@ export default function PublicProfilePage() {
     );
   }
 
-  if (!profile) { 
+  if (!profile) {
     return <div className="text-center py-10 text-muted-foreground">Profile not found.</div>;
   }
 
   const isOwnProfile = viewerUser?.uid === profile.uid;
-  const displayName = profile.role === 'client' ? (profile.companyName || profile.username || 'Client Profile') : (profile.username || 'Student Profile');
+  // For clients, displayName is companyName if available, otherwise username.
+  // For students, displayName is username.
+  const displayName = profile.role === 'client'
+    ? (profile.companyName || profile.username || 'Client Profile')
+    : (profile.username || 'Student Profile');
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
@@ -138,20 +143,20 @@ export default function PublicProfilePage() {
                   <AvatarImage src={profile.profilePictureUrl} alt={displayName} />
                    <AvatarFallback>{getInitials(profile.email, profile.username, profile.companyName)}</AvatarFallback>
                </Avatar>
-               <div className="sm:flex-1 space-y-1 text-center sm:text-left"> {/* Reduced space-y for tighter packing */}
+               <div className="sm:flex-1 space-y-1 text-center sm:text-left">
                    <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
                         <h1 className="text-2xl font-bold flex items-center gap-2">
-                            {displayName}
+                            {displayName} {/* This is the Company Name for clients if available */}
                             {profile.role === 'student' && <GraduationCap className="h-6 w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-6 w-6 text-primary" />}
                         </h1>
                         {isOwnProfile ? (
                             <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
-                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> {/* TODO: Create /client/profile/edit if needed */}
+                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> {/* TODO: Create /client/profile/edit */}
                                     Edit My Profile
                                 </Link>
                             </Button>
-                        ) : viewerUser && profile.role && ( // Ensure profile.role exists
+                        ) : viewerUser && profile.role && (
                             <Button size="sm" asChild className="w-full sm:w-auto">
                                 <Link href={`/chat?userId=${profile.uid}`}>
                                     <MessageSquare className="mr-1 h-4 w-4" /> Contact {profile.role === 'student' ? 'Student' : 'Client'}
@@ -159,31 +164,6 @@ export default function PublicProfilePage() {
                             </Button>
                         )}
                    </div>
-
-                    {/* Client specific details */}
-                    {profile.role === 'client' && (
-                      <div className="mt-1 space-y-1">
-                        {/* If displayName is already the companyName, this contact line is for when username is different (e.g. a specific contact person) */}
-                        {profile.companyName && profile.username && profile.companyName !== profile.username && displayName === profile.companyName && (
-                           <p className="text-sm text-muted-foreground">Contact Person: {profile.username}</p>
-                        )}
-                        {/* If displayName is the username because companyName was not set, and they want to show company name if it were different (less common) */}
-                        {profile.companyName && displayName !== profile.companyName && (
-                            <p className="text-sm text-muted-foreground">Company: {profile.companyName}</p>
-                        )}
-                        {profile.website && (
-                          <a
-                            href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-primary hover:underline flex items-center gap-1 justify-center sm:justify-start"
-                          >
-                            <Globe className="h-4 w-4 shrink-0" />
-                            {profile.website}
-                          </a>
-                        )}
-                      </div>
-                    )}
 
                    {/* Student specific details */}
                    {profile.role === 'student' && profile.bio && (
@@ -197,14 +177,55 @@ export default function PublicProfilePage() {
                             </span>
                         </div>
                     )}
-                    {/* Common Detail: Email */}
-                    <p className="text-xs text-muted-foreground mt-1">Email: {profile.email}</p>
+                    {/* Common Detail: Email, displayed for all roles if not viewing own profile */}
+                    {!isOwnProfile && profile.email && (
+                        <p className="text-xs text-muted-foreground mt-1">Email: {profile.email}</p>
+                    )}
+                    {/* For own profile, email is usually known or in settings */}
+                    {isOwnProfile && profile.email && (
+                        <p className="text-xs text-muted-foreground mt-1">Your Email (private): {profile.email}</p>
+                    )}
                </div>
            </div>
         </CardHeader>
-        
+
         <Separator />
 
+        {/* Client Specific Section */}
+        {profile.role === 'client' && (
+            <CardContent className="p-4 md:p-6 space-y-3">
+                <h3 className="font-semibold text-lg text-muted-foreground">Company Details</h3>
+                {/* The main H1 tag already displays the company name if available via 'displayName'.
+                    This section is for supplementary details or to reiterate if the client's username is distinct. */}
+                {profile.companyName && profile.username && profile.companyName !== profile.username && displayName === profile.companyName && (
+                     <p className="text-sm"><span className="font-medium text-card-foreground">Primary Contact:</span> {profile.username}</p>
+                )}
+
+                {profile.website ? (
+                  <div className="flex items-center gap-1.5">
+                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <a
+                      href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline break-all"
+                    >
+                      {profile.website}
+                    </a>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground">Website not provided.</p>
+                  </div>
+                )}
+                {/* Future: List client's open gigs here */}
+                <p className="text-sm text-muted-foreground mt-2">This client posts gigs on HustleUp. Students can apply to their open opportunities.</p>
+            </CardContent>
+        )}
+
+
+        {/* Student Specific Section */}
         {profile.role === 'student' && (
           <>
             <CardContent className="p-4 md:p-6 space-y-6">
@@ -244,7 +265,7 @@ export default function PublicProfilePage() {
                     <p className="text-sm text-muted-foreground text-center py-4">This student hasn't added detailed profile information yet.</p>
                )}
             </CardContent>
-            
+
             <Separator />
             <div className="p-4 md:p-6">
                 <h3 className="font-semibold mb-4 text-lg flex items-center gap-2">
@@ -283,19 +304,10 @@ export default function PublicProfilePage() {
             </div>
           </>
         )}
-
-        {profile.role === 'client' && (
-           <CardContent className="p-4 md:p-6">
-                <h3 className="font-semibold mb-2 text-lg">About {displayName}</h3>
-                <p className="text-sm text-muted-foreground">
-                    This client posts gigs on HustleUp.
-                </p>
-                {/* Future: List client's open gigs here */}
-           </CardContent>
-        )}
       </Card>
     </div>
   );
 }
+
 
     
