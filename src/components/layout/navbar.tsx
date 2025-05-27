@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2 } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -46,14 +46,13 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || suggestions.length > 0) return; 
+    if (!db || suggestions.length > 0) return;
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
-      // This query ensures only open gigs (not yet approved/in-progress) are fetched for suggestions.
       const q = query(
         gigsCollectionRef,
-        where('status', '==', 'open'),
+        where('status', '==', 'open'), // IMPORTANT: Query only open gigs for suggestions
         orderBy('createdAt', 'desc'),
         limit(10)
       );
@@ -71,7 +70,7 @@ export default function Navbar() {
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [db, suggestions.length]); 
+  }, [suggestions.length]);
 
   useEffect(() => {
     setIsClient(true);
@@ -87,7 +86,7 @@ export default function Navbar() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/'); 
+      router.push('/');
       setSearchTerm('');
       setSuggestions([]);
       setIsSuggestionsOpen(false);
@@ -107,7 +106,8 @@ export default function Navbar() {
     e?.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-      setIsSuggestionsOpen(false); 
+      setIsSuggestionsOpen(false);
+      setSearchTerm(''); // Clear search term after navigation
     }
   };
 
@@ -128,7 +128,7 @@ export default function Navbar() {
 
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-            <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} /> 
+            <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
             {isClient && role === 'student' ? 'Explore' : 'Gigs'}
           </Link>
 
@@ -183,7 +183,7 @@ export default function Navbar() {
                     }}
                     onFocus={() => {
                         if (searchTerm.trim() !== '') setIsSuggestionsOpen(true);
-                        fetchInitialSuggestions(); 
+                        fetchInitialSuggestions();
                     }}
                     disabled={!isClient}
                   />
@@ -193,7 +193,7 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()} 
+                    onOpenAutoFocus={(e) => e.preventDefault()}
                 >
                   <Command shouldFilter={false}>
                     <CommandList>
@@ -210,11 +210,11 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title} 
+                              value={gig.title}
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
-                                setIsSuggestionsOpen(false); 
-                                setSearchTerm(''); 
+                                setIsSuggestionsOpen(false);
+                                setSearchTerm('');
                               }}
                               className="cursor-pointer"
                             >
@@ -226,10 +226,11 @@ export default function Navbar() {
                       )}
                        <CommandGroup>
                         <CommandItem
-                            value={`search_all_${searchTerm}`} 
+                            value={`search_all_${searchTerm}`}
                             onSelect={() => {
-                                handleSearchSubmit(); 
+                                handleSearchSubmit();
                                 setIsSuggestionsOpen(false);
+                                // setSearchTerm(''); // Keep search term for the main search page
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -291,7 +292,7 @@ export default function Navbar() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  <div className="md:hidden"> 
+                  <div className="md:hidden">
                     <DropdownMenuItem asChild>
                        <Link href="/gigs/browse">
                          {role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
@@ -341,6 +342,12 @@ export default function Navbar() {
                       <span>Settings</span>
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href="mailto:promoflixindia@gmail.com">
+                      <HelpCircle className="mr-2 h-4 w-4" />
+                      <span>Support</span>
+                    </a>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -362,7 +369,7 @@ export default function Navbar() {
               </>
             )
           ) : (
-            <div style={{ width: '7rem' }} /> 
+            <div style={{ width: '7rem' }} />
           )}
         </div>
       </div>
