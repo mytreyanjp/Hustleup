@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp } from 'firebase/firestore';
-import { auth, db, firebaseInitializationDetails } from '@/config/firebase'; // Import firebaseInitializationDetails
+import { auth, db, firebaseInitializationDetails } from '@/config/firebase';
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat';
 
@@ -79,7 +79,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           const basicProfile: UserProfile = {
             uid: currentUser.uid,
             email: currentUser.email,
-            role: null,
+            role: null, 
             bookmarkedGigIds: [],
             averageRating: 0,
             totalRatings: 0,
@@ -121,11 +121,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
       if (firebaseInitializationDetails.areEnvVarsMissing) {
+        console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Original error: ${firebaseInitializationDetails.errorMessage}`;
-        console.error("Firebase Context: Critical configuration error - " + specificErrorMessage);
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
+        console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This might be due to invalid values in your .env.local or a network issue. Original error: ${firebaseInitializationDetails.errorMessage}`;
-        console.error("Firebase Context: Core services initialization failure - " + specificErrorMessage);
       }
       setInitializationError(specificErrorMessage);
       setFirebaseActuallyInitialized(false);
@@ -157,7 +157,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
       console.error(authErrorMessage);
       setInitializationError(authErrorMessage);
-      setFirebaseActuallyInitialized(false);
+      setFirebaseActuallyInitialized(false); 
       setLoading(false);
     }
 
@@ -167,7 +167,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         unsubscribeAuth();
       }
     };
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile]); 
 
   useEffect(() => {
     if (!user || !db) {
@@ -200,8 +200,10 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => {
-      console.log("Unsubscribing from chat list for unread count.");
-      unsubscribeChats();
+      if (typeof unsubscribeChats === 'function') {
+        console.log("Unsubscribing from chat list for unread count.");
+        unsubscribeChats();
+      }
     };
   }, [user]);
 
@@ -210,7 +212,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     setIsClient(true);
   }, []);
 
-  if (loading && isClient) {
+
+  // This is the loading screen that appears initially
+  if (loading && isClient) { 
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -218,6 +222,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
+  // This is the Firebase configuration error screen
+  // Check if Firebase initialized correctly after loading
   if (!firebaseActuallyInitialized && initializationError && isClient) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
@@ -243,6 +249,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
                  <li><strong>Firebase Project Settings:</strong> Verify your API key, Auth Domain, Project ID, etc., in your <code>.env.local</code> file match *exactly* with the values from your Firebase project console.</li>
                  <li><strong>Firebase Services Enabled:</strong> Ensure Authentication, Firestore Database, and Storage are enabled in your Firebase project.</li>
                  <li><strong>Network Connectivity:</strong> Check your internet connection.</li>
+                 <li><strong>Correct `storageBucket` URL:</strong> Verify the `storageBucket` in `.env.local` matches the one from your Firebase project settings (e.g., `your-project-id.appspot.com` vs `your-project-id.firebasestorage.app`).</li>
                </ol>
              </div>
            )}
@@ -251,20 +258,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-   if (!loading && isClient && (!auth || !db) && !initializationError && firebaseActuallyInitialized) {
-     // This case indicates that after successful initial check, core services became null, which is very unlikely but handled.
-     return (
-       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
-         <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
-            <h2 className="text-xl font-semibold mb-2">Runtime Error</h2>
-            <p className="text-sm">
-              Core Firebase services (Auth/Firestore) became unavailable after initial setup. This is unexpected.
-            </p>
-           <p className="text-xs mt-4">Please try refreshing the page or check your network connection.</p>
-         </div>
-       </div>
-     );
-   }
+  // Removed the potentially conflicting/redundant error checks that were here.
+  // The above `if (!firebaseActuallyInitialized && initializationError && isClient)`
+  // and `if (loading && isClient)` blocks handle the primary error and loading states.
 
   const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats };
 
