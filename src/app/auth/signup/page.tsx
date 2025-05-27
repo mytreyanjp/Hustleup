@@ -210,7 +210,7 @@ export default function SignupPage() {
       if (error.code) {
          switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account already exists with the email ${error.customData?.email || 'address you provided'}. Please sign in using the method you originally used with that email, or use a different email.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists, likely created with a different sign-in method. Please log in using that original method, or sign up with a different email address.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-Up cancelled.`;
