@@ -63,8 +63,7 @@ export default function PublicProfilePage() {
               setIsLoadingPosts(true);
               // IMPORTANT: This query requires a composite index in Firestore.
               // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
-              // Create it via the link in the Firebase console error message if it's missing:
-              // https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=ClRwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvc3R1ZGVudF9wb3N0cy9pbmRleGVzL18QARoNCglzdHVkZW50SWQQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
+              // Create it via the link in the Firebase console error message if it's missing.
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -139,7 +138,7 @@ export default function PublicProfilePage() {
                   <AvatarImage src={profile.profilePictureUrl} alt={displayName} />
                    <AvatarFallback>{getInitials(profile.email, profile.username, profile.companyName)}</AvatarFallback>
                </Avatar>
-               <div className="sm:flex-1 space-y-2 text-center sm:text-left">
+               <div className="sm:flex-1 space-y-1 text-center sm:text-left"> {/* Reduced space-y for tighter packing */}
                    <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
                         <h1 className="text-2xl font-bold flex items-center gap-2">
                             {displayName}
@@ -160,7 +159,37 @@ export default function PublicProfilePage() {
                             </Button>
                         )}
                    </div>
-                    {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
+
+                    {/* Client specific details */}
+                    {profile.role === 'client' && (
+                      <div className="mt-1 space-y-1">
+                        {/* If displayName is already the companyName, this contact line is for when username is different (e.g. a specific contact person) */}
+                        {profile.companyName && profile.username && profile.companyName !== profile.username && displayName === profile.companyName && (
+                           <p className="text-sm text-muted-foreground">Contact Person: {profile.username}</p>
+                        )}
+                        {/* If displayName is the username because companyName was not set, and they want to show company name if it were different (less common) */}
+                        {profile.companyName && displayName !== profile.companyName && (
+                            <p className="text-sm text-muted-foreground">Company: {profile.companyName}</p>
+                        )}
+                        {profile.website && (
+                          <a
+                            href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline flex items-center gap-1 justify-center sm:justify-start"
+                          >
+                            <Globe className="h-4 w-4 shrink-0" />
+                            {profile.website}
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                   {/* Student specific details */}
+                   {profile.role === 'student' && profile.bio && (
+                        <p className="text-sm text-foreground/90 mt-1">{profile.bio}</p>
+                   )}
+                   {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
                         <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
                             <StarRating value={profile.averageRating} size={18} isEditable={false} />
                             <span className="text-sm text-muted-foreground">
@@ -168,23 +197,7 @@ export default function PublicProfilePage() {
                             </span>
                         </div>
                     )}
-                   {profile.role === 'student' && profile.bio && (
-                        <p className="text-sm text-foreground/90 mt-2">{profile.bio}</p>
-                   )}
-                   {profile.role === 'client' && profile.companyName && profile.username && profile.username !== profile.companyName && (
-                        <p className="text-md text-muted-foreground mt-1">Contact: {profile.username}</p>
-                   )}
-                   {profile.role === 'client' && profile.website && (
-                       <a
-                         href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
-                         target="_blank"
-                         rel="noopener noreferrer"
-                         className="text-sm text-primary hover:underline flex items-center gap-1 mt-1 justify-center sm:justify-start"
-                       >
-                         <Globe className="h-4 w-4 shrink-0" />
-                         {profile.website}
-                       </a>
-                   )}
+                    {/* Common Detail: Email */}
                     <p className="text-xs text-muted-foreground mt-1">Email: {profile.email}</p>
                </div>
            </div>
@@ -284,3 +297,5 @@ export default function PublicProfilePage() {
     </div>
   );
 }
+
+    
