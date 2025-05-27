@@ -121,11 +121,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
       if (firebaseInitializationDetails.areEnvVarsMissing) {
-        console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        console.error("Firebase Context: Critical configuration error - " + specificErrorMessage);
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
-        console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This might be due to invalid values in your .env.local or a network issue. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        console.error("Firebase Context: Core services initialization failure - " + specificErrorMessage);
       }
       setInitializationError(specificErrorMessage);
       setFirebaseActuallyInitialized(false);
@@ -154,8 +154,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       });
     } else {
-      console.error("Firebase context: Auth service is unexpectedly null after successful initialization check.");
-      setInitializationError("Failed to initialize Firebase Auth service after initial checks passed.");
+      const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
+      console.error(authErrorMessage);
+      setInitializationError(authErrorMessage);
       setFirebaseActuallyInitialized(false);
       setLoading(false);
     }
@@ -235,12 +236,23 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
               <p className="mt-2">If the problem persists after meticulously checking these steps, ensure there are no typos or hidden characters in your <code>.env.local</code> file or variable values.</p>
             </div>
           )}
+           {!firebaseInitializationDetails.areEnvVarsMissing && firebaseInitializationDetails.didCoreServicesFail && (
+             <div className="text-left text-xs mt-4 bg-destructive-foreground/10 p-3 rounded-md text-destructive-foreground/80">
+               <p className="font-bold mb-1 text-destructive-foreground">Action Required - Please double-check:</p>
+               <ol className="list-decimal list-inside space-y-1">
+                 <li><strong>Firebase Project Settings:</strong> Verify your API key, Auth Domain, Project ID, etc., in your <code>.env.local</code> file match *exactly* with the values from your Firebase project console.</li>
+                 <li><strong>Firebase Services Enabled:</strong> Ensure Authentication, Firestore Database, and Storage are enabled in your Firebase project.</li>
+                 <li><strong>Network Connectivity:</strong> Check your internet connection.</li>
+               </ol>
+             </div>
+           )}
         </div>
       </div>
     );
   }
 
    if (!loading && isClient && (!auth || !db) && !initializationError && firebaseActuallyInitialized) {
+     // This case indicates that after successful initial check, core services became null, which is very unlikely but handled.
      return (
        <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
          <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
@@ -270,3 +282,5 @@ export const useFirebase = () => {
   }
   return context;
 };
+
+    
