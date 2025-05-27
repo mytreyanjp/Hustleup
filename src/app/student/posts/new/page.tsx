@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Renamed 'ref' to 'storageRefFn'
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -91,7 +91,7 @@ export default function NewPostPage() {
     try {
       const file = data.image;
       const filePath = `student_post_images/${user.uid}/${Date.now()}_${file.name}`;
-      const fileStorageRefInstance = storageRef(storage, filePath);
+      const fileStorageRefInstance = storageRefFn(storage, filePath);
       
       console.log(`Uploading to Firebase Storage path: ${filePath}`);
       console.log("File details:", { name: file.name, size: file.size, type: file.type });
@@ -106,7 +106,7 @@ export default function NewPostPage() {
             setUploadProgress(progress);
             console.log(`Upload is ${progress}% done. State: ${snapshot.state}. Bytes transferred: ${snapshot.bytesTransferred} of ${snapshot.totalBytes}`);
           },
-          (error: any) => { // Changed to 'any' to access serverResponse
+          (error: any) => { 
             console.error("Firebase Storage Upload Error (student post):", error);
             console.error("Error Code:", error.code);
             console.error("Error Message:", error.message);
@@ -116,6 +116,9 @@ export default function NewPostPage() {
             console.error("Full Error Object:", JSON.stringify(error, null, 2));
 
             let detailedErrorMessage = `Could not upload image. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
+            let toastTitle = "Image Upload Failed";
+            let duration = 15000;
+
              switch (error.code) {
                 case 'storage/unauthorized': 
                   detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'student_post_images/{studentId}/...'. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
@@ -141,17 +144,22 @@ export default function NewPostPage() {
                 case 'storage/invalid-argument':
                   detailedErrorMessage = "Upload failed: Invalid argument provided to storage operation. This might be an issue with the file path or metadata.";
                   break;
-                case 'storage/unknown':
-                default: 
-                  detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
+                default:
+                   if (error.message && error.message.toLowerCase().includes('network request failed') || error.code === 'storage/unknown' || !error.code) {
+                       toastTitle = "Network Error During Upload";
+                       detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                       duration = 20000; // Longer for network/CORS type issues
+                   } else {
+                       detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
+                   }
                   break;
             }
             toast({ 
               id: `image-upload-failed-student-post-${error.code || 'unknown'}`, 
-              title: "Image Upload Failed", 
+              title: toastTitle, 
               description: detailedErrorMessage, 
               variant: "destructive",
-              duration: 15000 // Keep toast longer for critical errors
+              duration: duration
             });
             reject(error);
           },
@@ -195,7 +203,7 @@ export default function NewPostPage() {
          toast({
            id: `post-creation-failed-student-post-${Date.now()}`,
            title: 'Failed to Create Post',
-           description: (error.message && error.message.includes("Upload failed")) ? "See previous error for upload details." : (error.message || 'An unexpected error occurred while saving the post.'),
+           description: (error.message && error.message.toLowerCase().includes("upload failed")) ? "See previous error for upload details." : (error.message || 'An unexpected error occurred while saving the post.'),
            variant: 'destructive',
            duration: 10000
          });

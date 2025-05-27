@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile } from 'lucide-react';
+import { Badge } from '@/components/ui/badge'; // Added Badge
 import { db, storage } from '@/config/firebase';
 import {
   collection,
@@ -27,7 +28,7 @@ import {
   updateDoc,
   arrayUnion,
 } from 'firebase/firestore';
-import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Renamed 'ref' to 'storageRefFn'
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getChatId, cn } from '@/lib/utils';
 import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
@@ -146,7 +147,10 @@ export default function ChatPage() {
 
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
-        if (typeof window !== 'undefined') router.replace('/chat', { scroll: false });
+        // Only replace history if params were actually present
+        if (searchParams.has('chatId') && typeof window !== 'undefined') {
+             router.replace('/chat', { scroll: false });
+        }
         return;
     }
 
@@ -166,7 +170,10 @@ export default function ChatPage() {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
-         if (typeof window !== 'undefined') router.replace('/chat', { scroll: false });
+         // Only replace history if params were actually present
+        if ((searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
+            router.replace('/chat', { scroll: false });
+        }
       };
       fetchTargetUserAndCreateChat();
     }
@@ -261,8 +268,8 @@ export default function ChatPage() {
 
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      if (typeof window !== 'undefined') router.push('/auth/login?redirect=/chat');
+    if (!authLoading && !user && typeof window !== 'undefined') { // Added typeof window check
+       router.push('/auth/login?redirect=/chat');
     }
   }, [user, authLoading, router]);
 
@@ -283,7 +290,7 @@ export default function ChatPage() {
         return;
       }
       setSelectedFile(file);
-      setMessage(''); // Clear message when file is selected
+      setMessage(''); 
     }
   };
 
@@ -312,7 +319,7 @@ export default function ChatPage() {
       try {
         const file = selectedFile;
         const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
-        const fileStorageRef = storageRefFn(storage, filePath); // Use renamed import
+        const fileStorageRef = storageRefFn(storage, filePath);
         const uploadTask = uploadBytesResumable(fileStorageRef, file);
         console.log("Chat File Upload: Task created for path", filePath);
 
@@ -333,16 +340,29 @@ export default function ChatPage() {
               console.error("Full Error Object:", JSON.stringify(error, null, 2));
               
               let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
+              let toastTitle = "Upload Failed";
+              let duration = 15000;
+
               switch (error.code) {
-                case 'storage/unauthorized': detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; break;
+                case 'storage/unauthorized': 
+                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
+                  break;
                 case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
                 case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
                 case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Storage bucket not found. Verify Firebase config (storageBucket value)."; break;
                 case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase config."; break;
                 case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded."; break;
-                case 'storage/unknown': default: detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; break;
+                default:
+                  if (error.message && error.message.toLowerCase().includes('network request failed') || error.code === 'storage/unknown' || !error.code) {
+                    toastTitle = "Network Error During Upload";
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                    duration = 20000; 
+                  } else {
+                    detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
+                  }
+                  break;
               }
-              toast({ title: "Upload Failed", description: detailedErrorMessage, variant: "destructive", duration: 15000 });
+              toast({ title: toastTitle, description: detailedErrorMessage, variant: "destructive", duration: duration });
               reject(error);
             },
             async () => {
@@ -388,7 +408,7 @@ export default function ChatPage() {
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
-        lastMessageReadBy: [user.uid], // Sender has read it
+        lastMessageReadBy: [user.uid], 
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
@@ -421,6 +441,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
+    // useEffect will handle the redirect
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
 
