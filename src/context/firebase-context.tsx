@@ -79,7 +79,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           const basicProfile: UserProfile = {
             uid: currentUser.uid,
             email: currentUser.email,
-            role: null, 
+            role: null,
             bookmarkedGigIds: [],
             averageRating: 0,
             totalRatings: 0,
@@ -118,14 +118,15 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     let unsubscribeAuth: (() => void) | null = null;
 
+    // Check the detailed initialization status from firebase.ts
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
       if (firebaseInitializationDetails.areEnvVarsMissing) {
         console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Original error: ${firebaseInitializationDetails.errorMessage}`;
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
         console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This can happen if environment variables are present but contain invalid values (e.g., incorrect API key format), or if there's a network issue preventing connection to Firebase services. Original error: ${firebaseInitializationDetails.errorMessage}`;
       }
       setInitializationError(specificErrorMessage);
       setFirebaseActuallyInitialized(false);
@@ -137,7 +138,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setFirebaseActuallyInitialized(true);
-    setInitializationError(null);
+    setInitializationError(null); // Clear any previous errors if initialization is now successful
 
     if (auth) {
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -154,6 +155,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       });
     } else {
+      // This case should ideally not be reached if isSuccessfullyInitialized is true
       const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
       console.error(authErrorMessage);
       setInitializationError(authErrorMessage);
@@ -167,7 +169,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         unsubscribeAuth();
       }
     };
-  }, [fetchUserProfile]); 
+  }, [fetchUserProfile]); // fetchUserProfile is stable due to useCallback
 
   useEffect(() => {
     if (!user || !db) {
@@ -207,13 +209,14 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user]);
 
+  // Client-side check to prevent rendering on server if window is not defined
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
   }, []);
 
 
-  if (loading && isClient) { 
+  if (loading && isClient) { // Only show full-screen loader on client after mount
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -221,6 +224,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
+  // Display detailed error message if Firebase initialization failed
   if (!firebaseActuallyInitialized && initializationError && isClient) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
@@ -274,6 +278,4 @@ export const useFirebase = () => {
   }
   return context;
 };
-    
-
     
