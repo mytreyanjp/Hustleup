@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { signInWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential, OAuthProvider } from 'firebase/auth';
 import { auth, googleAuthProvider, appleAuthProvider, githubAuthProvider, db } from '@/config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,12 @@ export default function LoginPage() {
     }
     setIsOAuthLoading(true);
     try {
+      // Specific provider customization for Apple if needed (e.g., scopes)
+      if (providerName === "Apple" && appleAuthProvider) {
+        (appleAuthProvider as OAuthProvider).addScope('email');
+        (appleAuthProvider as OAuthProvider).addScope('name');
+      }
+
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
@@ -132,39 +138,54 @@ export default function LoginPage() {
         router.push('/auth/complete-profile');
       }
     } catch (error: any) {
-      console.error(`${providerName} Sign-In error:`, error);
-      let errorMessage = `${providerName} Sign-In failed.`;
+      console.error(`${providerName} Sign-In error (raw):`, error);
+      console.error(`${providerName} Sign-In error code:`, error.code);
+      console.error(`${providerName} Sign-In error message:`, error.message);
+      if (error.customData) {
+        console.error(`${providerName} Sign-In error customData:`, error.customData);
+      }
+      if (error.credential) { // This often contains useful info for OAuth errors
+        console.error(`${providerName} Sign-In error credential:`, JSON.stringify(error.credential));
+      }
+
+
+      let errorMessage = `${providerName} Sign-In failed. Please try again.`;
       if (error.code) {
         switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. It was created with a different sign-in method (e.g., password, or another social provider). Please sign in using your original method.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. It was created using a different sign-in method (e.g., password, or another social provider). Please sign in using your original method.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-In cancelled.`;
             break;
           case 'auth/cancelled-popup-request':
-            errorMessage = 'Multiple pop-ups were opened. Please try again.';
-            break;
           case 'auth/popup-blocked':
-            errorMessage = 'Pop-up was blocked by the browser. Please allow pop-ups for this site.';
+            errorMessage = `Pop-up for ${providerName} Sign-In was closed or blocked. Please try again and ensure pop-ups are allowed for this site.`;
             break;
           case 'auth/operation-not-supported-in-this-environment':
             errorMessage = `${providerName} Sign-In is not supported in this browser or environment.`;
             break;
           case 'auth/operation-not-allowed':
-            errorMessage = `${providerName} Sign-In is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).`;
+            errorMessage = `${providerName} Sign-In is currently disabled. Please check the Firebase project console (Authentication -> Sign-in method) and ensure ${providerName} is enabled and correctly configured.`;
             break;
           case 'auth/unauthorized-domain':
-            errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
+            errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it to the authorized domains in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
+          case 'auth/invalid-credential':
+             errorMessage = `Invalid credential provided for ${providerName} Sign-In. This might indicate a configuration issue with the provider on the Firebase or ${providerName} developer console. Full error: ${error.message}`;
+             break;
+          case 'auth/oauth-provider-error': // Generic OAuth error
+             errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
+             break;
           default:
-            errorMessage = `${providerName} Sign-In error: ${error.message}`;
+            errorMessage = `${providerName} Sign-In error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code})`;
         }
       }
       toast({
         title: `${providerName} Sign-In Failed`,
         description: errorMessage,
         variant: 'destructive',
+        duration: 10000, // Longer duration for more complex error messages
       });
     } finally {
       setIsOAuthLoading(false);

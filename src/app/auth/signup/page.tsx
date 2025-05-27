@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { createUserWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential, OAuthProvider } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { auth, db, googleAuthProvider, appleAuthProvider, githubAuthProvider } from '@/config/firebase';
 import { Button } from '@/components/ui/button';
@@ -182,6 +182,12 @@ export default function SignupPage() {
     }
     setIsOAuthLoading(true);
     try {
+      // Specific provider customization for Apple if needed (e.g., scopes)
+      if (providerName === "Apple" && appleAuthProvider) {
+        (appleAuthProvider as OAuthProvider).addScope('email');
+        (appleAuthProvider as OAuthProvider).addScope('name');
+      }
+
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
@@ -202,8 +208,17 @@ export default function SignupPage() {
         router.push('/auth/complete-profile'); 
       }
     } catch (error: any) {
-      console.error(`${providerName} Sign-Up error:`, error);
-      let errorMessage = `${providerName} Sign-Up failed.`;
+      console.error(`${providerName} Sign-Up error (raw):`, error);
+      console.error(`${providerName} Sign-Up error code:`, error.code);
+      console.error(`${providerName} Sign-Up error message:`, error.message);
+      if (error.customData) {
+        console.error(`${providerName} Sign-Up error customData:`, error.customData);
+      }
+       if (error.credential) { // This often contains useful info for OAuth errors
+        console.error(`${providerName} Sign-Up error credential:`, JSON.stringify(error.credential));
+      }
+
+      let errorMessage = `${providerName} Sign-Up failed. Please try again.`;
       if (error.code) {
          switch (error.code) {
           case 'auth/account-exists-with-different-credential':
@@ -213,28 +228,33 @@ export default function SignupPage() {
             errorMessage = `${providerName} Sign-Up cancelled.`;
             break;
           case 'auth/cancelled-popup-request':
-            errorMessage = 'Multiple pop-ups were opened. Please try again.';
-            break;
           case 'auth/popup-blocked':
-            errorMessage = 'Pop-up was blocked by the browser. Please allow pop-ups for this site.';
+            errorMessage = `Pop-up for ${providerName} Sign-Up was closed or blocked. Please try again and ensure pop-ups are allowed for this site.`;
             break;
           case 'auth/operation-not-supported-in-this-environment':
             errorMessage = `${providerName} Sign-In is not supported in this browser or environment.`;
             break;
           case 'auth/operation-not-allowed':
-            errorMessage = `${providerName} Sign-In is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).`;
+            errorMessage = `${providerName} Sign-Up is currently disabled. Please check the Firebase project console (Authentication -> Sign-in method) and ensure ${providerName} is enabled and correctly configured.`;
             break;
           case 'auth/unauthorized-domain':
-            errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
+            errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it to the authorized domains in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
+          case 'auth/invalid-credential':
+             errorMessage = `Invalid credential provided for ${providerName} Sign-In. This might indicate a configuration issue with the provider on the Firebase or ${providerName} developer console. Full error: ${error.message}`;
+             break;
+          case 'auth/oauth-provider-error': // Generic OAuth error
+             errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
+             break;
           default:
-            errorMessage = `${providerName} Sign-Up error: ${error.message}`;
+            errorMessage = `${providerName} Sign-Up error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code})`;
         }
       }
       toast({
         title: `${providerName} Sign-Up Failed`,
         description: errorMessage,
         variant: 'destructive',
+        duration: 10000, // Longer duration for more complex error messages
       });
     } finally {
       setIsOAuthLoading(false);
