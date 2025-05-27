@@ -11,12 +11,12 @@ import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Added Textarea
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Briefcase, Building, Globe, Info } from 'lucide-react'; // Added Info
+import { Loader2, User, Briefcase, Building, Globe, Info } from 'lucide-react';
 
 const completeProfileSchema = z.object({
   username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, { message: 'Username cannot exceed 30 characters'}),
@@ -33,7 +33,6 @@ const completeProfileSchema = z.object({
         message: 'Company name is required for clients.',
       });
     }
-    // Validate website: required and must be a valid URL if provided
     if (!data.website || data.website.trim() === '') {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -41,7 +40,6 @@ const completeProfileSchema = z.object({
             message: 'Company website is required for clients.',
         });
     } else {
-        // Re-validate URL because optional().or(z.literal('')) bypasses initial URL check if empty
         try {
             z.string().url().parse(data.website);
         } catch (e) {
@@ -52,7 +50,6 @@ const completeProfileSchema = z.object({
             });
         }
     }
-
     if (!data.companyDescription || data.companyDescription.trim().length < 20) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -81,7 +78,7 @@ export default function CompleteProfilePage() {
       website: '',
       companyDescription: '',
     },
-    mode: 'onChange', // Validate on change to give immediate feedback for conditional fields
+    mode: 'onChange',
   });
 
   const selectedRole = form.watch("role");
@@ -110,9 +107,9 @@ export default function CompleteProfilePage() {
         email: user.email,
         username: data.username,
         role: data.role,
-        profilePictureUrl: user.photoURL || '', // Use Google/OAuth photoURL if available
+        profilePictureUrl: user.photoURL || '',
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(), // Add updatedAt
+        updatedAt: serverTimestamp(),
         averageRating: 0,
         totalRatings: 0,
       };
@@ -123,9 +120,9 @@ export default function CompleteProfilePage() {
         userProfileData.bio = '';
         userProfileData.bookmarkedGigIds = [];
       } else if (data.role === 'client') {
-        userProfileData.companyName = data.companyName; // Now required
-        userProfileData.website = data.website; // Now required
-        userProfileData.companyDescription = data.companyDescription; // Now required
+        userProfileData.companyName = data.companyName;
+        userProfileData.website = data.website;
+        userProfileData.companyDescription = data.companyDescription;
       }
       
       await setDoc(userDocRef, userProfileData, { merge: true });
@@ -202,7 +199,6 @@ export default function CompleteProfilePage() {
                       <RadioGroup
                         onValueChange={(value) => {
                             field.onChange(value);
-                            // Trigger revalidation when role changes as other fields depend on it
                             form.trigger(['companyName', 'website', 'companyDescription']);
                         }}
                         defaultValue={field.value}

@@ -136,7 +136,7 @@ export default function SignupPage() {
       
       router.push(data.role === 'student' ? '/student/dashboard' : '/client/dashboard');
 
-    } catch (error: any) { // Added opening brace for catch block
+    } catch (error: any) {
       console.error('Signup error:', error);
       let errorMessage = 'An unexpected error occurred during signup.';
       if (error.code) {
@@ -151,7 +151,7 @@ export default function SignupPage() {
             errorMessage = 'Password is too weak. Please choose a stronger password.';
             break;
           case 'auth/operation-not-allowed': 
-             errorMessage = 'Email/Password sign-up is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).';
+             errorMessage = 'Email/Password sign-up is currently disabled. Please check the Firebase project console (Authentication -> Sign-in method).';
              break;
           case 'auth/configuration-not-found': 
              errorMessage = 'Firebase Authentication configuration is missing or incomplete. Please ensure Email/Password sign-in is enabled in your Firebase project.';
