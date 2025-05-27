@@ -5,12 +5,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { useFirebase } from '@/context/firebase-context';
+import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -24,7 +24,7 @@ interface Gig {
   deadline: Timestamp; // Firestore Timestamp
   requiredSkills: string[];
   clientId: string;
-  clientUsername?: string;
+  clientUsername?: string; // Keep this as a fallback
   createdAt: Timestamp; // Firestore Timestamp
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
@@ -38,6 +38,7 @@ export default function GigDetailPage() {
   const { toast } = useToast();
 
   const [gig, setGig] = useState<Gig | null>(null);
+  const [clientProfileDetails, setClientProfileDetails] = useState<UserProfile | null>(null);
   const [isLoadingGig, setIsLoadingGig] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applicationMessage, setApplicationMessage] = useState('');
@@ -54,6 +55,7 @@ export default function GigDetailPage() {
     }
     setIsLoadingGig(true);
     setError(null);
+    setClientProfileDetails(null);
     try {
       const gigDocRef = doc(db, 'gigs', gigId);
       const docSnap = await getDoc(gigDocRef);
@@ -64,6 +66,21 @@ export default function GigDetailPage() {
             fetchedGig.currency = "INR";
         }
         setGig(fetchedGig);
+
+        if (fetchedGig.clientId && db) {
+          try {
+            const clientDocRef = doc(db, 'users', fetchedGig.clientId);
+            const clientDocSnap = await getDoc(clientDocRef);
+            if (clientDocSnap.exists()) {
+              setClientProfileDetails({ uid: clientDocSnap.id, ...clientDocSnap.data() } as UserProfile);
+            } else {
+              console.warn(`Client profile not found for clientId: ${fetchedGig.clientId}`);
+            }
+          } catch (clientProfileError) {
+            console.error("Error fetching client profile for gig:", clientProfileError);
+          }
+        }
+
       } else {
         setError("Gig not found.");
         setGig(null);
@@ -204,6 +221,8 @@ export default function GigDetailPage() {
    }
 
    const isClientOwner = user && role === 'client' && user.uid === gig.clientId;
+   const clientDisplayName = clientProfileDetails?.companyName || clientProfileDetails?.username || gig.clientUsername || 'Client';
+
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6">
@@ -228,11 +247,36 @@ export default function GigDetailPage() {
                 </Button>
             )}
           </div>
-          <CardDescription className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
-             <span>Posted by <span className="font-medium text-foreground">{gig.clientUsername || 'Client'}</span></span>
+          <CardDescription className="text-sm text-muted-foreground flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-4 gap-y-1 pt-1">
+             <span>
+                Posted by: <Link href={`/profile/${gig.clientId}`} className="font-medium text-foreground hover:underline">{clientDisplayName}</Link>
+             </span>
              <span>{formatDate(gig.createdAt)}</span>
              <Badge variant={gig.status === 'open' ? 'default' : 'secondary'} className="capitalize">{gig.status}</Badge>
           </CardDescription>
+          {clientProfileDetails && (
+            <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
+              {clientProfileDetails.companyName && clientProfileDetails.username && clientProfileDetails.companyName !== clientProfileDetails.username && (
+                <div className="flex items-center gap-1.5">
+                    <UserCircle className="h-3.5 w-3.5 shrink-0" />
+                    <span>Contact: {clientProfileDetails.username}</span>
+                </div>
+              )}
+              {clientProfileDetails.website && (
+                <div className="flex items-center gap-1.5">
+                  <Globe className="h-3.5 w-3.5 shrink-0" />
+                  <a 
+                    href={clientProfileDetails.website.startsWith('http') ? clientProfileDetails.website : `https://${clientProfileDetails.website}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="hover:underline text-primary"
+                  >
+                    {clientProfileDetails.website}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
            <div>
@@ -373,5 +417,3 @@ export default function GigDetailPage() {
     </div>
   );
 }
-
-    
