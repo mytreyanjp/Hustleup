@@ -83,8 +83,8 @@ export default function LoginPage() {
             break;
           case 'auth/user-not-found':
           case 'auth/wrong-password':
-           case 'auth/invalid-credential':
-            errorMessage = 'Invalid email or password.';
+          case 'auth/invalid-credential':
+            errorMessage = 'The email or password you entered is incorrect. Please check your credentials and try again.';
             break;
           case 'auth/operation-not-allowed':
             errorMessage = 'Email/Password sign-in is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).';
@@ -137,7 +137,7 @@ export default function LoginPage() {
       if (error.code) {
         switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists, but it was created with a different sign-in method (e.g., password, or another social provider). Please sign in using that original method.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. It was created with a different sign-in method (e.g., password, or another social provider). Please sign in using your original method.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-In cancelled.`;
