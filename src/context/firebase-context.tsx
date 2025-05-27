@@ -122,10 +122,10 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
       if (firebaseInitializationDetails.areEnvVarsMissing) {
         console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Details: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Original error: ${firebaseInitializationDetails.errorMessage}`;
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
         console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This might be due to invalid values in your .env.local or a network issue. Details: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This might be due to invalid values in your .env.local or a network issue. Original error: ${firebaseInitializationDetails.errorMessage}`;
       }
       setInitializationError(specificErrorMessage);
       setFirebaseActuallyInitialized(false);
@@ -220,13 +220,20 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   if (!firebaseActuallyInitialized && initializationError && isClient) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
-        <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-md">
-          <h2 className="text-xl font-semibold mb-2">Configuration Error</h2>
-          <p className="text-sm whitespace-pre-wrap">{initializationError}</p>
+        <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-lg">
+          <h2 className="text-xl font-semibold mb-2">Firebase Configuration Error!</h2>
+          <p className="text-sm whitespace-pre-wrap mb-3">{initializationError}</p>
           {firebaseInitializationDetails.areEnvVarsMissing && (
-            <p className="text-xs mt-4">
-              <strong>Action Required:</strong> Check your <code>.env.local</code> file in the project root. Ensure all <code>NEXT_PUBLIC_FIREBASE_...</code> variables are correctly set. Then, <strong>restart your Next.js development server.</strong>
-            </p>
+            <div className="text-left text-xs mt-4 bg-destructive-foreground/10 p-3 rounded-md text-destructive-foreground/80">
+              <p className="font-bold mb-1 text-destructive-foreground">Action Required - Please double-check:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li><strong><code>.env.local</code> File Location:</strong> Ensure this file exists in the <strong>absolute root directory</strong> of your project (the same folder as <code>package.json</code> and <code>next.config.ts</code>).</li>
+                <li><strong>Variable Naming:</strong> All Firebase variables inside <code>.env.local</code> <strong>MUST</strong> start with <code>NEXT_PUBLIC_</code> (e.g., <code>NEXT_PUBLIC_FIREBASE_API_KEY=...</code>).</li>
+                <li><strong>Correct Values:</strong> Verify the API keys and other values are copied exactly from your Firebase project settings. There should be no extra quotes or spaces unless they are part of the actual value.</li>
+                <li><strong>SERVER RESTART:</strong> After creating or modifying the <code>.env.local</code> file, you <strong>MUST COMPLETELY STOP</strong> your Next.js development server (e.g., press <code>Ctrl+C</code> in the terminal) and then <strong>RESTART</strong> it (e.g., run <code>npm run dev</code> or <code>yarn dev</code> again). Changes to <code>.env.local</code> are only picked up when the server starts. Hot-reloading does NOT load new environment variables.</li>
+              </ol>
+              <p className="mt-2">If the problem persists after meticulously checking these steps, ensure there are no typos or hidden characters in your <code>.env.local</code> file or variable values.</p>
+            </div>
           )}
         </div>
       </div>
