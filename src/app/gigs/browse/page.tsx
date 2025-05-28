@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Search, UserCircle } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Search, UserCircle, Star } from 'lucide-react'; // Added Star
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
@@ -23,12 +23,13 @@ interface Gig {
   deadline: Timestamp;
   requiredSkills: Skill[];
   clientId: string;
-  clientUsername?: string; // Legacy, prefer clientDisplayNameForCard
-  clientDisplayName?: string; // Denormalized display name
-  clientAvatarUrl?: string; // Denormalized avatar URL
+  clientUsername?: string; 
+  clientDisplayName?: string; 
+  clientAvatarUrl?: string; 
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
+  isFromFollowedClient?: boolean; // New property
 }
 
 export default function BrowseGigsPage() {
@@ -43,6 +44,8 @@ export default function BrowseGigsPage() {
       setError(null);
       try {
         const gigsCollectionRef = collection(db, 'gigs');
+        // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
+        // Create it in Firebase console if missing.
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -52,17 +55,29 @@ export default function BrowseGigsPage() {
         let fetchedGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
+          isFromFollowedClient: false, // Initialize
         })) as Gig[];
 
         if (!authLoading) {
-          if (currentUser && role === 'student') {
+          if (currentUser && role === 'student' && userProfile) {
+            // Mark gigs from followed clients
+            const followedClientIds = userProfile.following || [];
+            if (followedClientIds.length > 0) {
+              fetchedGigs = fetchedGigs.map(gig => ({
+                ...gig,
+                isFromFollowedClient: followedClientIds.includes(gig.clientId),
+              }));
+            }
+
+            // Filter out gigs already applied to
             fetchedGigs = fetchedGigs.filter(gig => 
               !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
             );
 
-            if (userProfile?.skills && userProfile.skills.length > 0) {
+            // Filter by student skills
+            if (userProfile.skills && userProfile.skills.length > 0) {
               const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
-              const skillFilteredGigs = fetchedGigs.filter(gig =>
+              fetchedGigs = fetchedGigs.filter(gig =>
                 gig.requiredSkills.some(reqSkill => {
                   const reqSkillLower = reqSkill.toLowerCase();
                   return studentSkillsLower.some(studentSkillLower =>
@@ -70,14 +85,23 @@ export default function BrowseGigsPage() {
                   );
                 })
               );
-              setGigs(skillFilteredGigs);
-            } else {
-              setGigs(fetchedGigs); 
             }
+            
+            // Sort: gigs from followed clients first, then by creation date
+            fetchedGigs.sort((a, b) => {
+              if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
+              if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
+              // If both are same (either both followed or both not), sort by createdAt
+              return b.createdAt.toMillis() - a.createdAt.toMillis();
+            });
+
+            setGigs(fetchedGigs);
           } else {
+            // If not a student or profile not loaded, show all open gigs
             setGigs(fetchedGigs); 
           }
         } else {
+          // If auth is still loading, show all open gigs for now (will re-filter once auth resolves)
           setGigs(fetchedGigs); 
         }
 
@@ -138,7 +162,7 @@ export default function BrowseGigsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Browse Available Gigs</h1>
+      <h1 className="text-3xl font-bold tracking-tight">Explore Gigs</h1>
 
       {gigs.length === 0 && !pageIsLoading ? (
         <Card className="glass-card text-center py-10">
@@ -158,7 +182,7 @@ export default function BrowseGigsPage() {
                     </>
                 ) : currentUser && role === 'student' ? (
                      <p className="text-muted-foreground">
-                        No gigs currently match your skill set, or you've applied to all available matching gigs. Check back later or expand your skills!
+                        No gigs currently match your skills, or you've applied to all available matching gigs. Check back later or expand your skills!
                     </p>
                 ) : (
                     <p className="text-muted-foreground">
@@ -172,7 +196,14 @@ export default function BrowseGigsPage() {
           {gigs.map((gig) => (
             <Card key={gig.id} className="glass-card flex flex-col">
               <CardHeader>
-                <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
+                <div className="flex justify-between items-start">
+                    <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
+                    {gig.isFromFollowedClient && (
+                        <Badge variant="outline" className="text-xs border-primary text-primary ml-2 shrink-0">
+                            <Star className="mr-1 h-3 w-3" /> Following
+                        </Badge>
+                    )}
+                </div>
                 <div className="flex items-center gap-2 mt-1">
                   <Avatar className="h-6 w-6">
                     <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
