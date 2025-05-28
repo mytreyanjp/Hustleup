@@ -22,7 +22,6 @@ import { StarRating } from '@/components/ui/star-rating';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import type { ProgressReport, StudentSubmission } from '@/app/client/gigs/[gigId]/manage/page';
 
 
 interface ApplicantInfo {
@@ -31,6 +30,21 @@ interface ApplicantInfo {
     appliedAt: Timestamp;
     message?: string;
     status?: 'pending' | 'accepted' | 'rejected';
+}
+
+interface StudentSubmission {
+  text: string;
+  fileUrl?: string;
+  fileName?: string;
+  submittedAt: Timestamp;
+}
+
+interface ProgressReport {
+  reportNumber: number;
+  studentSubmission?: StudentSubmission;
+  clientStatus?: 'pending_review' | 'approved' | 'rejected';
+  clientFeedback?: string;
+  reviewedAt?: Timestamp;
 }
 
 interface Gig {
@@ -227,7 +241,6 @@ export default function ManageGigPage() {
             updatedAt: serverTimestamp(), 
             lastMessageSenderId: user.uid,
             lastMessageReadBy: [user.uid],
-            // Ensure usernames & pics are up-to-date if chat exists
             participantUsernames, 
             ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
          });
@@ -252,7 +265,6 @@ export default function ManageGigPage() {
            if (newStatus === 'accepted') { 
              gigUpdateData.status = 'in-progress'; 
              gigUpdateData.selectedStudentId = studentId; 
-            // Initialize progress reports array if it's the first acceptance and numberOfReports > 0
              if (gig.numberOfReports && gig.numberOfReports > 0 && (!gig.progressReports || gig.progressReports.length === 0)) {
                  gigUpdateData.progressReports = [];
              }
@@ -312,7 +324,7 @@ export default function ManageGigPage() {
           return {
             ...report,
             clientStatus: newStatus,
-            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''), // Add default "Approved" if no text given for approval
+            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''),
             reviewedAt: Timestamp.now(),
           };
         }
@@ -349,14 +361,14 @@ export default function ManageGigPage() {
    };
 
   if (isLoading || authLoading) return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
-  if (error) return ( <div className="text-center py-10"> <p className="text-destructive mb-4">{error}</p> <Button variant="outline" onClick={() => router.back()}> <ArrowLeft className="mr-2 h-4 w-4" /> Go Back </Button> </div> );
+  if (error) return ( <div className="text-center py-10"> <p className="text-destructive mb-4">{error}</p> <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" />Go Back</Button> </div> );
   if (!gig) return <div className="text-center py-10 text-muted-foreground">Gig details could not be loaded.</div>;
 
   const selectedStudent = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
 
   return (
      <div className="max-w-4xl mx-auto py-8 space-y-6">
-        <Button variant="outline" size="sm" onClick={() => router.push('/client/gigs')} className="mb-4"> <ArrowLeft className="mr-2 h-4 w-4" /> Back to My Gigs </Button>
+        <Button variant="outline" size="sm" onClick={() => router.push('/client/gigs')} className="mb-4"><ArrowLeft className="mr-2 h-4 w-4" />Back to My Gigs</Button>
        <Card className="glass-card">
          <CardHeader>
            <CardTitle className="text-2xl">{gig.title}</CardTitle>
@@ -373,8 +385,8 @@ export default function ManageGigPage() {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3 bg-background shadow">
                   <div className="flex items-start gap-3 flex-grow"> <UserCircle className="h-10 w-10 text-muted-foreground mt-1 shrink-0" /> <div className="flex-grow"> <p className="font-semibold text-lg">{selectedStudent.studentUsername}</p> <p className="text-xs text-muted-foreground mb-1">Accepted application {formatDate(selectedStudent.appliedAt)}</p> </div> </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
-                     {selectedStudent.studentId ? ( <Button size="sm" variant="outline" asChild> <Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link> </Button> ) : ( <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button> )}
-                     <Button size="sm" asChild> <Link href={`/chat?userId=${selectedStudent.studentId}&gigId=${gig.id}`}> <MessageSquare className="mr-1 h-4 w-4" /> Chat with {selectedStudent.studentUsername} </Link> </Button>
+                     {selectedStudent.studentId ? ( <Button size="sm" variant="outline" asChild><Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link></Button> ) : ( <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button> )}
+                     <Button size="sm" asChild><Link href={`/chat?userId=${selectedStudent.studentId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with {selectedStudent.studentUsername}</Link></Button>
                   </div>
               </div>
               {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
@@ -509,7 +521,7 @@ export default function ManageGigPage() {
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
                            {applicant.studentId ? (<Button size="sm" variant="outline" asChild><Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link></Button>) : (<Button size="sm" variant="outline" disabled>View Profile</Button>)}
-                           <Button size="sm" asChild><Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" /> Chat</Link></Button>
+                           <Button size="sm" asChild><Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat</Link></Button>
                            {applicant.status === 'pending' && (
                             <>
                                 <Button size="sm" variant="default" onClick={() => updateApplicantStatus(applicant.studentId, 'accepted')} disabled={updatingApplicantId === applicant.studentId}>
