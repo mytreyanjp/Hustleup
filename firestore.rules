@@ -3,49 +3,89 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Users collection
-    // - Authenticated users can read and write their own profile document.
+    // Allow users to read their own profile and public profiles
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Gigs collection
-    // - Anyone can read gigs (for browsing).
-    // - Authenticated users can create gigs. (Client-side logic should ensure only clients see the "create gig" option).
-    // - Authenticated users can update gigs. (Client-side logic should differentiate: clients update their own gig details, students update by applying).
-    // - Only the client who created the gig can delete it.
-    match /gigs/{gigId} {
       allow read: if true;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null && request.auth.uid == resource.data.clientId;
+      // Allow users to create their own profile during signup/completion
+      allow create: if request.auth != null && request.auth.uid == userId;
+      // Allow users to update their own profile
+      allow update: if request.auth != null && request.auth.uid == userId;
+      // Disallow direct deletion of user profiles by clients for now, admin only
+      allow delete: if false; 
     }
 
-    // Transactions collection
-    // - Authenticated users can create transactions. (Client-side ensures client initiates payment).
-    // - Only users involved in the transaction (client or student) can read it.
-    match /transactions/{transactionId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null &&
-                     (request.auth.uid == resource.data.clientId || request.auth.uid == resource.data.studentId);
+    // Gigs
+    match /gigs/{gigId} {
+      allow read: if true; // Anyone can read gig details
+      // Only authenticated users who are clients can create gigs
+      allow create: if request.auth != null && request.resource.data.clientId == request.auth.uid;
+      // Only the client who created the gig can update it
+      allow update: if request.auth != null && resource.data.clientId == request.auth.uid;
+      // Disallow direct deletion of gigs by clients for now, perhaps mark as 'closed'
+      allow delete: if false; 
+    }
+    
+    // Student Posts
+    match /student_posts/{postId} {
+      allow read: if true; // Anyone can read posts
+      // Authenticated students can create posts for themselves
+      allow create: if request.auth != null && request.resource.data.studentId == request.auth.uid;
+      // Only the student who created the post can update/delete it (future enhancement)
+      allow update, delete: if request.auth != null && resource.data.studentId == request.auth.uid;
+    }
+    
+    // Reviews
+    match /reviews/{reviewId} {
+      allow read: if true; // Anyone can read reviews
+      // Authenticated clients can create reviews for gigs they posted
+      allow create: if request.auth != null && request.resource.data.clientId == request.auth.uid;
+      // Generally, reviews are immutable once submitted
+      allow update, delete: if false;
     }
 
-    // Chats & Messages
-    // - Authenticated users can create chats if they are a participant.
-    // - Authenticated users can read/write to chats they are part of.
-    // (This assumes chat documents have a 'participants' array field containing user UIDs)
+    // Chat Messages
     match /chats/{chatId} {
+      // Allow read/write if the user is a participant in the chat
+      allow read, update, delete: if request.auth != null && request.auth.uid in resource.data.participants;
       allow create: if request.auth != null && request.auth.uid in request.resource.data.participants;
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.participants; // 'write' includes update and delete. Split if needed.
-
-      // Messages subcollection within a chat
-      // - Participants of the chat can read and create messages.
+      
       match /messages/{messageId} {
-        allow read, create: if request.auth != null &&
-                               request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        // allow update, delete: if request.auth != null && request.auth.uid == resource.data.senderId; // Example: only sender can modify/delete
+         // Allow read if the user is a participant in the parent chat
+        allow read: if request.auth != null && get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid]);
+        // Allow create if the user is a participant and the senderId matches their UID
+        allow create: if request.auth != null && 
+                        get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid]) &&
+                        request.resource.data.senderId == request.auth.uid;
+        // Messages are generally immutable
+        allow update, delete: if false;
       }
     }
+
+    // Transactions (Payments)
+    match /transactions/{transactionId} {
+        // Only involved client or student can read their transaction
+        allow read: if request.auth != null && (request.auth.uid == resource.data.clientId || request.auth.uid == resource.data.studentId);
+        // Only clients can create transactions (representing payment from client)
+        // For server-side initiated payments, rules would be stricter or use admin SDK
+        allow create: if request.auth != null && request.resource.data.clientId == request.auth.uid;
+        // Transactions should generally be immutable once created
+        allow update, delete: if false;
+    }
+
+    // FAQs
+    match /faqs/{faqId} {
+      allow read: if true; // Anyone can read FAQs
+      // Authenticated users can create new questions
+      allow create: if request.auth != null &&
+                      request.resource.data.askedByUid == request.auth.uid &&
+                      request.resource.data.askedByUsername != null &&
+                      request.resource.data.questionText.size() > 0;
+      // Authenticated users can update FAQs (primarily to add answers)
+      // This rule is broad for dev; for prod, restrict to only allow 'answers' array modification
+      allow update: if request.auth != null; 
+      // Disallow direct deletion by clients
+      allow delete: if false; 
+    }
+
   }
 }
