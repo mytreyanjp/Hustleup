@@ -3,20 +3,22 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import Image from 'next/image';
 import { StarRating } from '@/components/ui/star-rating';
-import { formatDistanceToNow } from 'date-fns'; // For relative dates
+import { formatDistanceToNow } from 'date-fns'; 
+import { useToast } from '@/hooks/use-toast';
+
 
 interface StudentPost {
   id: string;
@@ -39,7 +41,8 @@ export default function PublicProfilePage() {
   const params = useParams();
   const userId = params.userId as string;
   const router = useRouter();
-  const { user: viewerUser, role: viewerRole } = useFirebase();
+  const { user: viewerUser, userProfile: viewerUserProfile, role: viewerRole, refreshUserProfile } = useFirebase();
+  const { toast } = useToast();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<StudentPost[]>([]);
@@ -48,6 +51,8 @@ export default function PublicProfilePage() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [isLoadingClientGigs, setIsLoadingClientGigs] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowProcessing, setIsFollowProcessing] = useState(false);
 
   useEffect(() => {
     if (!userId) {
@@ -59,7 +64,7 @@ export default function PublicProfilePage() {
     const fetchProfileData = async () => {
       setIsLoading(true);
       setError(null);
-      setClientOpenGigs([]); // Reset gigs when profile changes
+      setClientOpenGigs([]); 
 
       try {
         const userDocRef = doc(db, 'users', userId);
@@ -71,11 +76,21 @@ export default function PublicProfilePage() {
                ...docSnap.data(),
                averageRating: docSnap.data().averageRating || 0,
                totalRatings: docSnap.data().totalRatings || 0,
+               following: docSnap.data().following || [],
+               followersCount: docSnap.data().followersCount || 0,
             } as UserProfile;
            setProfile(fetchedProfile);
 
+           if (viewerUserProfile && viewerUserProfile.following) {
+             setIsFollowing(viewerUserProfile.following.includes(fetchedProfile.uid));
+           }
+
+
            if (fetchedProfile.role === 'student') {
               setIsLoadingPosts(true);
+              // IMPORTANT: This query requires a composite index in Firestore.
+              // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
+              // Create it via the link in the Firebase console error message if it's missing.
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -119,7 +134,7 @@ export default function PublicProfilePage() {
     };
 
     fetchProfileData();
-  }, [userId]);
+  }, [userId, viewerUserProfile]); // Re-run if viewerUserProfile changes (e.g., after they follow/unfollow someone)
 
    const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
      if (profile?.role === 'client' && companyName && companyName.trim() !== '') return companyName.substring(0, 2).toUpperCase();
@@ -133,6 +148,46 @@ export default function PublicProfilePage() {
     try {
       return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
     } catch (e) { return 'Invalid date'; }
+  };
+
+  const handleFollowToggle = async () => {
+    if (!viewerUser || !viewerUserProfile || !profile || !db) {
+      toast({ title: "Error", description: "You must be logged in to follow users.", variant: "destructive" });
+      return;
+    }
+    if (viewerUser.uid === profile.uid) {
+      toast({ title: "Action Not Allowed", description: "You cannot follow yourself.", variant: "destructive" });
+      return;
+    }
+
+    setIsFollowProcessing(true);
+    const viewerUserDocRef = doc(db, 'users', viewerUser.uid);
+    const targetUserDocRef = doc(db, 'users', profile.uid);
+
+    try {
+      if (isFollowing) { // Unfollow action
+        await updateDoc(viewerUserDocRef, { following: arrayRemove(profile.uid) });
+        // IMPORTANT: For production, use a Cloud Function for atomicity.
+        // This client-side update to another user's doc is simplified for this example.
+        await updateDoc(targetUserDocRef, { followersCount: increment(-1) });
+        toast({ title: "Unfollowed", description: `You are no longer following ${profile.username || 'this user'}.` });
+        setIsFollowing(false);
+        setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 1) - 1 } : null);
+      } else { // Follow action
+        await updateDoc(viewerUserDocRef, { following: arrayUnion(profile.uid) });
+        // IMPORTANT: For production, use a Cloud Function for atomicity.
+        await updateDoc(targetUserDocRef, { followersCount: increment(1) });
+        toast({ title: "Followed!", description: `You are now following ${profile.username || 'this user'}.` });
+        setIsFollowing(true);
+        setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
+      }
+      if (refreshUserProfile) await refreshUserProfile(); // Refresh viewer's profile in context
+    } catch (err: any) {
+      console.error("Error following/unfollowing user:", err);
+      toast({ title: "Error", description: `Could not complete action: ${err.message}`, variant: "destructive" });
+    } finally {
+      setIsFollowProcessing(false);
+    }
   };
 
   if (isLoading) {
@@ -162,6 +217,9 @@ export default function PublicProfilePage() {
   const displayName = profile.role === 'client'
     ? (profile.companyName || profile.username || 'Client Profile')
     : (profile.username || 'Student Profile');
+  
+  const followingCount = profile.following?.length || 0;
+
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
@@ -176,7 +234,7 @@ export default function PublicProfilePage() {
                   <AvatarImage src={profile.profilePictureUrl} alt={displayName} />
                    <AvatarFallback>{getInitials(profile.email, profile.username, profile.companyName)}</AvatarFallback>
                </Avatar>
-               <div className="sm:flex-1 space-y-1 text-center sm:text-left">
+               <div className="sm:flex-1 space-y-2 text-center sm:text-left">
                    <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
                         <h1 className="text-2xl font-bold flex items-center gap-2">
                             {displayName}
@@ -190,13 +248,25 @@ export default function PublicProfilePage() {
                                 </Link>
                             </Button>
                         ) : viewerUser && profile.role && (
-                            <Button size="sm" asChild className="w-full sm:w-auto">
-                                <Link href={`/chat?userId=${profile.uid}`}>
-                                    <MessageSquare className="mr-1 h-4 w-4" /> Contact {profile.role === 'student' ? 'Student' : 'Client'}
-                                </Link>
-                            </Button>
+                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                                <Button size="sm" onClick={handleFollowToggle} disabled={isFollowProcessing} className="w-full sm:w-auto">
+                                  {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowing ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
+                                  {isFollowing ? 'Unfollow' : 'Follow'}
+                                </Button>
+                                <Button size="sm" asChild className="w-full sm:w-auto">
+                                    <Link href={`/chat?userId=${profile.uid}`}>
+                                        <MessageSquare className="mr-1 h-4 w-4" /> Contact
+                                    </Link>
+                                </Button>
+                            </div>
                         )}
                    </div>
+                   
+                    <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground">
+                        <span><span className="font-semibold text-foreground">{profile.followersCount || 0}</span> Followers</span>
+                        <span><span className="font-semibold text-foreground">{followingCount}</span> Following</span>
+                    </div>
+
                    {/* Display Contact Person if company name is different from username */}
                     {profile.role === 'client' && profile.companyName && profile.username && profile.companyName !== profile.username && (
                         <p className="text-sm text-muted-foreground mt-1">Contact: {profile.username}</p>
@@ -213,12 +283,6 @@ export default function PublicProfilePage() {
                             </span>
                         </div>
                     )}
-                    {!isOwnProfile && profile.email && (
-                        <p className="text-xs text-muted-foreground mt-1">Email: {profile.email}</p>
-                    )}
-                    {isOwnProfile && profile.email && (
-                        <p className="text-xs text-muted-foreground mt-1">Your Email (private): {profile.email}</p>
-                    )}
                </div>
            </div>
         </CardHeader>
@@ -227,7 +291,9 @@ export default function PublicProfilePage() {
 
         {profile.role === 'client' && (
             <CardContent className="p-4 md:p-6 space-y-4">
-                <h3 className="font-semibold text-lg text-muted-foreground mb-2">Company Details</h3>
+                <h3 className="font-semibold text-lg text-foreground mb-2 flex items-center gap-2">
+                    <Building className="h-5 w-5 text-muted-foreground" /> Company Details
+                </h3>
                 
                 {profile.website ? (
                   <div className="flex items-start gap-2 mb-2">
@@ -274,7 +340,9 @@ export default function PublicProfilePage() {
             <CardContent className="p-4 md:p-6 space-y-6">
                {profile.skills && profile.skills.length > 0 && (
                   <div>
-                     <h3 className="font-semibold mb-2 text-lg">Skills</h3>
+                     <h3 className="font-semibold mb-2 text-lg flex items-center gap-2">
+                        <Users className="h-5 w-5 text-muted-foreground" /> Skills
+                     </h3>
                      <div className="flex flex-wrap gap-2">
                        {profile.skills.map((skill, index) => (
                          <Badge key={index} variant="secondary" className="text-sm px-3 py-1">{skill}</Badge>
@@ -285,7 +353,9 @@ export default function PublicProfilePage() {
 
                 {profile.portfolioLinks && profile.portfolioLinks.length > 0 && (
                   <div>
-                     <h3 className="font-semibold mb-2 text-lg">Portfolio & Links</h3>
+                     <h3 className="font-semibold mb-2 text-lg flex items-center gap-2">
+                        <LinkIcon className="h-5 w-5 text-muted-foreground" /> Portfolio & Links
+                     </h3>
                      <ul className="space-y-2">
                        {profile.portfolioLinks.map((link, index) => (
                          <li key={index}>

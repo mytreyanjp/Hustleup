@@ -41,7 +41,8 @@ const completeProfileSchema = z.object({
         });
     } else {
         try {
-            z.string().url().parse(data.website);
+            // Ensure website parsing doesn't throw for empty string if it passed optional().or(z.literal(''))
+             if (data.website) z.string().url().parse(data.website);
         } catch (e) {
             ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -112,6 +113,8 @@ export default function CompleteProfilePage() {
         updatedAt: serverTimestamp(),
         averageRating: 0,
         totalRatings: 0,
+        following: [],
+        followersCount: 0,
       };
 
       if (data.role === 'student') {

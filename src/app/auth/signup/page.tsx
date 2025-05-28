@@ -160,6 +160,8 @@ export default function SignupPage() {
         updatedAt: serverTimestamp(),
         averageRating: 0,
         totalRatings: 0,
+        following: [],
+        followersCount: 0,
       };
 
       if (data.role === 'student') {
@@ -272,7 +274,7 @@ export default function SignupPage() {
       if (error.code) {
          switch (error.code) {
           case 'auth/account-exists-with-different-credential':
-            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. Please log in using your original sign-in method.`;
+            errorMessage = `An account with the email ${error.customData?.email || 'you provided'} already exists. It was created using a different sign-in method (e.g., password, or another social provider). Please sign in using your original method.`;
             break;
           case 'auth/popup-closed-by-user':
             errorMessage = `${providerName} Sign-Up cancelled.`;

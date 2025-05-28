@@ -22,10 +22,16 @@ export interface UserProfile extends DocumentData {
   bookmarkedGigIds?: string[]; // Student bookmarked gigs
   averageRating?: number; // Student average rating
   totalRatings?: number; // Student total ratings
+  
   // Client-specific fields
   companyName?: string;
   website?: string;
-  companyDescription?: string; // Added for client's company description
+  companyDescription?: string;
+
+  // Follower/Following system
+  following?: string[]; // Array of UIDs this user is following
+  followersCount?: number; // Number of users following this user
+  // followingCount can be derived from following.length
 }
 
 interface FirebaseContextType {
@@ -69,6 +75,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             bookmarkedGigIds: docSnap.data().bookmarkedGigIds || [],
             averageRating: docSnap.data().averageRating || 0,
             totalRatings: docSnap.data().totalRatings || 0,
+            following: docSnap.data().following || [],
+            followersCount: docSnap.data().followersCount || 0,
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client') {
@@ -83,10 +91,12 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           const basicProfile: UserProfile = {
             uid: currentUser.uid,
             email: currentUser.email,
-            role: null, // This will prompt for profile completion
+            role: null, 
             bookmarkedGigIds: [],
             averageRating: 0,
             totalRatings: 0,
+            following: [],
+            followersCount: 0,
           };
           setUserProfile(basicProfile);
           setRole(null);
@@ -100,6 +110,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           bookmarkedGigIds: [],
           averageRating: 0,
           totalRatings: 0,
+          following: [],
+          followersCount: 0,
         });
         setRole(null);
       }
@@ -112,9 +124,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshUserProfile = useCallback(async () => {
     if (user) {
-      setLoading(true);
+      setLoading(true); // Keep loading true while refreshing
       await fetchUserProfile(user);
-      setLoading(false);
+      setLoading(false); // Set loading to false after refresh is complete
     }
   }, [user, fetchUserProfile]);
 
@@ -224,36 +236,37 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       </div>
     );
   }
-
+  
   if (!firebaseActuallyInitialized && initializationError && isClient) {
+    const isEnvVarError = firebaseInitializationDetails.areEnvVarsMissing;
+    const isCoreServiceError = firebaseInitializationDetails.didCoreServicesFail && !isEnvVarError;
+
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
         <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-lg">
           <h2 className="text-xl font-semibold mb-2">Firebase Configuration Error!</h2>
           <p className="text-sm whitespace-pre-wrap mb-3">{initializationError}</p>
           
-          {firebaseInitializationDetails.areEnvVarsMissing && (
+          {isEnvVarError && (
             <div className="text-left text-xs mt-4 bg-destructive-foreground/10 p-3 rounded-md text-destructive-foreground/80">
-              <p className="font-bold mb-1 text-destructive-foreground">CRITICAL: To fix this, please meticulously check the following:</p>
+              <p className="font-bold mb-1 text-destructive-foreground">CRITICAL: To fix missing environment variables:</p>
               <ol className="list-decimal list-inside space-y-1">
-                <li><strong><code>.env.local</code> File Location:</strong> Ensure this file is located in the <strong>absolute root directory</strong> of your project (the same folder as <code>package.json</code> and <code>next.config.ts</code>). It should NOT be inside the `src` folder.</li>
-                <li><strong>Variable Naming:</strong> All Firebase environment variables inside the <code>.env.local</code> file <strong>MUST</strong> start with the prefix <code>NEXT_PUBLIC_</code> (e.g., <code>NEXT_PUBLIC_FIREBASE_API_KEY="your_key"</code>). Check for typos.</li>
-                <li><strong>Correct Values:</strong> Verify the API keys and other identifiers are copied exactly from your Firebase project settings. Ensure there are no extra quotes or spaces unless they are part of the actual value.</li>
-                <li><strong>SERVER RESTART:</strong> After creating or modifying the <code>.env.local</code> file, you <strong>MUST COMPLETELY STOP</strong> your Next.js development server (e.g., press <code>Ctrl+C</code> in the terminal) and then <strong>RESTART</strong> it (e.g., run <code>npm run dev</code> or <code>yarn dev</code> again). Changes to <code>.env.local</code> are only picked up by Next.js when the server starts. Hot-reloading WILL NOT load new environment variables.</li>
-                <li><strong>No Comments in `.env.local` (Usually):</strong> While some systems support comments (e.g., starting with `#`), it's safest to avoid them in `.env.local` files to prevent parsing issues, unless you are sure your specific setup handles them.</li>
+                <li><strong><code>.env.local</code> File Location:</strong> Ensure this file is in the <strong>root directory</strong> of your project (same folder as <code>package.json</code>).</li>
+                <li><strong>Variable Naming:</strong> All Firebase variables in <code>.env.local</code> <strong>MUST</strong> start with <code>NEXT_PUBLIC_</code>.</li>
+                <li><strong>Correct Values:</strong> Verify API keys and identifiers match your Firebase project settings.</li>
+                <li><strong>SERVER RESTART:</strong> After changes to <code>.env.local</code>, you <strong>MUST COMPLETELY STOP AND RESTART</strong> your Next.js development server (<code>npm run dev</code>).</li>
               </ol>
-              <p className="mt-2">If the problem persists after carefully checking all these steps, ensure there are no hidden characters or formatting issues in your <code>.env.local</code> file.</p>
             </div>
           )}
 
-           {!firebaseInitializationDetails.areEnvVarsMissing && firebaseInitializationDetails.didCoreServicesFail && (
+           {isCoreServiceError && (
              <div className="text-left text-xs mt-4 bg-destructive-foreground/10 p-3 rounded-md text-destructive-foreground/80">
                <p className="font-bold mb-1 text-destructive-foreground">Action Required - Please double-check:</p>
                <ol className="list-decimal list-inside space-y-1">
-                 <li><strong>Firebase Project Settings:</strong> Verify your API key, Auth Domain, Project ID, etc., in your <code>.env.local</code> file match *exactly* with the values from your Firebase project console.</li>
+                 <li><strong>Firebase Project Settings:</strong> Verify API key, Auth Domain, Project ID, etc., in your <code>.env.local</code> file match your Firebase project console.</li>
                  <li><strong>Firebase Services Enabled:</strong> Ensure Authentication, Firestore Database, and Storage are enabled in your Firebase project.</li>
                  <li><strong>Network Connectivity:</strong> Check your internet connection.</li>
-                 <li><strong>Correct `storageBucket` URL:</strong> Verify the `storageBucket` in `.env.local` matches the one from your Firebase project settings (e.g., `your-project-id.appspot.com` vs `your-project-id.firebasestorage.app`). The correct one for new projects is usually `your-project-id.firebasestorage.app`.</li>
+                 <li><strong>`storageBucket` URL:</strong> Ensure the `storageBucket` in <code>.env.local</code> is correct (e.g., `your-project-id.appspot.com` vs `your-project-id.firebasestorage.app`).</li>
                </ol>
              </div>
            )}
