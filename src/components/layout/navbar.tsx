@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -46,15 +46,17 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || suggestions.length > 0 && searchTerm.trim() === '') return; 
+    if (!db || suggestions.length > 0 && searchTerm.trim() === '') return;
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
+      // Fetch open gigs for suggestions.
+      // IMPORTANT: This query might require a composite index: status (Asc), createdAt (Desc)
       const q = query(
         gigsCollectionRef,
-        where('status', '==', 'open'), 
+        where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10) 
+        limit(10)
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -70,7 +72,7 @@ export default function Navbar() {
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [suggestions.length, searchTerm]); 
+  }, [suggestions.length, searchTerm]);
 
   useEffect(() => {
     setIsClient(true);
@@ -112,10 +114,12 @@ export default function Navbar() {
     }
   };
 
-  const filteredSuggestions = searchTerm.trim() === '' ? suggestions.slice(0,5) : suggestions.filter(suggestion => 
+  const filteredSuggestions = searchTerm.trim() === '' ? suggestions.slice(0,5) : suggestions.filter(suggestion =>
     suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
-  ).slice(0,5); 
+  ).slice(0,5);
+
+  const dashboardUrl = role === 'student' ? '/student/dashboard' : role === 'client' ? '/client/dashboard' : '/';
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -188,7 +192,7 @@ export default function Navbar() {
                         setSearchTerm(e.target.value);
                         if (e.target.value.trim() !== '') {
                             setIsSuggestionsOpen(true);
-                             if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions(); 
+                             if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
                         } else {
                             setIsSuggestionsOpen(false);
                         }
@@ -204,15 +208,15 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()} 
+                    onOpenAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
                         if (searchInputRef.current && searchInputRef.current.contains(e.target as Node)) {
                             return;
                         }
-                        setIsSuggestionsOpen(false); 
+                        setIsSuggestionsOpen(false);
                     }}
                 >
-                  <Command shouldFilter={false}> 
+                  <Command shouldFilter={false}>
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -227,10 +231,11 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title} 
+                              value={gig.title}
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
                                 setIsSuggestionsOpen(false);
+                                setSearchTerm('');
                               }}
                               className="cursor-pointer"
                             >
@@ -244,7 +249,7 @@ export default function Navbar() {
                         <CommandItem
                             value={`search_all_for_${searchTerm}`}
                             onSelect={() => {
-                                handleSearchSubmit(); 
+                                handleSearchSubmit();
                                 setIsSuggestionsOpen(false);
                             }}
                             className="cursor-pointer italic"
@@ -263,133 +268,145 @@ export default function Navbar() {
           <ModeToggle />
           {isClient ? (
             loading ? (
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>..</AvatarFallback>
-              </Avatar>
+              <div className="flex items-center space-x-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>..</AvatarFallback>
+                </Avatar>
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                  <MenuIcon />
+                </Button>
+              </div>
             ) : user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+              <div className="flex items-center space-x-1">
+                <Link href={dashboardUrl} passHref>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
                       <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
                     </Avatar>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                        {userProfile?.username || user.email?.split('@')[0]}
-                      </p>
-                      <p className="text-xs leading-none text-muted-foreground">
-                        {user.email}
-                      </p>
-                      <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
-                        Role: {role || 'N/A'}
-                      </p>
+                </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MenuIcon />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {userProfile?.username || user.email?.split('@')[0]}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {user.email}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
+                          Role: {role || 'N/A'}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {role === 'student' && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/student/dashboard">
+                            <LayoutDashboard className="mr-2 h-4 w-4" />
+                            <span>Dashboard</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/student/profile">
+                            <GraduationCap className="mr-2 h-4 w-4" />
+                            <span>My Profile</span>
+                          </Link>
+                        </DropdownMenuItem>
+                         <DropdownMenuItem asChild>
+                          <Link href="/student/applications">
+                            <ApplicationsIcon className="mr-2 h-4 w-4" />
+                            <span>My Applications</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/student/bookmarks">
+                            <Bookmark className="mr-2 h-4 w-4" />
+                            <span>My Bookmarks</span>
+                          </Link>
+                        </DropdownMenuItem>
+                         <DropdownMenuItem asChild>
+                          <Link href="/student/works">
+                            <Briefcase className="mr-2 h-4 w-4" />
+                            <span>Your Works</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {role === 'client' && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/client/dashboard">
+                            <LayoutDashboard className="mr-2 h-4 w-4" />
+                            <span>Dashboard</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/client/gigs">
+                            <Briefcase className="mr-2 h-4 w-4" />
+                            <span>My Gigs</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <div className="md:hidden">
+                      <DropdownMenuSeparator className="md:hidden" />
+                      <DropdownMenuItem asChild className="md:hidden">
+                         <Link href="/gigs/browse">
+                           {isClient && role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
+                           {isClient && role === 'student' ? 'Explore' : 'Gigs'}
+                         </Link>
+                      </DropdownMenuItem>
+                      {isClient && role === 'client' && (
+                          <DropdownMenuItem asChild className="md:hidden">
+                              <Link href="/hustlers/browse">
+                                  <HustlersIcon className="mr-2 h-4 w-4" /> Hustlers
+                              </Link>
+                          </DropdownMenuItem>
+                      )}
+                      {isClient && user && (
+                          <DropdownMenuItem asChild className="md:hidden">
+                              <Link href="/chat" className="relative">
+                                  <MessageSquare className="mr-2 h-4 w-4" />
+                                  <span>Messages</span>
+                                  {totalUnreadChats > 0 && (
+                                      <span className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">
+                                          {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                                      </span>
+                                  )}
+                              </Link>
+                          </DropdownMenuItem>
+                      )}
                     </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {role === 'student' && (
-                    <>
-                      <DropdownMenuItem asChild>
-                        <Link href="/student/dashboard">
-                          <LayoutDashboard className="mr-2 h-4 w-4" />
-                          <span>Dashboard</span>
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/student/profile">
-                          <GraduationCap className="mr-2 h-4 w-4" />
-                          <span>My Profile</span>
-                        </Link>
-                      </DropdownMenuItem>
-                       <DropdownMenuItem asChild>
-                        <Link href="/student/applications">
-                          <ApplicationsIcon className="mr-2 h-4 w-4" />
-                          <span>My Applications</span>
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/student/bookmarks">
-                          <Bookmark className="mr-2 h-4 w-4" />
-                          <span>My Bookmarks</span>
-                        </Link>
-                      </DropdownMenuItem>
-                       <DropdownMenuItem asChild>
-                        <Link href="/student/works">
-                          <Briefcase className="mr-2 h-4 w-4" />
-                          <span>Your Works</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {role === 'client' && (
-                    <>
-                      <DropdownMenuItem asChild>
-                        <Link href="/client/dashboard">
-                          <LayoutDashboard className="mr-2 h-4 w-4" />
-                          <span>Dashboard</span>
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/client/gigs">
-                          <Briefcase className="mr-2 h-4 w-4" />
-                          <span>My Gigs</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  <div className="md:hidden"> 
-                    <DropdownMenuSeparator className="md:hidden" />
-                    <DropdownMenuItem asChild className="md:hidden">
-                       <Link href="/gigs/browse">
-                         {isClient && role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
-                         {isClient && role === 'student' ? 'Explore' : 'Gigs'}
-                       </Link>
+                    <DropdownMenuItem asChild>
+                      <Link href="/settings">
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Settings</span>
+                      </Link>
                     </DropdownMenuItem>
-                    {isClient && role === 'client' && (
-                        <DropdownMenuItem asChild className="md:hidden">
-                            <Link href="/hustlers/browse">
-                                <HustlersIcon className="mr-2 h-4 w-4" /> Hustlers
-                            </Link>
-                        </DropdownMenuItem>
-                    )}
-                    {isClient && user && (
-                        <DropdownMenuItem asChild className="md:hidden">
-                            <Link href="/chat" className="relative">
-                                <MessageSquare className="mr-2 h-4 w-4" />
-                                <span>Messages</span>
-                                {totalUnreadChats > 0 && (
-                                    <span className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">
-                                        {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
-                                    </span>
-                                )}
-                            </Link>
-                        </DropdownMenuItem>
-                    )}
-                  </div>
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings">
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a href="mailto:promoflixindia@gmail.com">
-                      <HelpCircle className="mr-2 h-4 w-4" />
-                      <span>Support</span>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Log out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : ( 
+                    <DropdownMenuItem asChild>
+                      <a href="mailto:promoflixindia@gmail.com">
+                        <HelpCircle className="mr-2 h-4 w-4" />
+                        <span>Support</span>
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut}>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : (
               <>
                 <Button variant="ghost" asChild className="hidden sm:inline-flex">
                   <Link href="/auth/login">Log In</Link>
@@ -402,8 +419,8 @@ export default function Navbar() {
                 </Button>
               </>
             )
-          ) : ( 
-            <div style={{ width: '7rem' }} /> 
+          ) : (
+            <div style={{ width: '7rem' }} />
           )}
         </div>
       </div>
