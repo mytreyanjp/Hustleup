@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import Image from 'next/image';
 import { StarRating } from '@/components/ui/star-rating';
-import { formatDistanceToNow } from 'date-fns'; 
+import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
 
@@ -64,7 +64,7 @@ export default function PublicProfilePage() {
     const fetchProfileData = async () => {
       setIsLoading(true);
       setError(null);
-      setClientOpenGigs([]); 
+      setClientOpenGigs([]);
 
       try {
         const userDocRef = doc(db, 'users', userId);
@@ -170,14 +170,14 @@ export default function PublicProfilePage() {
         // IMPORTANT: For production, use a Cloud Function for atomicity.
         // This client-side update to another user's doc is simplified for this example.
         await updateDoc(targetUserDocRef, { followersCount: increment(-1) });
-        toast({ title: "Unfollowed", description: `You are no longer following ${profile.username || 'this user'}.` });
+        toast({ title: "Unfollowed", description: `You are no longer following ${profile.companyName || profile.username || 'this user'}.` });
         setIsFollowing(false);
         setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 1) - 1 } : null);
       } else { // Follow action
         await updateDoc(viewerUserDocRef, { following: arrayUnion(profile.uid) });
         // IMPORTANT: For production, use a Cloud Function for atomicity.
         await updateDoc(targetUserDocRef, { followersCount: increment(1) });
-        toast({ title: "Followed!", description: `You are now following ${profile.username || 'this user'}.` });
+        toast({ title: "Followed!", description: `You are now following ${profile.companyName || profile.username || 'this user'}.` });
         setIsFollowing(true);
         setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
       }
@@ -263,8 +263,14 @@ export default function PublicProfilePage() {
                    </div>
                    
                     <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground">
-                        <span><span className="font-semibold text-foreground">{profile.followersCount || 0}</span> Followers</span>
-                        <span><span className="font-semibold text-foreground">{followingCount}</span> Following</span>
+                        <span className="flex items-center gap-1">
+                            <Users className="h-4 w-4" />
+                            <span className="font-semibold text-foreground">{profile.followersCount || 0}</span> Followers
+                        </span>
+                        <span className="flex items-center gap-1">
+                           <Users className="h-4 w-4" />
+                           <span className="font-semibold text-foreground">{followingCount}</span> Following
+                        </span>
                     </div>
 
                    {/* Display Contact Person if company name is different from username */}
@@ -468,5 +474,3 @@ export default function PublicProfilePage() {
     </div>
   );
 }
-
-    
