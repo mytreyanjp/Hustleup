@@ -46,15 +46,17 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || suggestions.length > 0) return;
+    if (!db || suggestions.length > 0 && searchTerm.trim() === '') return; // Don't refetch if already have suggestions unless searching
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
+      // IMPORTANT: This query requires a composite index in Firestore:
+      // Collection: 'gigs', Fields: 'status' (Ascending), 'createdAt' (Descending)
       const q = query(
         gigsCollectionRef,
-        where('status', '==', 'open'), // IMPORTANT: Query only open gigs for suggestions
+        where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10)
+        limit(10) // Fetch a small number for suggestions
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -70,17 +72,22 @@ export default function Navbar() {
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [suggestions.length]);
+  }, [suggestions.length, searchTerm]); // Added searchTerm dependency
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
   useEffect(() => {
-    if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
+    if (isSuggestionsOpen && searchTerm.trim() !== '' && !isLoadingSuggestions) {
+      // Optionally re-fetch or rely on client-side filtering of initially fetched suggestions
+      // For now, we filter client-side. If a more dynamic backend search for suggestions is needed,
+      // fetchInitialSuggestions could be called here with the searchTerm.
+      // For simplicity with Genkit, we'll rely on the initial fetch and client-side filtering.
+    } else if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
       fetchInitialSuggestions();
     }
-  }, [isSuggestionsOpen, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions]);
+  }, [isSuggestionsOpen, searchTerm, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions]);
 
 
   const handleSignOut = async () => {
@@ -107,18 +114,19 @@ export default function Navbar() {
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
       setIsSuggestionsOpen(false);
-      setSearchTerm(''); // Clear search term after navigation
+      // setSearchTerm(''); // Keep search term if user might want to refine from search page
     }
   };
 
-  const filteredSuggestions = searchTerm.trim() === '' ? [] : suggestions.filter(suggestion =>
+  const filteredSuggestions = searchTerm.trim() === '' ? suggestions.slice(0,5) : suggestions.filter(suggestion => // Show some initial if no search term
     suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
-  );
+  ).slice(0,5); // Limit displayed suggestions
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container pl-4 flex h-16 items-center">
+      {/* Removed pl-10, container will use its default padding */}
+      <div className="container flex h-16 items-center">
         <Link href="/" className="mr-4 flex items-center space-x-2">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -161,31 +169,38 @@ export default function Navbar() {
           )}
         </nav>
 
+        {/* This div groups search and profile elements, justify-end pushes them to the right of this div */}
+        {/* The flex-1 on the nav element pushes this entire div to the right of the container */}
         <div className="flex flex-1 md:flex-none items-center justify-end space-x-2">
           {isClient && (
-            <Popover open={isSuggestionsOpen} onOpenChange={setIsSuggestionsOpen}>
+            <Popover open={isSuggestionsOpen} onOpenChange={(open) => {
+              setIsSuggestionsOpen(open);
+              if (open && suggestions.length === 0 && !isLoadingSuggestions) {
+                fetchInitialSuggestions();
+              }
+            }}>
               <PopoverTrigger asChild>
                 <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xs md:ml-4">
                   <SearchIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     ref={searchInputRef}
                     type="search"
-                    placeholder="Search gigs or users..."
-                    className={cn("pl-8 h-9 w-full", isClient ? "" : "cursor-not-allowed opacity-50")}
+                    placeholder="Search gigs..."
+                    className={cn("pl-8 h-9 w-full")}
                     value={searchTerm}
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
                         if (e.target.value.trim() !== '') {
                             setIsSuggestionsOpen(true);
+                             if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions(); // Fetch if suggestions empty
                         } else {
                             setIsSuggestionsOpen(false);
                         }
                     }}
                     onFocus={() => {
-                        if (searchTerm.trim() !== '') setIsSuggestionsOpen(true);
-                        fetchInitialSuggestions();
+                         setIsSuggestionsOpen(true);
+                         if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
                     }}
-                    disabled={!isClient}
                   />
                 </form>
               </PopoverTrigger>
@@ -193,9 +208,16 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()}
+                    onOpenAutoFocus={(e) => e.preventDefault()} // Prevent auto-focus stealing
+                    onInteractOutside={(e) => {
+                        // Prevent closing if clicking on the search input itself
+                        if (searchInputRef.current && searchInputRef.current.contains(e.target as Node)) {
+                            return;
+                        }
+                        // setIsSuggestionsOpen(false); // Standard close on outside click
+                    }}
                 >
-                  <Command shouldFilter={false}>
+                  <Command shouldFilter={false}> {/* We handle filtering with filteredSuggestions */}
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -203,18 +225,18 @@ export default function Navbar() {
                         </div>
                       )}
                       {!isLoadingSuggestions && searchTerm.trim() !== '' && filteredSuggestions.length === 0 && (
-                        <CommandEmpty>No direct matches. Try a broader search.</CommandEmpty>
+                        <CommandEmpty>No matching gigs found.</CommandEmpty>
                       )}
                       {!isLoadingSuggestions && filteredSuggestions.length > 0 && (
                         <CommandGroup heading="Suggested Gigs">
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title}
+                              value={gig.title} // For CMDK filtering, though we filter manually
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
                                 setIsSuggestionsOpen(false);
-                                setSearchTerm('');
+                                // setSearchTerm(''); // Keep search term for context
                               }}
                               className="cursor-pointer"
                             >
@@ -226,9 +248,9 @@ export default function Navbar() {
                       )}
                        <CommandGroup>
                         <CommandItem
-                            value={`search_all_${searchTerm}`}
+                            value={`search_all_for_${searchTerm}`}
                             onSelect={() => {
-                                handleSearchSubmit();
+                                handleSearchSubmit(); // This will use the current searchTerm
                                 setIsSuggestionsOpen(false);
                             }}
                             className="cursor-pointer italic"
@@ -319,22 +341,23 @@ export default function Navbar() {
                       </DropdownMenuItem>
                     </>
                   )}
-                  <div className="md:hidden">
-                    <DropdownMenuItem asChild>
+                  <div className="md:hidden"> {/* Links visible only on mobile dropdown */}
+                    <DropdownMenuSeparator className="md:hidden" />
+                    <DropdownMenuItem asChild className="md:hidden">
                        <Link href="/gigs/browse">
-                         {role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
-                         {role === 'student' ? 'Explore' : 'Gigs'}
+                         {isClient && role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
+                         {isClient && role === 'student' ? 'Explore' : 'Gigs'}
                        </Link>
                     </DropdownMenuItem>
-                    {role === 'client' && (
-                        <DropdownMenuItem asChild>
+                    {isClient && role === 'client' && (
+                        <DropdownMenuItem asChild className="md:hidden">
                             <Link href="/hustlers/browse">
                                 <HustlersIcon className="mr-2 h-4 w-4" /> Hustlers
                             </Link>
                         </DropdownMenuItem>
                     )}
-                    {user && (
-                        <DropdownMenuItem asChild>
+                    {isClient && user && (
+                        <DropdownMenuItem asChild className="md:hidden">
                             <Link href="/chat" className="relative">
                                 <MessageSquare className="mr-2 h-4 w-4" />
                                 <span>Messages</span>
@@ -366,7 +389,7 @@ export default function Navbar() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : (
+            ) : ( // Not loading, no user
               <>
                 <Button variant="ghost" asChild className="hidden sm:inline-flex">
                   <Link href="/auth/login">Log In</Link>
@@ -379,8 +402,8 @@ export default function Navbar() {
                 </Button>
               </>
             )
-          ) : (
-            <div style={{ width: '7rem' }} />
+          ) : ( // isClient is false (SSR or initial client render)
+            <div style={{ width: '7rem' }} /> // Placeholder for SSR to avoid layout shifts
           )}
         </div>
       </div>
