@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/config/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -97,7 +97,7 @@ export default function SupportPage() {
     setIsSubmittingAnswer(true);
     try {
       const faqDocRef = doc(db, 'faqs', currentAnsweringFaqId);
-      const faqSnap = await getDoc(faqDocRef); // Get current document
+      const faqSnap = await getDoc(faqDocRef); 
 
       if (!faqSnap.exists()) {
         toast({ title: "Error", description: "Question not found.", variant: "destructive" });
@@ -108,24 +108,22 @@ export default function SupportPage() {
       const currentData = faqSnap.data() as FAQEntry;
       const existingAnswers = currentData.answers || [];
 
-      const newAnswerObject = {
+      const newAnswerObject: AnswerEntry = {
         answerText: newAnswer.trim(),
         answeredByUid: user.uid,
         answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Anonymous',
-        answeredAt: serverTimestamp(), // serverTimestamp() is now part of the data for updateDoc
+        answeredAt: Timestamp.now(), // Use client-generated timestamp
       };
 
       const updatedAnswers = [...existingAnswers, newAnswerObject];
-      // Sort answers by timestamp after adding, newest first for display consistency if desired, though Firestore array order is maintained.
-      // Or sort when displaying. For simplicity, we'll just append here.
-
+      
       await updateDoc(faqDocRef, {
         answers: updatedAnswers
       });
 
       toast({ title: "Answer Submitted!", description: "Thank you for your contribution." });
       setNewAnswer('');
-      setCurrentAnsweringFaqId(null); // Close dialog by resetting state
+      setCurrentAnsweringFaqId(null); 
     } catch (error: any) {
       console.error("Error submitting answer:", error);
       toast({ title: "Error", description: `Could not submit answer: ${error.message}`, variant: "destructive" });
@@ -137,11 +135,10 @@ export default function SupportPage() {
   const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'Just now';
     try {
-      // Firestore serverTimestamp might be null initially if not yet written to server
       if (timestamp.toDate) {
         return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
       }
-      return 'A moment ago'; // Fallback for pre-write state
+      return 'A moment ago'; 
     } catch (e) {
       return 'Invalid date';
     }
