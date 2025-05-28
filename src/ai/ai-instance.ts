@@ -1,12 +1,16 @@
+
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
 
 export const ai = genkit({
-  promptDir: './prompts',
+  promptDir: './prompts', // This is not used by definePrompt, but good to keep
   plugins: [
     googleAI({
-      apiKey: process.env.GOOGLE_GENAI_API_KEY,
+      apiKey: process.env.GOOGLE_GENAI_API_KEY, // Ensure this env var is set for Genkit
     }),
   ],
-  model: 'googleai/gemini-2.0-flash',
+  // Default model for generate() calls if not specified, can be overridden.
+  // For definePrompt, the model used depends on the plugin capabilities.
+  // If GOOGLE_GENAI_API_KEY is for Gemini, Gemini models will be used.
+  // model: 'googleai/gemini-pro', // Example model, can be specific like 'gemini-1.5-flash-latest'
 });
