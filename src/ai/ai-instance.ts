@@ -12,5 +12,6 @@ export const ai = genkit({
   // Default model for generate() calls if not specified, can be overridden.
   // For definePrompt, the model used depends on the plugin capabilities.
   // If GOOGLE_GENAI_API_KEY is for Gemini, Gemini models will be used.
-  // model: 'googleai/gemini-pro', // Example model, can be specific like 'gemini-1.5-flash-latest'
+  model: 'googleai/gemini-1.5-flash-latest', // Set a default model
 });
+
