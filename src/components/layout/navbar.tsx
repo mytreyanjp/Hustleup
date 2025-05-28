@@ -46,18 +46,15 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || (suggestions.length > 0 && searchTerm.trim() === '')) return; // Avoid refetch if already populated and search is empty
+    if (!db || (suggestions.length > 0 && searchTerm.trim() === '')) return; 
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
-      // Fetch open gigs for suggestions.
-      // IMPORTANT: This query might require a composite index: status (Asc), createdAt (Desc)
-      // Please create this index in your Firebase console if you encounter errors.
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10) // Fetch a small number for suggestions
+        limit(10) 
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -69,17 +66,16 @@ export default function Navbar() {
       setSuggestions(fetchedGigs);
     } catch (error) {
       console.error("Error fetching initial gig suggestions:", error);
-      setSuggestions([]); // Set to empty array on error
+      setSuggestions([]); 
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [suggestions.length, searchTerm]); // Include searchTerm dependency
+  }, [suggestions.length, searchTerm]); 
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Fetch initial suggestions when the popover opens and suggestions are empty
   useEffect(() => {
     if (isSuggestionsOpen && searchTerm.trim() !== '' && !isLoadingSuggestions) {
       // Client-side filtering happens in filteredSuggestions
@@ -112,8 +108,8 @@ export default function Navbar() {
     e?.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-      setIsSuggestionsOpen(false); // Close popover on search submission
-      setSearchTerm(''); // Clear search term after submission
+      setIsSuggestionsOpen(false); 
+      setSearchTerm(''); 
     }
   };
 
@@ -126,7 +122,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center pl-4"> {/* Added pl-4 here */}
+      <div className="container flex h-16 items-center pl-4"> 
         <div className="mr-4 flex items-center space-x-2 cursor-default">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -189,7 +185,7 @@ export default function Navbar() {
                             setIsSuggestionsOpen(true);
                              if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
                         } else {
-                            setIsSuggestionsOpen(false); // Close if search term is cleared
+                            setIsSuggestionsOpen(false); 
                         }
                     }}
                     onFocus={() => {
@@ -394,10 +390,10 @@ export default function Navbar() {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <a href="mailto:promoflixindia@gmail.com">
+                      <Link href="/support">
                         <HelpCircle className="mr-2 h-4 w-4" />
                         <span>Support</span>
-                      </a>
+                      </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}>
@@ -421,7 +417,6 @@ export default function Navbar() {
               </>
             )
           ) : (
-            // Placeholder for SSR to avoid layout shifts
             <div style={{ width: '7rem' }} /> 
           )}
         </div>
