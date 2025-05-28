@@ -9,18 +9,29 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info } from 'lucide-react'; // Added Info
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
 import Image from 'next/image';
 import { StarRating } from '@/components/ui/star-rating';
+import { formatDistanceToNow } from 'date-fns'; // For relative dates
 
 interface StudentPost {
   id: string;
   imageUrl: string;
   caption?: string;
+  createdAt: Timestamp;
+}
+
+interface ClientGig {
+  id: string;
+  title: string;
+  budget: number;
+  currency: string;
+  deadline: Timestamp;
+  status: 'open' | 'in-progress' | 'completed' | 'closed';
   createdAt: Timestamp;
 }
 
@@ -32,8 +43,10 @@ export default function PublicProfilePage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<StudentPost[]>([]);
+  const [clientOpenGigs, setClientOpenGigs] = useState<ClientGig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [isLoadingClientGigs, setIsLoadingClientGigs] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +59,8 @@ export default function PublicProfilePage() {
     const fetchProfileData = async () => {
       setIsLoading(true);
       setError(null);
+      setClientOpenGigs([]); // Reset gigs when profile changes
+
       try {
         const userDocRef = doc(db, 'users', userId);
         const docSnap = await getDoc(userDocRef);
@@ -61,10 +76,6 @@ export default function PublicProfilePage() {
 
            if (fetchedProfile.role === 'student') {
               setIsLoadingPosts(true);
-              // IMPORTANT: This query requires a composite index in Firestore.
-              // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
-              // Create it via the link in the Firebase console error message if it's missing.
-              // Example link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=ClRwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3VwMvc3R1ZGVudF9wb3N0cy9pbmRleGVzL18QARoNCglzdHVkZW50SWQQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -77,14 +88,31 @@ export default function PublicProfilePage() {
               })) as StudentPost[];
               setPosts(fetchedPosts);
               setIsLoadingPosts(false);
+           } else if (fetchedProfile.role === 'client') {
+              setIsLoadingClientGigs(true);
+              // IMPORTANT: This query likely requires a composite index on 'gigs':
+              // clientId (Ascending), status (Ascending), createdAt (Descending)
+              const clientGigsQuery = query(
+                collection(db, 'gigs'),
+                where('clientId', '==', userId),
+                where('status', '==', 'open'),
+                orderBy('createdAt', 'desc')
+              );
+              const gigsSnapshot = await getDocs(clientGigsQuery);
+              const fetchedClientGigs = gigsSnapshot.docs.map(gigDoc => ({
+                id: gigDoc.id,
+                ...gigDoc.data()
+              })) as ClientGig[];
+              setClientOpenGigs(fetchedClientGigs);
+              setIsLoadingClientGigs(false);
            }
         } else {
           setError("Profile not found.");
           setProfile(null);
         }
       } catch (err: any) {
-        console.error("Error fetching profile:", err);
-        setError("Failed to load profile details. Please try again later.");
+        console.error("Error fetching profile or related data:", err);
+        setError("Failed to load profile details. Please try again later. This could be due to a missing Firestore index.");
       } finally {
         setIsLoading(false);
       }
@@ -99,6 +127,13 @@ export default function PublicProfilePage() {
      if (email) return email.substring(0, 2).toUpperCase();
      return '??';
    };
+
+  const formatGigDate = (timestamp: Timestamp | undefined): string => {
+    if (!timestamp) return 'N/A';
+    try {
+      return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
+    } catch (e) { return 'Invalid date'; }
+  };
 
   if (isLoading) {
     return (
@@ -162,12 +197,13 @@ export default function PublicProfilePage() {
                             </Button>
                         )}
                    </div>
+                   {/* Display Contact Person if company name is different from username */}
+                    {profile.role === 'client' && profile.companyName && profile.username && profile.companyName !== profile.username && (
+                        <p className="text-sm text-muted-foreground mt-1">Contact: {profile.username}</p>
+                    )}
 
                    {profile.role === 'student' && profile.bio && (
                         <p className="text-sm text-foreground/90 mt-1">{profile.bio}</p>
-                   )}
-                   {profile.role === 'client' && profile.username && profile.companyName !== profile.username && (
-                        <p className="text-sm text-muted-foreground mt-1">Contact: {profile.username}</p>
                    )}
                    {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
                         <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
@@ -311,7 +347,56 @@ export default function PublicProfilePage() {
             </div>
           </>
         )}
+
+        {profile.role === 'client' && (
+            <>
+                <Separator />
+                <div className="p-4 md:p-6">
+                    <h3 className="font-semibold mb-4 text-lg flex items-center gap-2">
+                        <Briefcase className="h-5 w-5 text-muted-foreground" /> Open Gigs
+                    </h3>
+                    {isLoadingClientGigs ? (
+                        <div className="flex justify-center items-center py-8">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        </div>
+                    ) : clientOpenGigs.length > 0 ? (
+                        <div className="space-y-4">
+                            {clientOpenGigs.map(gig => (
+                                <Card key={gig.id} className="glass-card">
+                                    <CardHeader className="pb-3">
+                                        <CardTitle className="text-md">{gig.title}</CardTitle>
+                                        <CardDescription className="text-xs">Posted {formatGigDate(gig.createdAt)}</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-1 pb-3">
+                                        <p className="text-sm flex items-center gap-1">
+                                            <DollarSign className="h-4 w-4 text-muted-foreground" /> 
+                                            Budget: {gig.currency} {gig.budget.toFixed(2)}
+                                        </p>
+                                        <p className="text-sm flex items-center gap-1">
+                                            <CalendarDays className="h-4 w-4 text-muted-foreground" /> 
+                                            Deadline: {gig.deadline.toDate().toLocaleDateString()}
+                                        </p>
+                                    </CardContent>
+                                    <CardFooter>
+                                        <Button asChild size="sm" className="w-full">
+                                            <Link href={`/gigs/${gig.id}`}>View & Apply</Link>
+                                        </Button>
+                                    </CardFooter>
+                                </Card>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center text-muted-foreground py-8">
+                            <Briefcase className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                            <p className="text-sm">This client has no open gigs currently.</p>
+                        </div>
+                    )}
+                </div>
+            </>
+        )}
       </Card>
     </div>
   );
 }
+
+    
