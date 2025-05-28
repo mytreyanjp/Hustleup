@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -129,7 +129,7 @@ export default function Navbar() {
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
             <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
-            {isClient && role === 'student' ? 'Explore' : 'Gigs'}
+             {isClient && role === 'student' ? 'Explore' : 'Gigs'}
           </Link>
 
           {isClient && role === 'client' && (
@@ -230,7 +230,6 @@ export default function Navbar() {
                             onSelect={() => {
                                 handleSearchSubmit();
                                 setIsSuggestionsOpen(false);
-                                // setSearchTerm(''); // Keep search term for the main search page
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -277,20 +276,48 @@ export default function Navbar() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {role === 'student' && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/student/dashboard">
-                        <LayoutDashboard className="mr-2 h-4 w-4" />
-                        <span>Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/student/dashboard">
+                          <LayoutDashboard className="mr-2 h-4 w-4" />
+                          <span>Dashboard</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/student/profile">
+                          <GraduationCap className="mr-2 h-4 w-4" />
+                          <span>My Profile</span>
+                        </Link>
+                      </DropdownMenuItem>
+                       <DropdownMenuItem asChild>
+                        <Link href="/student/applications">
+                          <ApplicationsIcon className="mr-2 h-4 w-4" />
+                          <span>My Applications</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/student/bookmarks">
+                          <Bookmark className="mr-2 h-4 w-4" />
+                          <span>My Bookmarks</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
                   )}
                   {role === 'client' && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/client/dashboard">
-                        <LayoutDashboard className="mr-2 h-4 w-4" />
-                        <span>Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/client/dashboard">
+                          <LayoutDashboard className="mr-2 h-4 w-4" />
+                          <span>Dashboard</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/client/gigs">
+                          <Briefcase className="mr-2 h-4 w-4" />
+                          <span>My Gigs</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
                   )}
                   <div className="md:hidden">
                     <DropdownMenuItem asChild>
@@ -320,22 +347,6 @@ export default function Navbar() {
                         </DropdownMenuItem>
                     )}
                   </div>
-                  {role === 'student' && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/student/profile">
-                        <GraduationCap className="mr-2 h-4 w-4" />
-                        <span>My Profile</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {role === 'client' && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/client/gigs">
-                        <Briefcase className="mr-2 h-4 w-4" />
-                        <span>My Gigs</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
                   <DropdownMenuItem asChild>
                     <Link href="/settings">
                       <Settings className="mr-2 h-4 w-4" />
