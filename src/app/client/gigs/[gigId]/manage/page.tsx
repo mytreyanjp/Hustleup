@@ -1,23 +1,29 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import { useFirebase, type UserProfile } from '@/context/firebase-context'; // Import UserProfile
+import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion } from 'firebase/firestore';
+import { db, storage } from '@/config/firebase';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea'; 
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X } from 'lucide-react';
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useRazorpay } from '@/hooks/use-razorpay';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getChatId } from '@/lib/utils';
-import { StarRating } from '@/components/ui/star-rating'; 
+import { StarRating } from '@/components/ui/star-rating';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import type { ProgressReport, StudentSubmission } from '@/app/client/gigs/[gigId]/manage/page';
+
 
 interface ApplicantInfo {
     studentId: string;
@@ -25,14 +31,6 @@ interface ApplicantInfo {
     appliedAt: Timestamp;
     message?: string;
     status?: 'pending' | 'accepted' | 'rejected';
-}
-
-interface ProgressReport {
-  reportNumber: number;
-  studentSubmission?: { text: string; fileUrl?: string; submittedAt: Timestamp };
-  clientStatus?: 'pending_review' | 'approved' | 'rejected';
-  clientFeedback?: string;
-  reviewedAt?: Timestamp;
 }
 
 interface Gig {
@@ -49,19 +47,19 @@ interface Gig {
   applicants?: ApplicantInfo[];
   selectedStudentId?: string | null;
   currency: "INR";
-  numberOfReports?: number; // Added
-  progressReports?: ProgressReport[]; // Added
+  numberOfReports?: number;
+  progressReports?: ProgressReport[];
 }
 
 interface Review {
-  id: string; 
+  id: string;
   gigId: string;
   gigTitle: string;
   clientId: string;
   clientUsername: string;
   studentId: string;
   studentUsername: string;
-  rating: number; 
+  rating: number;
   comment?: string;
   createdAt: Timestamp;
 }
@@ -85,11 +83,12 @@ export default function ManageGigPage() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [hasBeenReviewed, setHasBeenReviewed] = useState(false);
 
+  const [currentReviewingReportNumber, setCurrentReviewingReportNumber] = useState<number | null>(null);
+  const [clientFeedbackText, setClientFeedbackText] = useState("");
+
 
    const handlePaymentSuccess = async (paymentDetails: { paymentId: string; orderId?: string; signature?: string }) => {
-    console.log("Razorpay Success:", paymentDetails);
      if (!payingStudent || !gig || !user || !userProfile) return;
-
      setIsLoading(true);
      try {
          const transactionData = {
@@ -100,21 +99,17 @@ export default function ManageGigPage() {
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
-             currency: "INR",
-             status: 'succeeded',
+             currency: "INR" as "INR",
+             status: 'succeeded' as 'succeeded' | 'failed' | 'pending',
              razorpayPaymentId: paymentDetails.paymentId,
              razorpayOrderId: paymentDetails.orderId,
              paidAt: serverTimestamp(),
          };
          await addDoc(collection(db, "transactions"), transactionData);
-         console.log("Transaction recorded:", transactionData);
 
           const gigDocRef = doc(db, 'gigs', gig.id);
-          await updateDoc(gigDocRef, {
-              status: 'completed',
-          });
+          await updateDoc(gigDocRef, { status: 'completed' });
          setGig(prev => prev ? { ...prev, status: 'completed' } : null);
-
 
          toast({
              title: "Payment Successful!",
@@ -123,24 +118,16 @@ export default function ManageGigPage() {
 
      } catch (err) {
          console.error("Error recording transaction or updating gig status:", err);
-         toast({
-             title: "Payment Recorded, Update Failed",
-             description: "Payment was successful but updating gig status failed. Please contact support.",
-             variant: "destructive",
-         });
+         toast({ title: "Payment Recorded, Update Failed", description: "Payment was successful but updating gig status failed. Please contact support.", variant: "destructive" });
      } finally {
          setPayingStudent(null);
          setIsLoading(false);
      }
    };
 
-   const handlePaymentError = (error: any) => {
-     console.error("Razorpay Error:", error);
-     toast({
-       title: "Payment Failed",
-       description: error.description || error.reason || "An error occurred during payment.",
-       variant: "destructive",
-     });
+   const handlePaymentError = (errorData: any) => {
+     console.error("Razorpay Error:", errorData);
+     toast({ title: "Payment Failed", description: errorData.description || errorData.reason || "An error occurred during payment.", variant: "destructive" });
      setPayingStudent(null);
    };
 
@@ -156,512 +143,392 @@ export default function ManageGigPage() {
          return;
      };
      setPayingStudent(student);
-
      openCheckout({
-       amount: gig.budget * 100, // Amount in paise
+       amount: gig.budget * 100, 
        currency: "INR",
        name: "HustleUp Gig Payment",
        description: `Gig: ${gig.title}. Use any supported method via Razorpay (Cards, UPI/GPay, etc.).`,
-       prefill: {
-         name: userProfile?.username || user?.email?.split('@')[0],
-         email: user?.email || '',
-       },
-       notes: {
-         gigId: gig.id,
-         studentId: student.studentId,
-         clientId: user?.uid,
-       },
+       prefill: { name: userProfile?.username || user?.email?.split('@')[0], email: user?.email || '' },
+       notes: { gigId: gig.id, studentId: student.studentId, clientId: user?.uid },
      });
    };
 
     const fetchGigAndReviewStatus = useCallback(async () => {
         if (!gigId || !user || !db) return;
-        setIsLoading(true);
-        setError(null);
+        setIsLoading(true); setError(null);
         try {
             const gigDocRef = doc(db, 'gigs', gigId);
             const docSnap = await getDoc(gigDocRef);
-
             if (docSnap.exists()) {
-                const fetchedGig = { id: docSnap.id, ...docSnap.data() } as Gig;
+                const fetchedGig = { id: docSnap.id, ...docSnap.data(), progressReports: docSnap.data().progressReports || [] } as Gig;
                 if (fetchedGig.clientId !== user.uid) {
-                    setError("You are not authorized to manage this gig.");
-                    setGig(null);
+                    setError("You are not authorized to manage this gig."); setGig(null);
                 } else {
-                    if (!fetchedGig.currency) {
-                        fetchedGig.currency = "INR"; 
-                    }
+                    if (!fetchedGig.currency) fetchedGig.currency = "INR";
                     setGig(fetchedGig);
-
                     if (fetchedGig.status === 'completed' && fetchedGig.selectedStudentId) {
-                        const reviewsQuery = query(
-                            collection(db, 'reviews'),
-                            where('gigId', '==', gigId),
-                            where('clientId', '==', user.uid),
-                            where('studentId', '==', fetchedGig.selectedStudentId)
-                        );
+                        const reviewsQuery = query( collection(db, 'reviews'), where('gigId', '==', gigId), where('clientId', '==', user.uid), where('studentId', '==', fetchedGig.selectedStudentId) );
                         const reviewsSnapshot = await getDocs(reviewsQuery);
                         if (!reviewsSnapshot.empty) {
-                            setHasBeenReviewed(true);
-                            const reviewData = reviewsSnapshot.docs[0].data();
-                            setRating(reviewData.rating);
-                            setReviewComment(reviewData.comment || "");
-                        } else {
-                            setHasBeenReviewed(false);
-                        }
+                            setHasBeenReviewed(true); const reviewData = reviewsSnapshot.docs[0].data();
+                            setRating(reviewData.rating); setReviewComment(reviewData.comment || "");
+                        } else { setHasBeenReviewed(false); }
                     }
                 }
-            } else {
-                setError("Gig not found.");
-            }
-        } catch (err: any) {
-            console.error("Error fetching gig or review status:", err);
-            setError("Failed to load gig details or review status.");
-        } finally {
-            setIsLoading(false);
-        }
+            } else { setError("Gig not found."); }
+        } catch (err: any) { console.error("Error fetching gig or review status:", err); setError("Failed to load gig details or review status.");
+        } finally { setIsLoading(false); }
     }, [gigId, user]);
 
 
   useEffect(() => {
     if (!authLoading) {
-      if (!user || role !== 'client') {
-        router.push('/auth/login');
-      } else {
-         fetchGigAndReviewStatus();
-      }
+      if (!user || role !== 'client') router.push('/auth/login');
+      else fetchGigAndReviewStatus();
     }
   }, [authLoading, user, role, router, fetchGigAndReviewStatus]);
 
 
-  const sendApplicationStatusNotification = async (
-    applicant: ApplicantInfo,
-    gigData: Gig,
-    status: 'accepted' | 'rejected'
-  ) => {
+  const sendApplicationStatusNotification = async ( applicant: ApplicantInfo, gigData: Gig, status: 'accepted' | 'rejected' ) => {
     if (!user || !userProfile || !db) return;
-
     const chatId = getChatId(user.uid, applicant.studentId);
     const chatDocRef = doc(db, 'chats', chatId);
     const messageText = `Your application for the gig "${gigData.title}" has been ${status}.`;
-
     try {
       const batch = writeBatch(db);
-
       const chatSnap = await getDoc(chatDocRef);
+      const participantUsernames: {[key: string]: string} = { 
+        [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Client', 
+        [applicant.studentId]: applicant.studentUsername, 
+      };
+      const participantProfilePictures: {[key: string]: string} = {};
+      if(userProfile.profilePictureUrl) participantProfilePictures[user.uid] = userProfile.profilePictureUrl;
+      // We don't have applicant's profile picture here, so it will be added if they chat back
+
       if (!chatSnap.exists()) {
-        const newChatData: any = {
-          id: chatId,
-          participants: [user.uid, applicant.studentId],
-          participantUsernames: {
-            [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Client',
-            [applicant.studentId]: applicant.studentUsername,
-          },
-          gigId: gigData.id,
-          createdAt: serverTimestamp(),
+        const newChatData: any = { 
+          id: chatId, 
+          participants: [user.uid, applicant.studentId], 
+          participantUsernames,
+          ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
+          gigId: gigData.id, 
+          createdAt: serverTimestamp(), 
+          updatedAt: serverTimestamp(),
+          lastMessage: messageText,
+          lastMessageTimestamp: serverTimestamp(),
+          lastMessageSenderId: user.uid,
+          lastMessageReadBy: [user.uid]
         };
-        if (userProfile.profilePictureUrl) {
-           newChatData.participantProfilePictures = { [user.uid]: userProfile.profilePictureUrl };
-        }
         batch.set(chatDocRef, newChatData);
+      } else {
+         batch.update(chatDocRef, { 
+            lastMessage: messageText, 
+            lastMessageTimestamp: serverTimestamp(), 
+            updatedAt: serverTimestamp(), 
+            lastMessageSenderId: user.uid,
+            lastMessageReadBy: [user.uid],
+            // Ensure usernames & pics are up-to-date if chat exists
+            participantUsernames, 
+            ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
+         });
       }
-
       const newMessageRef = doc(collection(db, 'chats', chatId, 'messages'));
-      batch.set(newMessageRef, {
-        senderId: user.uid,
-        text: messageText,
-        timestamp: serverTimestamp(),
-      });
-
-      batch.update(chatDocRef, {
-        lastMessage: messageText,
-        lastMessageTimestamp: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        ...(userProfile.profilePictureUrl && {
-            [`participantProfilePictures.${user.uid}`]: userProfile.profilePictureUrl,
-        }),
-      });
-
+      batch.set(newMessageRef, { senderId: user.uid, text: messageText, timestamp: serverTimestamp(), });
       await batch.commit();
-      toast({
-        title: 'Notification Sent',
-        description: `The student ${applicant.studentUsername} has been notified via chat.`,
-      });
-    } catch (chatError) {
-      console.error('Error sending chat notification:', chatError);
-      toast({
-        title: 'Notification Error',
-        description: 'Could not send chat notification to the student.',
-        variant: 'destructive',
-      });
-    }
+      toast({ title: 'Notification Sent', description: `The student ${applicant.studentUsername} has been notified via chat.` });
+    } catch (chatError) { console.error('Error sending chat notification:', chatError); toast({ title: 'Notification Error', description: 'Could not send chat notification to the student.', variant: 'destructive' }); }
   };
 
 
    const updateApplicantStatus = async (studentId: string, newStatus: 'accepted' | 'rejected') => {
        if (!gig) return;
        const applicant = gig.applicants?.find(app => app.studentId === studentId);
-       if (!applicant) {
-           toast({ title: "Error", description: "Applicant not found.", variant: "destructive" });
-           return;
-       }
-
+       if (!applicant) { toast({ title: "Error", description: "Applicant not found.", variant: "destructive" }); return; }
        setUpdatingApplicantId(studentId);
        try {
            const gigDocRef = doc(db, 'gigs', gig.id);
-           const updatedApplicants = gig.applicants?.map(app =>
-               app.studentId === studentId ? { ...app, status: newStatus } : app
-           ) || [];
-
+           const updatedApplicants = gig.applicants?.map(app => app.studentId === studentId ? { ...app, status: newStatus } : app ) || [];
            let gigUpdateData: any = { applicants: updatedApplicants };
-
-           if (newStatus === 'accepted') {
-               gigUpdateData.status = 'in-progress';
-               gigUpdateData.selectedStudentId = studentId;
+           if (newStatus === 'accepted') { 
+             gigUpdateData.status = 'in-progress'; 
+             gigUpdateData.selectedStudentId = studentId; 
+            // Initialize progress reports array if it's the first acceptance and numberOfReports > 0
+             if (gig.numberOfReports && gig.numberOfReports > 0 && (!gig.progressReports || gig.progressReports.length === 0)) {
+                 gigUpdateData.progressReports = [];
+             }
            }
-
            await updateDoc(gigDocRef, gigUpdateData);
-
-           setGig(prev => prev ? {
-                ...prev,
-                status: newStatus === 'accepted' ? 'in-progress' : prev.status,
-                selectedStudentId: newStatus === 'accepted' ? studentId : prev.selectedStudentId,
-                applicants: updatedApplicants
+           setGig(prev => prev ? { 
+             ...prev, 
+             status: newStatus === 'accepted' ? 'in-progress' : prev.status, 
+             selectedStudentId: newStatus === 'accepted' ? studentId : prev.selectedStudentId, 
+             applicants: updatedApplicants,
+             progressReports: newStatus === 'accepted' && gig.numberOfReports && gig.numberOfReports > 0 && (!prev.progressReports || prev.progressReports.length === 0) ? [] : prev.progressReports,
             } : null);
-
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
-
            await sendApplicationStatusNotification(applicant, gig, newStatus);
-
-       } catch (err: any) {
-           console.error("Error updating applicant status:", err);
-           toast({ title: "Update Failed", description: `Could not update status: ${err.message}`, variant: "destructive" });
-       } finally {
-           setUpdatingApplicantId(null);
-       }
+       } catch (err: any) { console.error("Error updating applicant status:", err); toast({ title: "Update Failed", description: `Could not update status: ${err.message}`, variant: "destructive" });
+       } finally { setUpdatingApplicantId(null); }
    };
 
     const handleSubmitReview = async () => {
         if (!gig || !gig.selectedStudentId || !user || !userProfile || !db) return;
-        if (rating === 0) {
-            toast({ title: "Rating Required", description: "Please select a star rating.", variant: "destructive" });
-            return;
-        }
+        if (rating === 0) { toast({ title: "Rating Required", description: "Please select a star rating.", variant: "destructive" }); return; }
         setIsSubmittingReview(true);
         const selectedStudentInfo = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
-        if (!selectedStudentInfo) {
-             toast({ title: "Error", description: "Selected student details not found.", variant: "destructive"});
-             setIsSubmittingReview(false);
-             return;
-        }
-
+        if (!selectedStudentInfo) { toast({ title: "Error", description: "Selected student details not found.", variant: "destructive"}); setIsSubmittingReview(false); return; }
         try {
-            const reviewData: Omit<Review, 'id' | 'createdAt'> & { createdAt: any } = {
-                gigId: gig.id,
-                gigTitle: gig.title,
-                clientId: user.uid,
-                clientUsername: userProfile.username || user.email?.split('@')[0] || 'Client',
-                studentId: gig.selectedStudentId,
-                studentUsername: selectedStudentInfo.studentUsername,
-                rating: rating,
-                comment: reviewComment.trim() || '',
-                createdAt: serverTimestamp(),
-            };
+            const reviewData: Omit<Review, 'id' | 'createdAt'> & { createdAt: any } = { gigId: gig.id, gigTitle: gig.title, clientId: user.uid, clientUsername: userProfile.username || user.email?.split('@')[0] || 'Client', studentId: gig.selectedStudentId, studentUsername: selectedStudentInfo.studentUsername, rating: rating, comment: reviewComment.trim() || '', createdAt: serverTimestamp(), };
             await addDoc(collection(db, "reviews"), reviewData);
-
             const studentDocRef = doc(db, 'users', gig.selectedStudentId);
             const studentSnap = await getDoc(studentDocRef);
             if (studentSnap.exists()) {
                 const studentData = studentSnap.data() as UserProfile;
-                const currentTotalRatings = studentData.totalRatings || 0;
-                const currentAverageRating = studentData.averageRating || 0;
-
-                const newTotalRatings = currentTotalRatings + 1;
-                const newAverageRating = ((currentAverageRating * currentTotalRatings) + rating) / newTotalRatings;
-
-                await updateDoc(studentDocRef, {
-                    averageRating: newAverageRating,
-                    totalRatings: newTotalRatings,
-                });
+                const currentTotalRatings = studentData.totalRatings || 0; const currentAverageRating = studentData.averageRating || 0;
+                const newTotalRatings = currentTotalRatings + 1; const newAverageRating = ((currentAverageRating * currentTotalRatings) + rating) / newTotalRatings;
+                await updateDoc(studentDocRef, { averageRating: newAverageRating, totalRatings: newTotalRatings, });
             }
-
             toast({ title: "Review Submitted", description: "Thank you for your feedback!" });
-            setHasBeenReviewed(true); 
-        } catch (err) {
-            console.error("Error submitting review:", err);
-            toast({ title: "Review Failed", description: "Could not submit your review.", variant: "destructive" });
-        } finally {
-            setIsSubmittingReview(false);
-        }
+            setHasBeenReviewed(true);
+        } catch (err: any) { console.error("Error submitting review:", err); toast({ title: "Review Failed", description: `Could not submit your review: ${err.message}`, variant: "destructive" });
+        } finally { setIsSubmittingReview(false); }
     };
+
+  const handleReportReview = async (reportNumber: number, newStatus: 'approved' | 'rejected') => {
+    if (!gig || !db) return;
+    if (newStatus === 'rejected' && !clientFeedbackText.trim()){
+        toast({title: "Feedback Required", description: "Please provide feedback when rejecting a report.", variant: "destructive"});
+        return;
+    }
+    setIsLoading(true);
+    try {
+      const gigDocRef = doc(db, 'gigs', gig.id);
+      const currentGigSnap = await getDoc(gigDocRef);
+      if (!currentGigSnap.exists()) throw new Error("Gig not found");
+      const currentGigData = currentGigSnap.data() as Gig;
+      
+      const updatedProgressReports = (currentGigData.progressReports || []).map(report => {
+        if (report.reportNumber === reportNumber) {
+          return {
+            ...report,
+            clientStatus: newStatus,
+            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''), // Add default "Approved" if no text given for approval
+            reviewedAt: Timestamp.now(),
+          };
+        }
+        return report;
+      });
+
+      await updateDoc(gigDocRef, { progressReports: updatedProgressReports });
+      setGig(prev => prev ? { ...prev, progressReports: updatedProgressReports } : null);
+      toast({ title: `Report #${reportNumber} ${newStatus}`, description: "Feedback saved." });
+      setCurrentReviewingReportNumber(null);
+      setClientFeedbackText("");
+    } catch (err: any) {
+      console.error(`Error updating report ${reportNumber} status:`, err);
+      toast({ title: "Update Failed", description: `Could not update report: ${err.message}`, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
 
    const formatDate = (timestamp: Timestamp | undefined): string => {
      if (!timestamp) return 'N/A';
-     try {
-       return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
-     } catch (e) { return 'Invalid date'; }
+     try { return formatDistanceToNow(timestamp.toDate(), { addSuffix: true }); } catch (e) { return 'Invalid date'; }
    };
 
-    const getStatusBadgeVariant = (status: ApplicantInfo['status'] | Gig['status']): "default" | "secondary" | "destructive" | "outline" => {
+    const getStatusBadgeVariant = (status: ApplicantInfo['status'] | Gig['status'] | ProgressReport['clientStatus']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
-           case 'accepted': return 'default';
-           case 'rejected': return 'destructive';
-           case 'pending': return 'secondary';
-           case 'open': return 'default';
-           case 'in-progress': return 'secondary';
+           case 'accepted': case 'open': case 'approved': return 'default';
+           case 'rejected': case 'closed': return 'destructive';
+           case 'pending': case 'in-progress': case 'pending_review': return 'secondary';
            case 'completed': return 'outline';
-           case 'closed': return 'destructive';
            default: return 'secondary';
        }
    };
 
+  if (isLoading || authLoading) return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
+  if (error) return ( <div className="text-center py-10"> <p className="text-destructive mb-4">{error}</p> <Button variant="outline" onClick={() => router.back()}> <ArrowLeft className="mr-2 h-4 w-4" /> Go Back </Button> </div> );
+  if (!gig) return <div className="text-center py-10 text-muted-foreground">Gig details could not be loaded.</div>;
 
-  if (isLoading || authLoading) {
-    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
-  }
-
-  if (error) {
-    return (
-       <div className="text-center py-10">
-         <p className="text-destructive mb-4">{error}</p>
-          <Button variant="outline" onClick={() => router.back()}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-         </Button>
-      </div>
-    );
-  }
-
-  if (!gig) {
-     return <div className="text-center py-10 text-muted-foreground">Gig details could not be loaded.</div>;
-   }
-
-   const selectedStudent = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
-
+  const selectedStudent = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
 
   return (
      <div className="max-w-4xl mx-auto py-8 space-y-6">
-        <Button variant="outline" size="sm" onClick={() => router.push('/client/gigs')} className="mb-4">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to My Gigs
-        </Button>
-
+        <Button variant="outline" size="sm" onClick={() => router.push('/client/gigs')} className="mb-4"> <ArrowLeft className="mr-2 h-4 w-4" /> Back to My Gigs </Button>
        <Card className="glass-card">
          <CardHeader>
            <CardTitle className="text-2xl">{gig.title}</CardTitle>
-           <CardDescription>Manage applications and payment for this gig.</CardDescription>
-           <div className="flex items-center gap-2 pt-2">
-               <span className="text-sm text-muted-foreground">Status:</span>
-                <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge>
-           </div>
-           {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
-             <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground">
-                <Layers className="h-4 w-4" />
-                <span>Requires {gig.numberOfReports} progress report(s).</span>
-             </div>
-           )}
+           <CardDescription>Manage applications, progress reports, and payment for this gig.</CardDescription>
+           <div className="flex items-center gap-2 pt-2"> <span className="text-sm text-muted-foreground">Status:</span> <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge> </div>
+           {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && ( <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground"> <Layers className="h-4 w-4" /> <span>Requires {gig.numberOfReports} progress report(s).</span> </div> )}
          </CardHeader>
        </Card>
 
-
        {gig.status === 'in-progress' && selectedStudent && (
          <Card className="glass-card border-green-500 dark:border-green-400">
-           <CardHeader>
-             <CardTitle className="text-green-700 dark:text-green-400">Gig In Progress With: {selectedStudent.studentUsername}</CardTitle>
-             <CardDescription>You have accepted {selectedStudent.studentUsername}'s application. Initiate payment once the work is completed to your satisfaction.</CardDescription>
-           </CardHeader>
+           <CardHeader> <CardTitle className="text-green-700 dark:text-green-400">Gig In Progress With: {selectedStudent.studentUsername}</CardTitle> <CardDescription>You have accepted {selectedStudent.studentUsername}'s application. Review progress reports and initiate payment once the work is completed.</CardDescription> </CardHeader>
            <CardContent>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3 bg-background shadow">
-                  <div className="flex items-start gap-3 flex-grow">
-                      <UserCircle className="h-10 w-10 text-muted-foreground mt-1 shrink-0" />
-                      <div className="flex-grow">
-                         <p className="font-semibold text-lg">{selectedStudent.studentUsername}</p>
-                         <p className="text-xs text-muted-foreground mb-1">Accepted application {formatDate(selectedStudent.appliedAt)}</p>
-                      </div>
-                  </div>
+                  <div className="flex items-start gap-3 flex-grow"> <UserCircle className="h-10 w-10 text-muted-foreground mt-1 shrink-0" /> <div className="flex-grow"> <p className="font-semibold text-lg">{selectedStudent.studentUsername}</p> <p className="text-xs text-muted-foreground mb-1">Accepted application {formatDate(selectedStudent.appliedAt)}</p> </div> </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
-                     {selectedStudent.studentId ? (
-                        <Button size="sm" variant="outline" asChild>
-                            <Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link>
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button>
-                      )}
-                       <Button size="sm" asChild>
-                          <Link href={`/chat?userId=${selectedStudent.studentId}&gigId=${gig.id}`}>
-                              <MessageSquare className="mr-1 h-4 w-4" /> Chat with {selectedStudent.studentUsername}
-                          </Link>
-                       </Button>
+                     {selectedStudent.studentId ? ( <Button size="sm" variant="outline" asChild> <Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link> </Button> ) : ( <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button> )}
+                     <Button size="sm" asChild> <Link href={`/chat?userId=${selectedStudent.studentId}&gigId=${gig.id}`}> <MessageSquare className="mr-1 h-4 w-4" /> Chat with {selectedStudent.studentUsername} </Link> </Button>
                   </div>
               </div>
-              {/* Placeholder for progress reports UI */}
               {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                 <div className="mt-4 p-3 border rounded-md">
-                    <h4 className="font-semibold mb-2">Progress Reports ({gig.progressReports?.length || 0} / {gig.numberOfReports})</h4>
-                    <p className="text-sm text-muted-foreground">
-                        Student progress submissions and your review/approval will appear here.
-                        This functionality will be built out further.
-                    </p>
-                    {/* TODO: Iterate over gig.progressReports and display each one with options to approve/reject */}
+                    <h4 className="font-semibold mb-3 text-lg">Progress Reports</h4>
+                    <div className="space-y-4">
+                        {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
+                            const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
+                            return (
+                                <Card key={reportNum} className="bg-muted/30">
+                                    <CardHeader className="pb-3">
+                                        <CardTitle className="text-md flex justify-between items-center">
+                                            Report #{reportNum}
+                                            {report?.clientStatus && <Badge variant={getStatusBadgeVariant(report.clientStatus)} className="capitalize text-xs">{report.clientStatus.replace('_', ' ')}</Badge>}
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {!report?.studentSubmission ? (
+                                            <p className="text-sm text-muted-foreground italic">Not yet submitted by student.</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <p className="text-sm"><span className="font-medium">Student Submission:</span> {report.studentSubmission.text}</p>
+                                                {report.studentSubmission.fileUrl && (
+                                                    <Button variant="link" size="sm" asChild className="p-0 h-auto">
+                                                        <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
+                                                            <FileText className="mr-1 h-4 w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
+                                                        </a>
+                                                    </Button>
+                                                )}
+                                                <p className="text-xs text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
+
+                                                {report.clientStatus === 'pending_review' && (
+                                                    <div className="pt-2 border-t mt-2">
+                                                        <Textarea
+                                                            placeholder="Provide feedback (optional for approval, required for rejection)..."
+                                                            defaultValue={report.clientFeedback || ""}
+                                                            onChange={(e) => setClientFeedbackText(e.target.value)}
+                                                            className="mb-2 text-sm"
+                                                            rows={2}
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <Button size="xs" variant="default" onClick={() => handleReportReview(reportNum, 'approved')} disabled={isLoading}>
+                                                                <Check className="mr-1 h-3 w-3" /> Approve
+                                                            </Button>
+                                                            <Button size="xs" variant="destructive" onClick={() => handleReportReview(reportNum, 'rejected')} disabled={isLoading}>
+                                                                <X className="mr-1 h-3 w-3" /> Reject
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {report.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
+                                                    <div className="mt-2 pt-2 border-t border-dashed">
+                                                       <p className="text-sm"><span className="font-medium">Your Feedback:</span> {report.clientFeedback}</p>
+                                                       <p className="text-xs text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
                 </div>
               )}
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
-                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0">
-                    Ready to pay **INR {gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}?
-                </p>
-                <Button
-                   size="lg"
-                   onClick={() => initiatePayment(selectedStudent)}
-                   disabled={!isRazorpayLoaded || isLoading || payingStudent?.studentId === selectedStudent.studentId}
-                   className="w-full sm:w-auto"
-                 >
+                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Ready to pay **INR {gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}? </p>
+                <Button size="lg" onClick={() => initiatePayment(selectedStudent)} disabled={!isRazorpayLoaded || isLoading || payingStudent?.studentId === selectedStudent.studentId || (gig.numberOfReports && gig.numberOfReports > 0 && !gig.progressReports?.every(r => r.clientStatus === 'approved' && r.reportNumber <= (gig.numberOfReports || 0) ))} className="w-full sm:w-auto">
                    {(isLoading && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
                    Pay INR {gig.budget.toFixed(2)}
                  </Button>
             </CardFooter>
+             {gig.numberOfReports && gig.numberOfReports > 0 && !gig.progressReports?.every(r => r.clientStatus === 'approved' && r.reportNumber <= (gig.numberOfReports || 0)) && (
+                <p className="text-xs text-destructive text-center w-full mt-2 p-3">Payment button is disabled until all {gig.numberOfReports} required reports are approved.</p>
+             )}
          </Card>
        )}
 
        {gig.status === 'completed' && selectedStudent && (
-          <Card className="glass-card border-green-500 dark:border-green-400">
+         <Card className="glass-card border-blue-500 dark:border-blue-400">
             <CardHeader>
-                 <CardTitle className="text-green-700 dark:text-green-400">Gig Completed!</CardTitle>
-                 <CardDescription>
-                    This gig with {selectedStudent.studentUsername} has been paid. You can now rate your experience.
-                 </CardDescription>
+              <CardTitle className="text-blue-700 dark:text-blue-400">Gig Completed With: {selectedStudent.studentUsername}</CardTitle>
+              <CardDescription>This gig has been marked as completed. You can leave a review for the student.</CardDescription>
             </CardHeader>
             <CardContent>
-                {hasBeenReviewed ? (
-                    <Alert variant="default" className='border-blue-500'>
-                        <CheckCircle className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="text-blue-700 dark:text-blue-300">Review Submitted</AlertTitle>
-                        <AlertDescription>
-                            You have already rated {selectedStudent.studentUsername} for this gig.
-                            <div className="mt-2">
-                                <StarRating value={rating} isEditable={false} size={20}/>
-                                {reviewComment && <p className="text-sm italic mt-1">Your comment: "{reviewComment}"</p>}
-                            </div>
-                        </AlertDescription>
-                    </Alert>
-                ) : (
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-medium">Rate {selectedStudent.studentUsername}</h3>
-                        <div>
-                            <StarRating value={rating} onValueChange={setRating} size={28} isEditable={!isSubmittingReview} />
-                            {rating === 0 && <p className="text-xs text-muted-foreground mt-1">Select a star rating.</p>}
-                        </div>
-                        <Textarea
-                            placeholder={`Share your experience working with ${selectedStudent.studentUsername} (optional)...`}
-                            value={reviewComment}
-                            onChange={(e) => setReviewComment(e.target.value)}
-                            rows={3}
-                            disabled={isSubmittingReview}
-                        />
-                        <Button onClick={handleSubmitReview} disabled={isSubmittingReview || rating === 0}>
-                            {isSubmittingReview && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Submit Review
-                        </Button>
+               {!hasBeenReviewed ? (
+                <form onSubmit={(e) => { e.preventDefault(); handleSubmitReview(); }} className="space-y-4">
+                    <div>
+                        <label htmlFor="rating" className="block text-sm font-medium mb-1">Your Rating:</label>
+                        <StarRating value={rating} onValueChange={setRating} size={28} isEditable={true} />
                     </div>
-                )}
-            </CardContent>
-             <CardFooter>
-                <p className="text-xs text-muted-foreground">
-                    View payment details in your <Link href="/client/payments" className="underline">Payment History</Link>.
-                </p>
-             </CardFooter>
-          </Card>
-       )}
-        {gig.status === 'completed' && !selectedStudent && (
-             <Alert variant="default" className="border-green-500 dark:border-green-400">
-                 <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                 <AlertTitle className="text-green-700 dark:text-green-300">Gig Completed & Paid</AlertTitle>
-                 <AlertDescription>
-                    This gig has been marked as completed and payment has been processed.
-                    (Selected student details for review not available.)
-                 </AlertDescription>
-             </Alert>
-        )}
-
-
-       {gig.status === 'open' && (
-           <Card className="glass-card">
-             <CardHeader>
-               <CardTitle>Applicants ({gig.applicants?.length || 0})</CardTitle>
-               <CardDescription>Review students who applied and accept or reject their application.</CardDescription>
-             </CardHeader>
-             <CardContent className="space-y-4">
-               {!gig.applicants || gig.applicants.length === 0 ? (
-                 <p className="text-sm text-muted-foreground text-center py-4">No applications received yet.</p>
+                    <div>
+                        <label htmlFor="reviewComment" className="block text-sm font-medium mb-1">Your Review (Optional):</label>
+                        <Textarea id="reviewComment" value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Share your experience working with this student..." rows={4} />
+                    </div>
+                    <Button type="submit" disabled={isSubmittingReview || rating === 0}>
+                        {isSubmittingReview && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Submit Review
+                    </Button>
+                </form>
                ) : (
-                 gig.applicants.map((applicant) => (
-                   <div key={applicant.studentId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3">
-                     <div className="flex items-start gap-3 flex-grow">
-                        <UserCircle className="h-8 w-8 text-muted-foreground mt-1 shrink-0" />
-                        <div className="flex-grow">
-                           <p className="font-semibold">{applicant.studentUsername}</p>
-                           <p className="text-xs text-muted-foreground mb-1">Applied {formatDate(applicant.appliedAt)}</p>
-                           {applicant.message && (
-                             <p className="text-sm bg-secondary p-2 rounded-md my-1 italic">"{applicant.message}"</p>
-                           )}
-                            <Badge variant={getStatusBadgeVariant(applicant.status)} className="capitalize mt-1 inline-block">
-                             {applicant.status || 'pending'}
-                           </Badge>
+                 <div>
+                    <p className="text-lg font-semibold text-green-600">Review Submitted!</p>
+                    <p className="text-sm text-muted-foreground">You rated {selectedStudent.studentUsername} {rating} star(s).</p>
+                    {reviewComment && <p className="text-sm mt-1 italic">"{reviewComment}"</p>}
+                 </div>
+               )}
+            </CardContent>
+         </Card>
+       )}
+
+        {gig.status === 'open' && (
+         <Card className="glass-card">
+            <CardHeader>
+              <CardTitle>Applicants</CardTitle>
+              <CardDescription>Review students who have applied for this gig.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+               {(!gig.applicants || gig.applicants.length === 0) ? (
+                <p className="text-sm text-muted-foreground">No applications received yet.</p>
+               ) : (
+                 gig.applicants.map(applicant => (
+                    <div key={applicant.studentId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3">
+                        <div className="flex items-start gap-3 flex-grow">
+                           <UserCircle className="h-8 w-8 text-muted-foreground mt-1 shrink-0" />
+                            <div className="flex-grow">
+                                <p className="font-semibold">{applicant.studentUsername}</p>
+                                <p className="text-xs text-muted-foreground mb-1">Applied {formatDate(applicant.appliedAt)}</p>
+                                {applicant.message && <p className="text-sm mt-1 italic line-clamp-2">"{applicant.message}"</p>}
+                                <Badge variant={getStatusBadgeVariant(applicant.status)} className="capitalize mt-2 text-xs">{applicant.status || 'pending'}</Badge>
+                            </div>
                         </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0">
-                         {applicant.studentId ? (
-                            <Button size="sm" variant="outline" asChild>
-                                <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button>
-                          )}
-                          <Button size="sm" asChild>
-                             <Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}>
-                                 <MessageSquare className="mr-1 h-4 w-4" /> Chat
-                             </Link>
-                         </Button>
-                         {(applicant.status === 'pending' || !applicant.status) && (
-                             <>
-                                <Button
-                                     size="sm"
-                                     variant="default"
-                                     onClick={() => updateApplicantStatus(applicant.studentId, 'accepted')}
-                                     disabled={updatingApplicantId === applicant.studentId || isLoading}
-                                     className="bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white"
-                                 >
-                                     {updatingApplicantId === applicant.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-1 h-4 w-4" />}
-                                     Accept
-                                 </Button>
-                                  <Button
-                                     size="sm"
-                                     variant="destructive"
-                                     onClick={() => updateApplicantStatus(applicant.studentId, 'rejected')}
-                                     disabled={updatingApplicantId === applicant.studentId || isLoading}
-                                 >
-                                      {updatingApplicantId === applicant.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin"/> : <XCircle className="mr-1 h-4 w-4" />}
-                                     Reject
-                                 </Button>
-                             </>
-                         )}
-                      </div>
-
-                   </div>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
+                           {applicant.studentId ? (<Button size="sm" variant="outline" asChild><Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link></Button>) : (<Button size="sm" variant="outline" disabled>View Profile</Button>)}
+                           <Button size="sm" asChild><Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" /> Chat</Link></Button>
+                           {applicant.status === 'pending' && (
+                            <>
+                                <Button size="sm" variant="default" onClick={() => updateApplicantStatus(applicant.studentId, 'accepted')} disabled={updatingApplicantId === applicant.studentId}>
+                                  {updatingApplicantId === applicant.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-1 h-4 w-4" />} Accept
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => updateApplicantStatus(applicant.studentId, 'rejected')} disabled={updatingApplicantId === applicant.studentId}>
+                                  {updatingApplicantId === applicant.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <XCircle className="mr-1 h-4 w-4" />} Reject
+                                </Button>
+                            </>
+                           )}
+                        </div>
+                    </div>
                  ))
                )}
-             </CardContent>
-           </Card>
-       )}
-
-        {gig.status === 'closed' && (
-             <Alert variant="destructive">
-                <XCircle className="h-5 w-5" />
-                <AlertTitle>Gig Closed</AlertTitle>
-                <AlertDescription>This gig is closed and no further actions can be taken.</AlertDescription>
-            </Alert>
+            </CardContent>
+         </Card>
         )}
-
+        
+        {gig.status === 'closed' && ( <Alert variant="destructive"> <XCircle className="h-5 w-5" /> <AlertTitle>Gig Closed</AlertTitle> <AlertDescription>This gig is closed and no further actions can be taken.</AlertDescription> </Alert> )}
      </div>
    );
 }
