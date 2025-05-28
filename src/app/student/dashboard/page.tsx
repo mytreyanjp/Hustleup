@@ -4,7 +4,7 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Search, Wallet, UserCircle, Edit, Loader2, PlusCircle, Bookmark } from 'lucide-react'; // Added PlusCircle, Bookmark
+import { FileText, Search, Wallet, UserCircle, Edit, Loader2, PlusCircle, Bookmark, Briefcase } from 'lucide-react'; // Added Briefcase
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -18,6 +18,7 @@ interface Gig {
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   requiredSkills: Skill[];
   applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+  selectedStudentId?: string; // Added for current works count
   // other gig properties
 }
 
@@ -28,6 +29,7 @@ export default function StudentDashboardPage() {
   const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
   const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
   const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
+  const [currentWorksCount, setCurrentWorksCount] = useState<number | null>(null); // New state for current works
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   // Protect route
@@ -45,22 +47,22 @@ export default function StudentDashboardPage() {
       const fetchStudentDashboardStats = async () => {
         setIsLoadingStats(true);
         try {
-          // 1. Fetch available gigs based on student skills
           const gigsCollectionRef = collection(db, 'gigs');
+          
+          // 1. Fetch available gigs based on student skills
           const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
           const openGigsSnapshot = await getDocs(openGigsQuery);
           
           let allOpenGigs = openGigsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Gig));
           
-          // Filter out gigs student already applied to
           allOpenGigs = allOpenGigs.filter(gig => 
             !(gig.applicants && gig.applicants.some(app => app.studentId === user.uid))
           );
           
-          let matchingGigs = 0;
+          let matchingGigsCount = 0;
           if (userProfile.skills && userProfile.skills.length > 0) {
             const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
-            matchingGigs = allOpenGigs.filter(gig =>
+            matchingGigsCount = allOpenGigs.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
                 return studentSkillsLower.some(studentSkillLower =>
@@ -69,13 +71,15 @@ export default function StudentDashboardPage() {
               })
             ).length;
           } else {
-            matchingGigs = allOpenGigs.length; 
+            matchingGigsCount = allOpenGigs.length; 
           }
-          setAvailableGigsCount(matchingGigs);
+          setAvailableGigsCount(matchingGigsCount);
 
-          // 2. Fetch active applications
+          // 2. Fetch active applications & current works
           const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs')); 
           let currentActiveApplications = 0;
+          let currentActiveWorks = 0;
+
           allGigsForAppsSnapshot.forEach(doc => {
             const gig = doc.data() as Gig;
             if (gig.applicants) {
@@ -84,18 +88,22 @@ export default function StudentDashboardPage() {
                 currentActiveApplications++;
               }
             }
+            if (gig.selectedStudentId === user.uid && gig.status === 'in-progress') {
+              currentActiveWorks++;
+            }
           });
           setActiveApplicationsCount(currentActiveApplications);
+          setCurrentWorksCount(currentActiveWorks);
 
           // 3. Count bookmarked gigs
           setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
-
 
         } catch (error) {
           console.error("Error fetching student dashboard stats:", error);
           setAvailableGigsCount(0); 
           setActiveApplicationsCount(0);
           setBookmarkedGigsCount(0);
+          setCurrentWorksCount(0);
         } finally {
           setIsLoadingStats(false);
         }
@@ -106,6 +114,7 @@ export default function StudentDashboardPage() {
       setAvailableGigsCount(0);
       setActiveApplicationsCount(0);
       setBookmarkedGigsCount(0);
+      setCurrentWorksCount(0);
     }
   }, [user, userProfile, role, authLoading]);
 
@@ -233,6 +242,24 @@ export default function StudentDashboardPage() {
              </Button>
           </CardContent>
         </Card>
+        
+        <Card className="glass-card">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Current Works</CardTitle>
+            <Briefcase className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+                {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : currentWorksCount}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Gigs you are currently working on.
+            </p>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                 <Link href="/student/works">Manage Works</Link>
+             </Button>
+          </CardContent>
+        </Card>
 
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -264,5 +291,3 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-
-    

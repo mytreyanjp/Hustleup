@@ -46,17 +46,15 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || suggestions.length > 0 && searchTerm.trim() === '') return; // Don't refetch if already have suggestions unless searching
+    if (!db || suggestions.length > 0 && searchTerm.trim() === '') return; 
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
-      // IMPORTANT: This query requires a composite index in Firestore:
-      // Collection: 'gigs', Fields: 'status' (Ascending), 'createdAt' (Descending)
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10) // Fetch a small number for suggestions
+        limit(10) 
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -72,7 +70,7 @@ export default function Navbar() {
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [suggestions.length, searchTerm]); // Added searchTerm dependency
+  }, [suggestions.length, searchTerm]); 
 
   useEffect(() => {
     setIsClient(true);
@@ -80,10 +78,7 @@ export default function Navbar() {
 
   useEffect(() => {
     if (isSuggestionsOpen && searchTerm.trim() !== '' && !isLoadingSuggestions) {
-      // Optionally re-fetch or rely on client-side filtering of initially fetched suggestions
-      // For now, we filter client-side. If a more dynamic backend search for suggestions is needed,
-      // fetchInitialSuggestions could be called here with the searchTerm.
-      // For simplicity with Genkit, we'll rely on the initial fetch and client-side filtering.
+      // Client-side filtering
     } else if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
       fetchInitialSuggestions();
     }
@@ -114,18 +109,16 @@ export default function Navbar() {
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
       setIsSuggestionsOpen(false);
-      // setSearchTerm(''); // Keep search term if user might want to refine from search page
     }
   };
 
-  const filteredSuggestions = searchTerm.trim() === '' ? suggestions.slice(0,5) : suggestions.filter(suggestion => // Show some initial if no search term
+  const filteredSuggestions = searchTerm.trim() === '' ? suggestions.slice(0,5) : suggestions.filter(suggestion => 
     suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
-  ).slice(0,5); // Limit displayed suggestions
+  ).slice(0,5); 
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* Removed pl-10, container will use its default padding */}
       <div className="container flex h-16 items-center">
         <Link href="/" className="mr-4 flex items-center space-x-2">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
@@ -169,8 +162,6 @@ export default function Navbar() {
           )}
         </nav>
 
-        {/* This div groups search and profile elements, justify-end pushes them to the right of this div */}
-        {/* The flex-1 on the nav element pushes this entire div to the right of the container */}
         <div className="flex flex-1 md:flex-none items-center justify-end space-x-2">
           {isClient && (
             <Popover open={isSuggestionsOpen} onOpenChange={(open) => {
@@ -192,7 +183,7 @@ export default function Navbar() {
                         setSearchTerm(e.target.value);
                         if (e.target.value.trim() !== '') {
                             setIsSuggestionsOpen(true);
-                             if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions(); // Fetch if suggestions empty
+                             if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions(); 
                         } else {
                             setIsSuggestionsOpen(false);
                         }
@@ -208,16 +199,15 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()} // Prevent auto-focus stealing
+                    onOpenAutoFocus={(e) => e.preventDefault()} 
                     onInteractOutside={(e) => {
-                        // Prevent closing if clicking on the search input itself
                         if (searchInputRef.current && searchInputRef.current.contains(e.target as Node)) {
                             return;
                         }
-                        // setIsSuggestionsOpen(false); // Standard close on outside click
+                        setIsSuggestionsOpen(false); 
                     }}
                 >
-                  <Command shouldFilter={false}> {/* We handle filtering with filteredSuggestions */}
+                  <Command shouldFilter={false}> 
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -232,11 +222,10 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title} // For CMDK filtering, though we filter manually
+                              value={gig.title} 
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
                                 setIsSuggestionsOpen(false);
-                                // setSearchTerm(''); // Keep search term for context
                               }}
                               className="cursor-pointer"
                             >
@@ -250,7 +239,7 @@ export default function Navbar() {
                         <CommandItem
                             value={`search_all_for_${searchTerm}`}
                             onSelect={() => {
-                                handleSearchSubmit(); // This will use the current searchTerm
+                                handleSearchSubmit(); 
                                 setIsSuggestionsOpen(false);
                             }}
                             className="cursor-pointer italic"
@@ -323,6 +312,12 @@ export default function Navbar() {
                           <span>My Bookmarks</span>
                         </Link>
                       </DropdownMenuItem>
+                       <DropdownMenuItem asChild>
+                        <Link href="/student/works">
+                          <Briefcase className="mr-2 h-4 w-4" />
+                          <span>Your Works</span>
+                        </Link>
+                      </DropdownMenuItem>
                     </>
                   )}
                   {role === 'client' && (
@@ -341,7 +336,7 @@ export default function Navbar() {
                       </DropdownMenuItem>
                     </>
                   )}
-                  <div className="md:hidden"> {/* Links visible only on mobile dropdown */}
+                  <div className="md:hidden"> 
                     <DropdownMenuSeparator className="md:hidden" />
                     <DropdownMenuItem asChild className="md:hidden">
                        <Link href="/gigs/browse">
@@ -389,7 +384,7 @@ export default function Navbar() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : ( // Not loading, no user
+            ) : ( 
               <>
                 <Button variant="ghost" asChild className="hidden sm:inline-flex">
                   <Link href="/auth/login">Log In</Link>
@@ -402,8 +397,8 @@ export default function Navbar() {
                 </Button>
               </>
             )
-          ) : ( // isClient is false (SSR or initial client render)
-            <div style={{ width: '7rem' }} /> // Placeholder for SSR to avoid layout shifts
+          ) : ( 
+            <div style={{ width: '7rem' }} /> 
           )}
         </div>
       </div>
