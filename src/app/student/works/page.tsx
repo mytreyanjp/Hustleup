@@ -110,6 +110,8 @@ export default function StudentWorksPage() {
       });
       const resolvedGigs = await Promise.all(fetchedGigsPromises);
       setActiveGigs(resolvedGigs);
+      // Collapse all gigs by default
+      setCollapsedGigs(new Set(resolvedGigs.map(gig => gig.id)));
     } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
     } finally { setIsLoading(false); }
   };
@@ -278,12 +280,6 @@ export default function StudentWorksPage() {
       ) : (
         <div className="space-y-6">
           {activeGigs.map((gig) => {
-            let lastApprovedReportNum = 0;
-            gig.progressReports?.forEach(r => {
-                if (r.clientStatus === 'approved' && r.reportNumber > lastApprovedReportNum) {
-                    lastApprovedReportNum = r.reportNumber;
-                }
-            });
             const isCollapsed = collapsedGigs.has(gig.id);
 
             return (
@@ -316,7 +312,7 @@ export default function StudentWorksPage() {
                         <div className="space-y-3">
                           {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
                             const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
-                            const canSubmitThisReport = reportNum === 1 || (reportNum > 1 && gig.progressReports?.find(r => r.reportNumber === reportNum -1)?.clientStatus === 'approved');
+                            const canSubmitThisReport = reportNum === 1 || (gig.progressReports?.find(r => r.reportNumber === reportNum -1)?.clientStatus === 'approved');
                             const isRejected = report?.clientStatus === 'rejected';
 
                             return (
