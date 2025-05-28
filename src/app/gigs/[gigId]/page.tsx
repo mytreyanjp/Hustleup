@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Send as ShareIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -178,6 +178,14 @@ export default function GigDetailPage() {
     }
   };
 
+  const handleShareToChat = () => {
+    if (!user || !gig) {
+        toast({ title: "Login Required", description: "Please log in to share gigs.", variant: "destructive" });
+        return;
+    }
+    router.push(`/chat?shareGigId=${gig.id}&shareGigTitle=${encodeURIComponent(gig.title)}`);
+  };
+
 
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -234,18 +242,32 @@ export default function GigDetailPage() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
             <CardTitle className="text-2xl md:text-3xl flex-grow">{gig.title}</CardTitle>
-            {role === 'student' && gig.status === 'open' && (
-                <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={handleToggleBookmark} 
-                    disabled={isTogglingBookmark || authLoading || isLoadingGig}
-                    title={isBookmarked ? "Remove Bookmark" : "Bookmark Gig"}
-                    className="shrink-0"
-                >
-                    {isTogglingBookmark ? <Loader2 className="h-5 w-5 animate-spin" /> : (isBookmarked ? <BookmarkCheck className="h-5 w-5 text-primary" /> : <Bookmark className="h-5 w-5" />)}
-                </Button>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+                {user && ( // Show share button if user is logged in
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={handleShareToChat} 
+                        disabled={authLoading || isLoadingGig}
+                        title="Share to Chat"
+                        className="shrink-0"
+                    >
+                        <ShareIcon className="h-5 w-5" />
+                    </Button>
+                )}
+                {role === 'student' && gig.status === 'open' && (
+                    <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={handleToggleBookmark} 
+                        disabled={isTogglingBookmark || authLoading || isLoadingGig}
+                        title={isBookmarked ? "Remove Bookmark" : "Bookmark Gig"}
+                        className="shrink-0"
+                    >
+                        {isTogglingBookmark ? <Loader2 className="h-5 w-5 animate-spin" /> : (isBookmarked ? <BookmarkCheck className="h-5 w-5 text-primary" /> : <Bookmark className="h-5 w-5" />)}
+                    </Button>
+                )}
+            </div>
           </div>
           <CardDescription className="text-sm text-muted-foreground flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-4 gap-y-1 pt-1">
              <span>

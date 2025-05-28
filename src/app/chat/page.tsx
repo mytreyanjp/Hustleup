@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile } from 'lucide-react';
-import { Badge } from '@/components/ui/badge'; // Added Badge
+import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
   collection,
@@ -142,19 +142,38 @@ export default function ChatPage() {
     if (authLoading || !user || !userProfile) return;
 
     const targetUserId = searchParams.get('userId');
-    const gigId = searchParams.get('gigId');
+    const gigIdToShare = searchParams.get('shareGigId');
+    const gigTitleToShare = searchParams.get('shareGigTitle');
+    const gigIdForChat = searchParams.get('gigId'); // Original gigId for starting chat about a gig
     const preselectChatId = searchParams.get('chatId');
+
+
+    if (gigIdToShare && gigTitleToShare) {
+      if (typeof window !== 'undefined') {
+        const shareableMessage = `Check out this gig: ${decodeURIComponent(gigTitleToShare)} - ${window.location.origin}/gigs/${gigIdToShare}`;
+        setMessage(shareableMessage); // Pre-fill the message input
+        toast({
+          title: "Gig Ready to Share",
+          description: "Select a chat and send your message.",
+        });
+        // Clear the share params from URL to prevent re-triggering
+        router.replace('/chat', { scroll: false });
+      }
+      // Don't return here, allow chat selection or creation to proceed
+    }
+
 
     if (preselectChatId) {
         setSelectedChatId(preselectChatId);
-        // Only replace history if params were actually present
         if (searchParams.has('chatId') && typeof window !== 'undefined') {
              router.replace('/chat', { scroll: false });
         }
         return;
     }
-
-    if (targetUserId && user.uid !== targetUserId) {
+    
+    // This block should only run if not handling a share action that sets message
+    // or if a specific targetUserId is provided for a new chat.
+    if (targetUserId && user.uid !== targetUserId && !gigIdToShare) {
       const fetchTargetUserAndCreateChat = async () => {
         if (!db) {
             toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
@@ -165,17 +184,19 @@ export default function ChatPage() {
         if (targetUserSnap.exists()) {
           const targetUserData = targetUserSnap.data() as UserProfile;
           setTargetUserForNewChat(targetUserData);
-          await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigId || undefined);
+          await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChat || undefined);
         } else {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
-         // Only replace history if params were actually present
         if ((searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
             router.replace('/chat', { scroll: false });
         }
       };
       fetchTargetUserAndCreateChat();
+    } else if (!gigIdToShare && !targetUserId && !preselectChatId && (searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
+        // Clear any residual userId/gigId if not actively creating a chat or sharing
+        router.replace('/chat', { scroll: false });
     }
   }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router, toast]);
 
@@ -276,10 +297,13 @@ export default function ChatPage() {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
+    // If a share message was pre-filled and user changes chat, clear it or let them send.
+    // For now, we assume if they change chat, they might want to send the pre-filled msg to the new chat.
+    // If message state is not empty and was due to sharing, it will persist.
     setSelectedFile(null);
     setUploadProgress(null);
     setShowEmojiPicker(false);
-    setMessage('');
+    // setMessage(''); // Don't clear message here if it was pre-filled by share
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -319,8 +343,8 @@ export default function ChatPage() {
       try {
         const file = selectedFile;
         const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
-        const fileStorageRef = storageRefFn(storage, filePath);
-        const uploadTask = uploadBytesResumable(fileStorageRef, file);
+        const fileStorageRefInstance = storageRefFn(storage, filePath);
+        const uploadTask = uploadBytesResumable(fileStorageRefInstance, file);
         console.log("Chat File Upload: Task created for path", filePath);
 
         await new Promise<void>((resolve, reject) => {
@@ -381,8 +405,14 @@ export default function ChatPage() {
           );
         });
       } catch (error) {
+        // This catch block might be redundant if the promise reject above is handled
+        console.error("Outer catch for upload process (chat):", error);
         setIsSending(false);
         setUploadProgress(null);
+        // Ensure a toast is shown if it wasn't already from the promise rejection
+        if (!toast.isActive(`upload-error-${selectedChatId}`)) { // Example of unique ID check
+            toast({ id: `upload-error-${selectedChatId}`, title: "Upload Process Failed", description: "An unexpected error occurred during file upload.", variant: "destructive" });
+        }
         return;
       }
     }
@@ -441,6 +471,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
+    // This is handled by the useEffect redirect, showing a placeholder
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
 
@@ -637,9 +668,10 @@ export default function ChatPage() {
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <MessageSquare className="h-16 w-16 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
+                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
+                 {searchParams.get('shareGigId') && !selectedChatId && ' Select a chat to share the gig.'}
             </p>
-            {targetUserForNewChat && !selectedChatId && (
+            {targetUserForNewChat && !selectedChatId && !searchParams.get('shareGigId') && (
                  <p className="text-sm mt-2">Starting chat with {targetUserForNewChat.username}...</p>
             )}
           </div>
@@ -649,4 +681,3 @@ export default function ChatPage() {
   );
 }
 
-    
