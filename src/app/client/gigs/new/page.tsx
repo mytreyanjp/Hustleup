@@ -18,14 +18,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, Sparkles, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
-import { suggestGigSkills, type SuggestGigSkillsInput } from '@/ai/flows/suggest-gig-skills-flow';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
-
 
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
@@ -43,24 +39,16 @@ export default function NewGigPage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [isSuggestingSkills, setIsSuggestingSkills] = useState(false);
-  const [aiSuggestedSkills, setAiSuggestedSkills] = useState<string[]>([]);
-  const [showSkillsSuggestionDialog, setShowSkillsSuggestionDialog] = useState(false);
-  const [tempSelectedAiSkills, setTempSelectedAiSkills] = useState<string[]>([]);
-
-
   const form = useForm<GigFormValues>({
     resolver: zodResolver(gigSchema),
     defaultValues: {
       title: '',
       description: '',
-      budget: '' as unknown as number,
+      budget: '' as unknown as number, // Initialize with empty string for controlled input
       deadline: undefined,
       requiredSkills: [],
     },
   });
-
-  const gigDescription = form.watch('description');
 
   useEffect(() => {
     if (!authLoading) {
@@ -71,46 +59,9 @@ export default function NewGigPage() {
     }
   }, [authLoading, user, role, router, toast]);
 
-  const handleAiSuggestSkills = async () => {
-    const description = form.getValues('description');
-    if (!description || description.length < 30) {
-      toast({ title: "Description Too Short", description: "Please provide a more detailed description (at least 30 characters) for AI skill suggestions.", variant: "destructive" });
-      return;
-    }
-    setIsSuggestingSkills(true);
-    setAiSuggestedSkills([]);
-    try {
-      const result = await suggestGigSkills({ gigDescription: description });
-      // Filter AI suggestions to only include those present in PREDEFINED_SKILLS (case-insensitive)
-      const validSuggestions = result.suggestedSkills.filter(suggestedSkill =>
-        PREDEFINED_SKILLS.some(predefinedSkill => predefinedSkill.toLowerCase() === suggestedSkill.toLowerCase())
-      ).map(skill => { // Normalize to the casing in PREDEFINED_SKILLS
-        return PREDEFINED_SKILLS.find(ps => ps.toLowerCase() === skill.toLowerCase()) || skill;
-      });
-
-      setAiSuggestedSkills(Array.from(new Set(validSuggestions))); // Remove duplicates
-      setTempSelectedAiSkills(Array.from(new Set(validSuggestions))); // Pre-select all valid suggestions
-      setShowSkillsSuggestionDialog(true);
-    } catch (error: any) {
-      console.error("AI Skill Suggestion Error:", error);
-      toast({ title: "AI Suggestion Failed", description: error.message || "Could not fetch skill suggestions.", variant: "destructive" });
-    } finally {
-      setIsSuggestingSkills(false);
-    }
-  };
-
-  const handleAddSelectedAiSkills = () => {
-    const currentSkills = form.getValues('requiredSkills') || [];
-    const newSkills = Array.from(new Set([...currentSkills, ...tempSelectedAiSkills]));
-    // Respect max skills limit
-    form.setValue('requiredSkills', newSkills.slice(0, 10) as Skill[], { shouldValidate: true });
-    setShowSkillsSuggestionDialog(false);
-    setTempSelectedAiSkills([]);
-  };
-
   const onSubmit = async (data: GigFormValues) => {
-    if (!user || role !== 'client') {
-        toast({ title: "Action Failed", description: "You are not authorized to perform this action.", variant: "destructive"});
+    if (!user || role !== 'client' || !userProfile) {
+        toast({ title: "Action Failed", description: "You are not authorized or your profile is not loaded.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
@@ -118,9 +69,9 @@ export default function NewGigPage() {
       const gigsCollectionRef = collection(db, 'gigs');
       await addDoc(gigsCollectionRef, {
         clientId: user.uid,
-        clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Unknown Client',
+        clientUsername: userProfile.username || user.email?.split('@')[0] || 'Unknown Client',
         ...data,
-        currency: "INR",
+        currency: "INR", // Default currency
         status: 'open',
         createdAt: serverTimestamp(),
         applicants: [],
@@ -208,6 +159,7 @@ export default function NewGigPage() {
                      <FormItem>
                        <FormLabel>Budget (INR)</FormLabel>
                        <FormControl>
+                         {/* Ensure value is handled to prevent uncontrolled to controlled warning */}
                          <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} min="1" step="any" />
                        </FormControl>
                        <FormDescription>Enter the total amount in INR.</FormDescription>
@@ -265,19 +217,7 @@ export default function NewGigPage() {
                 name="requiredSkills"
                 render={({ field }) => (
                   <FormItem>
-                    <div className="flex justify-between items-center mb-1">
-                      <FormLabel>Required Skills</FormLabel>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAiSuggestSkills}
-                        disabled={isSuggestingSkills || !gigDescription || gigDescription.length < 30}
-                      >
-                        {isSuggestingSkills ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4 text-yellow-500" />}
-                        AI Suggest Skills
-                      </Button>
-                    </div>
+                    <FormLabel>Required Skills</FormLabel>
                     <FormControl>
                       <MultiSelectSkills
                         options={PREDEFINED_SKILLS}
@@ -301,50 +241,6 @@ export default function NewGigPage() {
           </Form>
         </CardContent>
       </Card>
-
-      <Dialog open={showSkillsSuggestionDialog} onOpenChange={setShowSkillsSuggestionDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>AI Skill Suggestions</DialogTitle>
-            <DialogDescription>
-              Based on your gig description, AI suggests these skills. Select the ones you'd like to add.
-            </DialogDescription>
-          </DialogHeader>
-          {aiSuggestedSkills.length > 0 ? (
-            <div className="grid gap-4 py-4 max-h-60 overflow-y-auto">
-              {aiSuggestedSkills.map((skill) => (
-                <div key={skill} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`ai-skill-${skill.replace(/\s+/g, '-')}`} // Create a unique ID for checkbox
-                    checked={tempSelectedAiSkills.includes(skill)}
-                    onCheckedChange={(checked) => {
-                      setTempSelectedAiSkills(prev =>
-                        checked
-                          ? [...prev, skill]
-                          : prev.filter(s => s !== skill)
-                      );
-                    }}
-                  />
-                  <label
-                    htmlFor={`ai-skill-${skill.replace(/\s+/g, '-')}`}
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    {skill}
-                  </label>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="py-4 text-sm text-muted-foreground">No specific skill suggestions available from AI for this description, or suggestions were not in the predefined list. Please select skills manually.</p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSkillsSuggestionDialog(false)}>Cancel</Button>
-            <Button onClick={handleAddSelectedAiSkills} disabled={tempSelectedAiSkills.length === 0 && aiSuggestedSkills.length > 0}>
-                <Check className="mr-2 h-4 w-4" /> Add Selected ({tempSelectedAiSkills.length})
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
