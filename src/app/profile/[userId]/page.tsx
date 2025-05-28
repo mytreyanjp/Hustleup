@@ -64,6 +64,7 @@ export default function PublicProfilePage() {
               // IMPORTANT: This query requires a composite index in Firestore.
               // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
               // Create it via the link in the Firebase console error message if it's missing.
+              // Example link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=ClRwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3VwMvc3R1ZGVudF9wb3N0cy9pbmRleGVzL18QARoNCglzdHVkZW50SWQQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -165,6 +166,9 @@ export default function PublicProfilePage() {
                    {profile.role === 'student' && profile.bio && (
                         <p className="text-sm text-foreground/90 mt-1">{profile.bio}</p>
                    )}
+                   {profile.role === 'client' && profile.username && profile.companyName !== profile.username && (
+                        <p className="text-sm text-muted-foreground mt-1">Contact: {profile.username}</p>
+                   )}
                    {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
                         <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
                             <StarRating value={profile.averageRating} size={18} isEditable={false} />
@@ -188,10 +192,7 @@ export default function PublicProfilePage() {
         {profile.role === 'client' && (
             <CardContent className="p-4 md:p-6 space-y-4">
                 <h3 className="font-semibold text-lg text-muted-foreground mb-2">Company Details</h3>
-                {profile.companyName && profile.username && profile.companyName !== profile.username && displayName === profile.companyName && (
-                     <p className="text-sm"><span className="font-medium text-card-foreground">Primary Contact:</span> {profile.username}</p>
-                )}
-
+                
                 {profile.website ? (
                   <div className="flex items-start gap-2 mb-2">
                     <Globe className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
