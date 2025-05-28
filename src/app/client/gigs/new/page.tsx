@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -29,6 +29,7 @@ const gigSchema = z.object({
   budget: z.coerce.number().positive({ message: 'Budget must be a positive number' }),
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
+  numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
 });
 
 type GigFormValues = z.infer<typeof gigSchema>;
@@ -44,9 +45,10 @@ export default function NewGigPage() {
     defaultValues: {
       title: '',
       description: '',
-      budget: '' as unknown as number, // Initialize with empty string for controlled input
+      budget: '' as unknown as number,
       deadline: undefined,
       requiredSkills: [],
+      numberOfReports: 0,
     },
   });
 
@@ -71,7 +73,9 @@ export default function NewGigPage() {
         clientId: user.uid,
         clientUsername: userProfile.username || user.email?.split('@')[0] || 'Unknown Client',
         ...data,
-        currency: "INR", // Default currency
+        numberOfReports: data.numberOfReports || 0,
+        progressReports: [], // Initialize empty progress reports array
+        currency: "INR", 
         status: 'open',
         createdAt: serverTimestamp(),
         applicants: [],
@@ -159,7 +163,6 @@ export default function NewGigPage() {
                      <FormItem>
                        <FormLabel>Budget (INR)</FormLabel>
                        <FormControl>
-                         {/* Ensure value is handled to prevent uncontrolled to controlled warning */}
                          <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} min="1" step="any" />
                        </FormControl>
                        <FormDescription>Enter the total amount in INR.</FormDescription>
@@ -232,6 +235,36 @@ export default function NewGigPage() {
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="numberOfReports"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                      Number of Progress Reports (Optional)
+                    </FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        placeholder="e.g., 3 (0 for no reports)" 
+                        {...field} 
+                        value={field.value ?? 0} 
+                        onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)}
+                        min="0" 
+                        max="10"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Specify how many progress reports the student should submit (0-10).
+                      Each report approval marks a phase of completion.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
 
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

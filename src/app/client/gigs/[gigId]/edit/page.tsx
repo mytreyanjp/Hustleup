@@ -18,18 +18,19 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, ArrowLeft } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, ArrowLeft, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 
-// Schema for gig form validation (same as new gig)
+// Schema for gig form validation
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
   description: z.string().min(20, { message: 'Description must be at least 20 characters' }).max(2000, { message: 'Description cannot exceed 2000 characters'}),
   budget: z.coerce.number().positive({ message: 'Budget must be a positive number' }),
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
+  numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
 });
 
 type GigFormValues = z.infer<typeof gigSchema>;
@@ -37,8 +38,7 @@ type GigFormValues = z.infer<typeof gigSchema>;
 interface GigData extends GigFormValues {
   id: string;
   clientId: string;
-  currency: string; // Add currency
-  // other fields like status, createdAt are not directly edited here but exist on the document
+  currency: string; 
 }
 
 export default function EditGigPage() {
@@ -54,12 +54,13 @@ export default function EditGigPage() {
 
   const form = useForm<GigFormValues>({
     resolver: zodResolver(gigSchema),
-    defaultValues: { // Will be reset after fetching gig data
+    defaultValues: { 
       title: '',
       description: '',
-      budget: undefined, // Coerced to number
+      budget: undefined, 
       deadline: undefined,
       requiredSkills: [],
+      numberOfReports: 0,
     },
   });
 
@@ -88,6 +89,7 @@ export default function EditGigPage() {
           budget: gigData.budget,
           deadline: (gigData.deadline as unknown as Timestamp)?.toDate ? (gigData.deadline as unknown as Timestamp).toDate() : new Date(),
           requiredSkills: gigData.requiredSkills || [],
+          numberOfReports: gigData.numberOfReports || 0,
         });
       } else {
         setError("Gig not found.");
@@ -123,11 +125,9 @@ export default function EditGigPage() {
     setIsSubmitting(true);
     try {
       const gigDocRef = doc(db, 'gigs', gigId);
-      // Ensure we only update fields that are part of the form
-      // status, applicants, etc. should not be overwritten here
-      // Currency is also not editable here, it's set on creation
       await updateDoc(gigDocRef, {
-        ...data, // title, description, budget, deadline, requiredSkills
+        ...data, 
+        numberOfReports: data.numberOfReports || 0,
         updatedAt: serverTimestamp(),
       });
 
@@ -135,7 +135,7 @@ export default function EditGigPage() {
         title: 'Gig Updated Successfully!',
         description: `Your gig "${data.title}" has been updated.`,
       });
-      router.push(`/client/gigs/${gigId}/manage`); // Or back to /client/gigs
+      router.push(`/client/gigs/${gigId}/manage`); 
 
     } catch (error: any) {
       console.error('Error updating gig:', error);
@@ -286,6 +286,34 @@ export default function EditGigPage() {
                       />
                     </FormControl>
                     <FormDescription>List the skills needed for this gig (min 1, max 10).</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="numberOfReports"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                       <Info className="h-4 w-4 text-muted-foreground" />
+                       Number of Progress Reports
+                    </FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        placeholder="e.g., 3 (0 for no reports)" 
+                        {...field} 
+                        value={field.value ?? 0} 
+                        onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)}
+                        min="0" 
+                        max="10"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How many progress reports should the student submit (0-10)?
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

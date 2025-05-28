@@ -9,15 +9,15 @@ import { useFirebase, type UserProfile } from '@/context/firebase-context'; // I
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea'; 
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useRazorpay } from '@/hooks/use-razorpay';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getChatId } from '@/lib/utils';
-import { StarRating } from '@/components/ui/star-rating'; // Import StarRating
+import { StarRating } from '@/components/ui/star-rating'; 
 
 interface ApplicantInfo {
     studentId: string;
@@ -25,6 +25,14 @@ interface ApplicantInfo {
     appliedAt: Timestamp;
     message?: string;
     status?: 'pending' | 'accepted' | 'rejected';
+}
+
+interface ProgressReport {
+  reportNumber: number;
+  studentSubmission?: { text: string; fileUrl?: string; submittedAt: Timestamp };
+  clientStatus?: 'pending_review' | 'approved' | 'rejected';
+  clientFeedback?: string;
+  reviewedAt?: Timestamp;
 }
 
 interface Gig {
@@ -41,19 +49,19 @@ interface Gig {
   applicants?: ApplicantInfo[];
   selectedStudentId?: string | null;
   currency: "INR";
-  // Fields for storing review directly on the gig for the selected student (alternative to separate reviews collection)
-  // reviewForSelectedStudent?: { rating: number; comment?: string; reviewedAt: Timestamp };
+  numberOfReports?: number; // Added
+  progressReports?: ProgressReport[]; // Added
 }
 
 interface Review {
-  id: string; // Firestore doc ID
+  id: string; 
   gigId: string;
   gigTitle: string;
   clientId: string;
   clientUsername: string;
   studentId: string;
   studentUsername: string;
-  rating: number; // 1-5
+  rating: number; 
   comment?: string;
   createdAt: Timestamp;
 }
@@ -181,11 +189,10 @@ export default function ManageGigPage() {
                     setGig(null);
                 } else {
                     if (!fetchedGig.currency) {
-                        fetchedGig.currency = "INR"; // Should always be INR now
+                        fetchedGig.currency = "INR"; 
                     }
                     setGig(fetchedGig);
 
-                    // Check if review exists for this gig and selected student
                     if (fetchedGig.status === 'completed' && fetchedGig.selectedStudentId) {
                         const reviewsQuery = query(
                             collection(db, 'reviews'),
@@ -362,7 +369,6 @@ export default function ManageGigPage() {
             };
             await addDoc(collection(db, "reviews"), reviewData);
 
-            // Client-side aggregation for student's profile (simplified)
             const studentDocRef = doc(db, 'users', gig.selectedStudentId);
             const studentSnap = await getDoc(studentDocRef);
             if (studentSnap.exists()) {
@@ -380,7 +386,7 @@ export default function ManageGigPage() {
             }
 
             toast({ title: "Review Submitted", description: "Thank you for your feedback!" });
-            setHasBeenReviewed(true); // Hide form after submission
+            setHasBeenReviewed(true); 
         } catch (err) {
             console.error("Error submitting review:", err);
             toast({ title: "Review Failed", description: "Could not submit your review.", variant: "destructive" });
@@ -447,11 +453,16 @@ export default function ManageGigPage() {
                <span className="text-sm text-muted-foreground">Status:</span>
                 <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge>
            </div>
+           {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
+             <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground">
+                <Layers className="h-4 w-4" />
+                <span>Requires {gig.numberOfReports} progress report(s).</span>
+             </div>
+           )}
          </CardHeader>
        </Card>
 
 
-       {/* Hired Student & Payment Section */}
        {gig.status === 'in-progress' && selectedStudent && (
          <Card className="glass-card border-green-500 dark:border-green-400">
            <CardHeader>
@@ -482,6 +493,17 @@ export default function ManageGigPage() {
                        </Button>
                   </div>
               </div>
+              {/* Placeholder for progress reports UI */}
+              {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
+                <div className="mt-4 p-3 border rounded-md">
+                    <h4 className="font-semibold mb-2">Progress Reports ({gig.progressReports?.length || 0} / {gig.numberOfReports})</h4>
+                    <p className="text-sm text-muted-foreground">
+                        Student progress submissions and your review/approval will appear here.
+                        This functionality will be built out further.
+                    </p>
+                    {/* TODO: Iterate over gig.progressReports and display each one with options to approve/reject */}
+                </div>
+              )}
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
                 <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0">
@@ -500,7 +522,6 @@ export default function ManageGigPage() {
          </Card>
        )}
 
-        {/* Completed Gig & Review Section */}
        {gig.status === 'completed' && selectedStudent && (
           <Card className="glass-card border-green-500 dark:border-green-400">
             <CardHeader>
@@ -562,7 +583,6 @@ export default function ManageGigPage() {
         )}
 
 
-       {/* Applicants List Section */}
        {gig.status === 'open' && (
            <Card className="glass-card">
              <CardHeader>
