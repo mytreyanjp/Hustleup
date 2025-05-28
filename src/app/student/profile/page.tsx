@@ -16,13 +16,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import { Progress } from '@/components/ui/progress';
 import type { UserProfile } from '@/context/firebase-context';
-import Link from 'next/link'; // Added Link
+import Link from 'next/link'; 
 
 const portfolioLinkSchema = z.object({
   value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
@@ -80,14 +80,14 @@ export default function StudentProfilePage() {
          });
          setImagePreview(userProfile.profilePictureUrl || null);
          setIsFormReady(true);
-       } else if (user && !userProfile) { // User exists but profile hasn't loaded or is null (new user edge case)
-         form.reset({ // Initialize with some defaults from auth if profile is missing
+       } else if (user && !userProfile) { 
+         form.reset({ 
              username: user.email?.split('@')[0] || '',
              bio: '',
              skills: [],
              portfolioLinks: [],
          });
-         setIsFormReady(true); // Allow form to render
+         setIsFormReady(true); 
        }
      }
    }, [user, userProfile, authLoading, role, router, form]);
@@ -135,7 +135,7 @@ export default function StudentProfilePage() {
         toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
         setIsUploading(false);
         setUploadProgress(null);
-        setSelectedImageFile(null); // Clear selection on error
+        setSelectedImageFile(null); 
       },
       async () => {
         try {
@@ -143,11 +143,11 @@ export default function StudentProfilePage() {
           const userDocRef = doc(db, 'users', user.uid);
           await updateDoc(userDocRef, {
             profilePictureUrl: downloadURL,
-            profileUpdatedAt: new Date(), // Use Firestore server timestamp if preferred
+            updatedAt: new Date(), 
           });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
-          if (refreshUserProfile) await refreshUserProfile(); // Refresh context to show new pic
-          setSelectedImageFile(null); // Clear selection on success
+          if (refreshUserProfile) await refreshUserProfile(); 
+          setSelectedImageFile(null); 
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
           toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
@@ -168,20 +168,12 @@ export default function StudentProfilePage() {
       const userDocRef = doc(db, 'users', user.uid);
       const updateData: Partial<UserProfile> = { 
         username: data.username,
-        bio: data.bio || '', // Ensure empty string if undefined
+        bio: data.bio || '', 
         skills: data.skills || [],
-        portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [], // Filter out empty strings
-        profileUpdatedAt: new Date(), // Use Firestore server timestamp if preferred
+        portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [], 
+        updatedAt: new Date(), 
       };
-
-      // If a new image was uploaded and its URL is in imagePreview (and not yet in userProfile from context refresh)
-      // OR if userProfile context already has the latest pic URL
-      if (imagePreview && userProfile?.profilePictureUrl !== imagePreview && selectedImageFile) {
-         // This case is less likely if handleImageUpload updates context correctly,
-         // but as a fallback, or if picture was uploaded but form not saved yet.
-         // Ideally, handleImageUpload refreshes context, and then userProfile.profilePictureUrl is used.
-         // For now, assume userProfile.profilePictureUrl is the source of truth after an upload.
-      }
+      
        if (userProfile?.profilePictureUrl) {
            updateData.profilePictureUrl = userProfile.profilePictureUrl;
        }
@@ -193,7 +185,7 @@ export default function StudentProfilePage() {
         title: 'Profile Updated',
         description: 'Your profile details have been successfully saved.',
       });
-      if (refreshUserProfile) { // Refresh context AFTER successful save
+      if (refreshUserProfile) { 
            await refreshUserProfile();
       }
     } catch (error: any) {
@@ -213,8 +205,12 @@ export default function StudentProfilePage() {
      if (email) return email.substring(0, 2).toUpperCase();
      return '??';
    };
+   
+   const followersCount = userProfile?.followersCount || 0;
+   const followingCount = userProfile?.following?.length || 0;
 
-   if (authLoading || !isFormReady) { // Wait for auth and form readiness (profile data loaded)
+
+   if (authLoading || !isFormReady) { 
      return (
         <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -264,6 +260,10 @@ export default function StudentProfilePage() {
                         <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
                     </div>
                 )}
+                <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
+                    <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers</span>
+                    <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following</span>
+                </div>
              </div>
           </div>
           <div className="mt-4 flex justify-end">
@@ -379,3 +379,4 @@ export default function StudentProfilePage() {
     </div>
   );
 }
+
