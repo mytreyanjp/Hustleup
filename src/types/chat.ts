@@ -8,6 +8,11 @@ export interface ChatMessage {
   mediaUrl?: string;
   mediaType?: string;
   timestamp: Timestamp | null;
+  // Fields for shared gig
+  sharedGigId?: string;
+  sharedGigTitle?: string;
+  // Optional: sharedGigDescriptionSnippet?: string;
+  // Optional: sharedGigClientUsername?: string;
 }
 
 export interface ChatMetadata {
@@ -17,9 +22,9 @@ export interface ChatMetadata {
   participantProfilePictures?: { [key: string]: string };
   lastMessage?: string;
   lastMessageTimestamp?: Timestamp | null;
-  lastMessageSenderId?: string; // UID of the sender of the last message
-  lastMessageReadBy?: string[];   // Array of UIDs who have "seen" the last message for notification purposes
-  gigId?: string;
+  lastMessageSenderId?: string;
+  lastMessageReadBy?: string[];
+  gigId?: string; // Original gigId for chat context, not for shared gig message
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -42,6 +42,11 @@ import type { ChatMessage, ChatMetadata } from '@/types/chat';
 import { Progress } from '@/components/ui/progress';
 
 
+interface PendingShareData {
+  gigId: string;
+  gigTitle: string;
+}
+
 export default function ChatPage() {
   const { user, userProfile, loading: authLoading, totalUnreadChats } = useFirebase();
   const router = useRouter();
@@ -52,6 +57,7 @@ export default function ChatPage() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pendingShareData, setPendingShareData] = useState<PendingShareData | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -87,7 +93,7 @@ export default function ChatPage() {
   }, [emojiPickerRef]);
 
 
-  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigId?: string) => {
+  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string) => {
     if (!user || !userProfile || !db) return null;
 
     const chatId = getChatId(user.uid, targetUserId);
@@ -110,10 +116,12 @@ export default function ChatPage() {
           lastMessageTimestamp: serverTimestamp(),
           lastMessageSenderId: user.uid,
           lastMessageReadBy: [user.uid],
-          ...(gigId && { gigId }),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
+         if (gigIdForContext) {
+            newChatData.gigId = gigIdForContext;
+        }
 
         const participantPictures: { [key: string]: string } = {};
         if (userProfile.profilePictureUrl) {
@@ -142,38 +150,27 @@ export default function ChatPage() {
     if (authLoading || !user || !userProfile) return;
 
     const targetUserId = searchParams.get('userId');
-    const gigIdToShare = searchParams.get('shareGigId');
-    const gigTitleToShare = searchParams.get('shareGigTitle');
-    const gigIdForChat = searchParams.get('gigId'); // Original gigId for starting chat about a gig
+    const shareGigId = searchParams.get('shareGigId');
+    const shareGigTitle = searchParams.get('shareGigTitle');
+    const gigIdForChatContext = searchParams.get('gigId'); 
     const preselectChatId = searchParams.get('chatId');
 
-
-    if (gigIdToShare && gigTitleToShare) {
-      if (typeof window !== 'undefined') {
-        const shareableMessage = `Check out this gig: ${decodeURIComponent(gigTitleToShare)} - ${window.location.origin}/gigs/${gigIdToShare}`;
-        setMessage(shareableMessage); // Pre-fill the message input
-        toast({
-          title: "Gig Ready to Share",
-          description: "Select a chat and send your message.",
-        });
-        // Clear the share params from URL to prevent re-triggering
-        router.replace('/chat', { scroll: false });
-      }
-      // Don't return here, allow chat selection or creation to proceed
-    }
-
-
-    if (preselectChatId) {
+    if (shareGigId && shareGigTitle) {
+      setPendingShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
+      setMessage(''); // Clear text input when a share is pending
+      toast({
+        title: "Gig Ready to Share",
+        description: "Select a chat and send your message.",
+      });
+      router.replace('/chat', { scroll: false }); // Clear share params from URL
+      // Don't return, allow chat selection/creation
+    } else if (preselectChatId) {
         setSelectedChatId(preselectChatId);
         if (searchParams.has('chatId') && typeof window !== 'undefined') {
              router.replace('/chat', { scroll: false });
         }
         return;
-    }
-    
-    // This block should only run if not handling a share action that sets message
-    // or if a specific targetUserId is provided for a new chat.
-    if (targetUserId && user.uid !== targetUserId && !gigIdToShare) {
+    } else if (targetUserId && user.uid !== targetUserId) {
       const fetchTargetUserAndCreateChat = async () => {
         if (!db) {
             toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
@@ -184,7 +181,7 @@ export default function ChatPage() {
         if (targetUserSnap.exists()) {
           const targetUserData = targetUserSnap.data() as UserProfile;
           setTargetUserForNewChat(targetUserData);
-          await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChat || undefined);
+          await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined);
         } else {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
@@ -194,8 +191,7 @@ export default function ChatPage() {
         }
       };
       fetchTargetUserAndCreateChat();
-    } else if (!gigIdToShare && !targetUserId && !preselectChatId && (searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
-        // Clear any residual userId/gigId if not actively creating a chat or sharing
+    } else if (!shareGigId && !targetUserId && !preselectChatId && (searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
         router.replace('/chat', { scroll: false });
     }
   }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router, toast]);
@@ -208,9 +204,7 @@ export default function ChatPage() {
       return;
     }
     setIsLoadingChats(true);
-    // IMPORTANT: This query requires a composite index in Firestore for optimal performance:
-    // Collection: 'chats', Fields: 'participants' (Array Contains), 'updatedAt' (Descending)
-    // Create Index Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQIAx2FydGljaXBhbnRzGAEaDQoJdXBkYXRlZEF0EAIaDAoIX19uYW1lX18QAg
+    // IMPORTANT: Composite index required: 'participants' (Array Contains), 'updatedAt' (Descending)
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -269,7 +263,6 @@ export default function ChatPage() {
             chatData.lastMessageSenderId !== user.uid &&
             (!chatData.lastMessageReadBy || !chatData.lastMessageReadBy.includes(user.uid))
           ) {
-            console.log(`Marking chat ${selectedChatId} as read by ${user.uid}`);
             await updateDoc(chatDocRef, {
               lastMessageReadBy: arrayUnion(user.uid),
             });
@@ -297,13 +290,11 @@ export default function ChatPage() {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
-    // If a share message was pre-filled and user changes chat, clear it or let them send.
-    // For now, we assume if they change chat, they might want to send the pre-filled msg to the new chat.
-    // If message state is not empty and was due to sharing, it will persist.
     setSelectedFile(null);
     setUploadProgress(null);
     setShowEmojiPicker(false);
-    // setMessage(''); // Don't clear message here if it was pre-filled by share
+    // If a share was pending, selecting a new chat should ideally confirm or clear it.
+    // For now, a pending share will persist until sent or cancelled.
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -315,6 +306,7 @@ export default function ChatPage() {
       }
       setSelectedFile(file);
       setMessage(''); 
+      setPendingShareData(null); // Clear pending share if a file is selected
     }
   };
 
@@ -323,7 +315,7 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async () => {
-    if ((!message.trim() && !selectedFile) || !selectedChatId || !user || !userProfile || !db ) {
+    if ((!message.trim() && !selectedFile && !pendingShareData) || !selectedChatId || !user || !userProfile || !db ) {
         toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
         return;
     }
@@ -356,11 +348,6 @@ export default function ChatPage() {
             },
             (error: any) => {
               console.error("Firebase Storage Upload Error (chat):", error);
-              console.error("Error Code:", error.code);
-              console.error("Error Message:", error.message);
-              if (error.serverResponse) {
-                console.error("Server Response:", error.serverResponse);
-              }
               console.error("Full Error Object:", JSON.stringify(error, null, 2));
               
               let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
@@ -369,7 +356,7 @@ export default function ChatPage() {
 
               switch (error.code) {
                 case 'storage/unauthorized': 
-                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. Also ensure you are correctly logged in. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
+                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. Also check login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
                   break;
                 case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
                 case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
@@ -379,10 +366,10 @@ export default function ChatPage() {
                 default:
                   if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                     toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Check internet connection and browser Network tab. Verify CORS configuration for your Firebase Storage bucket. Ensure Storage is enabled and rules set. Raw error: ${error.message || 'Unknown network error'}`;
                     duration = 20000; 
                   } else {
-                    detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
+                    detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Check network, Firebase Storage rules, and project plan. Server response (if any): ${error.serverResponse || 'N/A'}`; 
                   }
                   break;
               }
@@ -405,12 +392,10 @@ export default function ChatPage() {
           );
         });
       } catch (error) {
-        // This catch block might be redundant if the promise reject above is handled
         console.error("Outer catch for upload process (chat):", error);
         setIsSending(false);
         setUploadProgress(null);
-        // Ensure a toast is shown if it wasn't already from the promise rejection
-        if (!toast.isActive(`upload-error-${selectedChatId}`)) { // Example of unique ID check
+        if (!toast.isActive(`upload-error-${selectedChatId}`)) {
             toast({ id: `upload-error-${selectedChatId}`, title: "Upload Process Failed", description: "An unexpected error occurred during file upload.", variant: "destructive" });
         }
         return;
@@ -421,20 +406,42 @@ export default function ChatPage() {
       senderId: user.uid,
       timestamp: serverTimestamp(),
     };
+    
+    let lastMessageText = '';
 
-    if (message.trim()) newMessageContent.text = message.trim();
-    if (mediaUrl) newMessageContent.mediaUrl = mediaUrl;
-    if (mediaType) newMessageContent.mediaType = mediaType;
+    if (pendingShareData) {
+      newMessageContent.sharedGigId = pendingShareData.gigId;
+      newMessageContent.sharedGigTitle = pendingShareData.gigTitle;
+      lastMessageText = `[Gig Shared] ${pendingShareData.gigTitle}`;
+      if (message.trim()) { // If user also typed a message with the share
+        newMessageContent.text = message.trim();
+        lastMessageText = `${message.trim()} (Shared: ${pendingShareData.gigTitle})`;
+      }
+    } else if (message.trim()) {
+      newMessageContent.text = message.trim();
+      lastMessageText = message.trim();
+    }
+    
+    if (mediaUrl) {
+      newMessageContent.mediaUrl = mediaUrl;
+      newMessageContent.mediaType = mediaType;
+      if (!lastMessageText) { // If only media, no text/share
+        lastMessageText = `Attachment: ${selectedFile?.name || 'file'}`;
+      } else { // If media + text/share
+        lastMessageText += ` (Attachment: ${selectedFile?.name || 'file'})`;
+      }
+    }
+
 
     try {
       const chatDocRef = doc(db, 'chats', selectedChatId);
       const messagesColRef = collection(chatDocRef, 'messages');
 
-      const batch = writeBatch(db);
-      batch.set(doc(messagesColRef), newMessageContent);
+      const batchOp = writeBatch(db);
+      batchOp.set(doc(messagesColRef), newMessageContent);
 
       const chatUpdateData: Partial<ChatMetadata> & {updatedAt: any, lastMessageTimestamp: any} = {
-        lastMessage: message.trim() || (selectedFile ? `Attachment: ${selectedFile.name}` : 'New message'),
+        lastMessage: lastMessageText.substring(0, 100), // Truncate last message preview
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
@@ -451,11 +458,12 @@ export default function ChatPage() {
         };
       }
 
-      batch.update(chatDocRef, chatUpdateData);
+      batchOp.update(chatDocRef, chatUpdateData);
 
-      await batch.commit();
+      await batchOp.commit();
       setMessage('');
       setSelectedFile(null);
+      setPendingShareData(null); // Clear pending share
       setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
@@ -471,7 +479,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // This is handled by the useEffect redirect, showing a placeholder
+    // This is handled by the useEffect redirect
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
 
@@ -555,7 +563,7 @@ export default function ChatPage() {
                     <CardTitle className="text-base">{otherUsername}</CardTitle>
                     {selectedChatDetails.gigId && (
                         <Link href={`/gigs/${selectedChatDetails.gigId}`} className="text-xs text-primary hover:underline">
-                            View Gig Details
+                            View Original Gig Context
                         </Link>
                     )}
                 </div>
@@ -576,6 +584,18 @@ export default function ChatPage() {
                           : 'bg-secondary dark:bg-muted'
                       }`}
                     >
+                      {msg.sharedGigId && msg.sharedGigTitle && (
+                        <Link href={`/gigs/${msg.sharedGigId}`} target="_blank" rel="noopener noreferrer"
+                              className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Link2 className={`h-4 w-4 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
+                            <h4 className={`font-semibold text-sm ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
+                          </div>
+                          <p className={`text-xs ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground underline' : 'text-primary hover:underline'}`}>
+                            View Gig Details
+                          </p>
+                        </Link>
+                      )}
                       {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
                       {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
                         <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
@@ -618,6 +638,17 @@ export default function ChatPage() {
             )}
 
             <CardFooter className="p-3 border-t flex flex-col items-start">
+              {pendingShareData && (
+                <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50 text-sm">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <Link2 className="h-4 w-4 text-primary" />
+                    <span className="text-muted-foreground truncate">Sharing Gig: <span className="font-medium text-foreground">{pendingShareData.gigTitle}</span></span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPendingShareData(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
               {selectedFile && (
                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50">
                   <div className="flex items-center gap-2 overflow-hidden">
@@ -646,20 +677,20 @@ export default function ChatPage() {
                 </Button>
                 <Input
                   type="text"
-                  placeholder={selectedFile ? "Add a caption (optional)..." : "Type your message..."}
+                  placeholder={pendingShareData ? "Add a caption (optional)..." : (selectedFile ? "Add a caption (optional)..." : "Type your message...")}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isSending && handleSendMessage()}
                   disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
                 />
                  <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" />
-                 <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isSending || (uploadProgress !== null && uploadProgress < 100)} title="Attach file">
+                 <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isSending || (uploadProgress !== null && uploadProgress < 100) || !!pendingShareData} title="Attach file">
                     <Paperclip className="h-5 w-5" />
                     <span className="sr-only">Attach file</span>
                  </Button>
-                <Button onClick={handleSendMessage} disabled={isSending || (!message.trim() && !selectedFile) || (uploadProgress !== null && uploadProgress < 100)} title="Send message">
+                <Button onClick={handleSendMessage} disabled={isSending || (!message.trim() && !selectedFile && !pendingShareData) || (uploadProgress !== null && uploadProgress < 100)} title={pendingShareData ? "Send Gig" : "Send message"}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="sr-only">Send</span>
+                  <span className="sr-only">{pendingShareData ? "Send Gig" : "Send"}</span>
                 </Button>
               </div>
             </CardFooter>
@@ -668,10 +699,10 @@ export default function ChatPage() {
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <MessageSquare className="h-16 w-16 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
-                 {searchParams.get('shareGigId') && !selectedChatId && ' Select a chat to share the gig.'}
+                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') && !pendingShareData ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
+                 {(searchParams.get('shareGigId') || pendingShareData) && !selectedChatId && ' Select a chat to share the gig.'}
             </p>
-            {targetUserForNewChat && !selectedChatId && !searchParams.get('shareGigId') && (
+            {targetUserForNewChat && !selectedChatId && !pendingShareData && (
                  <p className="text-sm mt-2">Starting chat with {targetUserForNewChat.username}...</p>
             )}
           </div>
@@ -680,4 +711,3 @@ export default function ChatPage() {
     </div>
   );
 }
-

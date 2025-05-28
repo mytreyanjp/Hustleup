@@ -10,10 +10,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Send as ShareIcon } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import Image from 'next/image'; // Not used directly in this version, but keeping for potential future use
 
 interface Gig {
   id: string;
@@ -21,11 +22,11 @@ interface Gig {
   description: string;
   budget: number;
   currency: string;
-  deadline: Timestamp; // Firestore Timestamp
+  deadline: Timestamp; 
   requiredSkills: string[];
   clientId: string;
-  clientUsername?: string; // Keep this as a fallback
-  createdAt: Timestamp; // Firestore Timestamp
+  clientUsername?: string; 
+  createdAt: Timestamp; 
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
 }
@@ -168,8 +169,8 @@ export default function GigDetailPage() {
         });
         toast({ title: "Gig Bookmarked!", description: `"${gig.title}" added to your bookmarks.` });
       }
-      setIsBookmarked(!isBookmarked); // Optimistically update UI
-      if(refreshUserProfile) await refreshUserProfile(); // Refresh context
+      setIsBookmarked(!isBookmarked); 
+      if(refreshUserProfile) await refreshUserProfile(); 
     } catch (err: any) {
       console.error("Error toggling bookmark:", err);
       toast({ title: "Bookmark Error", description: `Could not update bookmark: ${err.message}`, variant: "destructive" });
@@ -183,6 +184,7 @@ export default function GigDetailPage() {
         toast({ title: "Login Required", description: "Please log in to share gigs.", variant: "destructive" });
         return;
     }
+    // Pass gigId and gigTitle to the chat page
     router.push(`/chat?shareGigId=${gig.id}&shareGigTitle=${encodeURIComponent(gig.title)}`);
   };
 
@@ -229,6 +231,7 @@ export default function GigDetailPage() {
    }
 
    const isClientOwner = user && role === 'client' && user.uid === gig.clientId;
+   // Display company name if available and it's a client, otherwise fallback to clientUsername or 'Client'
    const clientDisplayName = clientProfileDetails?.companyName || clientProfileDetails?.username || gig.clientUsername || 'Client';
 
 
@@ -243,7 +246,7 @@ export default function GigDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
             <CardTitle className="text-2xl md:text-3xl flex-grow">{gig.title}</CardTitle>
             <div className="flex items-center gap-2 shrink-0">
-                {user && ( // Show share button if user is logged in
+                {user && (
                     <Button 
                         variant="outline" 
                         size="icon" 
@@ -252,7 +255,7 @@ export default function GigDetailPage() {
                         title="Share to Chat"
                         className="shrink-0"
                     >
-                        <ShareIcon className="h-5 w-5" />
+                        <Share2 className="h-5 w-5" />
                     </Button>
                 )}
                 {role === 'student' && gig.status === 'open' && (
