@@ -52,6 +52,7 @@ export default function Navbar() {
       const gigsCollectionRef = collection(db, 'gigs');
       // Fetch open gigs for suggestions.
       // IMPORTANT: This query might require a composite index: status (Asc), createdAt (Desc)
+      // Please create this index in your Firebase console if you encounter errors.
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
@@ -111,6 +112,7 @@ export default function Navbar() {
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
       setIsSuggestionsOpen(false); // Close popover on search submission
+      setSearchTerm(''); // Clear search term after submission
     }
   };
 
@@ -123,13 +125,13 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center pl-4">
-        <Link href="/" className="mr-4 flex items-center space-x-2">
+      <div className="container flex h-16 items-center"> {/* Removed pl-4 to allow default container padding */}
+        <div className="mr-4 flex items-center space-x-2 cursor-default"> {/* Changed Link to div and added cursor-default */}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
           </svg>
           <span className="font-bold hidden sm:inline-block">HustleUp</span>
-        </Link>
+        </div>
 
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
@@ -145,19 +147,19 @@ export default function Navbar() {
 
           {isClient && role === 'student' && (
             <>
-              <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+              {/* <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
                 Dashboard
-              </Link>
+              </Link> */}
               <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
                 <Briefcase className="mr-1 h-4 w-4 sm:inline-block" /> Your Works
               </Link>
             </>
           )}
-          {isClient && role === 'client' && (
+          {/* {isClient && role === 'client' && (
             <Link href="/client/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Dashboard
             </Link>
-          )}
+          )} */}
           {isClient && user && (
             <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
               <MessageSquare className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
@@ -194,7 +196,7 @@ export default function Navbar() {
                             setIsSuggestionsOpen(true);
                              if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
                         } else {
-                            setIsSuggestionsOpen(false);
+                            setIsSuggestionsOpen(false); // Close if search term is cleared
                         }
                     }}
                     onFocus={() => {
@@ -208,15 +210,15 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()}
+                    onOpenAutoFocus={(e) => e.preventDefault()} // Prevent auto-focus on internal command input
                     onInteractOutside={(e) => {
-                        if (searchInputRef.current && searchInputRef.current.contains(e.target as Node)) {
-                            return;
+                        // Only close if the click is outside the trigger (search input)
+                        if (searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
+                             setIsSuggestionsOpen(false);
                         }
-                        setIsSuggestionsOpen(false);
                     }}
                 >
-                  <Command shouldFilter={false}>
+                  <Command shouldFilter={false}> {/* Disable CMDK's internal filtering, we do it manually */}
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -231,11 +233,11 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title}
+                              value={gig.title} // For CMDK accessibility
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
                                 setIsSuggestionsOpen(false);
-                                setSearchTerm('');
+                                setSearchTerm(''); // Clear search term after selection
                               }}
                               className="cursor-pointer"
                             >
@@ -247,10 +249,11 @@ export default function Navbar() {
                       )}
                        <CommandGroup>
                         <CommandItem
-                            value={`search_all_for_${searchTerm}`}
+                            value={`search_all_for_${searchTerm}`} // Unique value
                             onSelect={() => {
-                                handleSearchSubmit();
-                                setIsSuggestionsOpen(false);
+                                handleSearchSubmit(); // This will navigate
+                                setIsSuggestionsOpen(false); // Close popover
+                                // setSearchTerm(''); // Already cleared by handleSearchSubmit if successful
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -279,7 +282,7 @@ export default function Navbar() {
             ) : user ? (
               <div className="flex items-center space-x-1">
                 <Link href={dashboardUrl} passHref>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0" aria-label="Dashboard">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
                       <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
@@ -288,7 +291,7 @@ export default function Navbar() {
                 </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User menu">
                       <MenuIcon />
                     </Button>
                   </DropdownMenuTrigger>
@@ -420,11 +423,11 @@ export default function Navbar() {
               </>
             )
           ) : (
-            <div style={{ width: '7rem' }} />
+            // Placeholder for SSR to avoid layout shifts
+            <div style={{ width: '7rem' }} /> 
           )}
         </div>
       </div>
     </header>
   );
 }
-
