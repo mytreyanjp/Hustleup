@@ -18,9 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-// Import from client page - this type might need to be defined locally or in a shared types file if it causes issues
-// For now, assuming it's correctly defined for ProgressReport and StudentSubmission
-// If not, define them locally:
+
 interface StudentSubmission {
   text: string;
   fileUrl?: string;
@@ -32,8 +30,8 @@ interface ProgressReport {
   reportNumber: number;
   studentSubmission?: StudentSubmission;
   clientStatus?: 'pending_review' | 'approved' | 'rejected';
-  clientFeedback?: string;
-  reviewedAt?: Timestamp;
+  clientFeedback?: string | null; // Allow null
+  reviewedAt?: Timestamp | null;   // Allow null
 }
 
 
@@ -84,7 +82,6 @@ export default function StudentWorksPage() {
       const gigsRef = collection(db, "gigs");
       // IMPORTANT: This query requires a composite index on 'gigs' collection:
       // selectedStudentId (Ascending), status (Ascending), createdAt (Descending)
-      // Create it in Firebase console if missing.
       const q = query( gigsRef, where("selectedStudentId", "==", user.uid), where("status", "==", "in-progress"), orderBy("createdAt", "desc") );
       const querySnapshot = await getDocs(q);
       const fetchedGigsPromises = querySnapshot.docs.map(async (gigDoc) => {
@@ -206,17 +203,19 @@ export default function StudentWorksPage() {
           ...progressReports[reportIndex],
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: undefined, // Clear previous feedback on resubmission
-          reviewedAt: undefined,
+          clientFeedback: null, // Reset to null
+          reviewedAt: null,   // Reset to null
         };
       } else {
         progressReports.push({
           reportNumber: currentReportNumber as number,
           studentSubmission,
           clientStatus: 'pending_review',
+          clientFeedback: null, // Initialize as null
+          reviewedAt: null,   // Initialize as null
         });
       }
-      // Sort by reportNumber to maintain order, though pushing should keep it if always adding new
+      // Sort by reportNumber to maintain order
       progressReports.sort((a, b) => a.reportNumber - b.reportNumber);
 
       await updateDoc(gigDocRef, { progressReports });
