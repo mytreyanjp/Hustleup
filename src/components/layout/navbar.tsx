@@ -52,7 +52,7 @@ export default function Navbar() {
       const gigsCollectionRef = collection(db, 'gigs');
       const q = query(
         gigsCollectionRef,
-        where('status', '==', 'open'), // Fetch only open gigs for suggestions
+        where('status', '==', 'open'), 
         orderBy('createdAt', 'desc'),
         limit(10) 
       );
@@ -108,7 +108,7 @@ export default function Navbar() {
     e?.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-      setIsSuggestionsOpen(false);
+      setIsSuggestionsOpen(false); // Close popover on search submission
     }
   };
 
@@ -119,7 +119,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center pl-4"> {/* Added pl-4 here */}
+      <div className="container flex h-16 items-center pl-4">
         <Link href="/" className="mr-4 flex items-center space-x-2">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -140,9 +140,14 @@ export default function Navbar() {
           )}
 
           {isClient && role === 'student' && (
-            <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
-              Dashboard
-            </Link>
+            <>
+              <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+                Dashboard
+              </Link>
+              <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+                <Briefcase className="mr-1 h-4 w-4 sm:inline-block" /> Your Works
+              </Link>
+            </>
           )}
           {isClient && role === 'client' && (
             <Link href="/client/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
