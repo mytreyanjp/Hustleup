@@ -28,11 +28,10 @@ export default function BrowseHustlersPage() {
       }
       try {
         const usersRef = collection(db, 'users');
-        // Query for users where role is 'student' and order by username (optional)
+        // Query for users where role is 'student' and order by username
         // IMPORTANT: This query requires a composite index in Firestore:
         // Collection: 'users', Fields: 'role' (Ascending), 'username' (Ascending)
-        // Create Index Link: You might get a console error with a link if this is needed.
-        // Example link from error: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3VwHMvdXNlcnMvaW5kZXhlcy9fEAEaCAoEcm9sZRABGgwKCHVzZXJuYW1lEAEaDAoIX19uYW1lX18QAQ
+        // You should have received a console error with a link to create this if it was missing.
         const q = query(usersRef, where('role', '==', 'student'), orderBy('username', 'asc'));
         const querySnapshot = await getDocs(q);
 
