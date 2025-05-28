@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/config/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -97,14 +97,32 @@ export default function SupportPage() {
     setIsSubmittingAnswer(true);
     try {
       const faqDocRef = doc(db, 'faqs', currentAnsweringFaqId);
+      const faqSnap = await getDoc(faqDocRef); // Get current document
+
+      if (!faqSnap.exists()) {
+        toast({ title: "Error", description: "Question not found.", variant: "destructive" });
+        setIsSubmittingAnswer(false);
+        return;
+      }
+
+      const currentData = faqSnap.data() as FAQEntry;
+      const existingAnswers = currentData.answers || [];
+
+      const newAnswerObject = {
+        answerText: newAnswer.trim(),
+        answeredByUid: user.uid,
+        answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Anonymous',
+        answeredAt: serverTimestamp(), // serverTimestamp() is now part of the data for updateDoc
+      };
+
+      const updatedAnswers = [...existingAnswers, newAnswerObject];
+      // Sort answers by timestamp after adding, newest first for display consistency if desired, though Firestore array order is maintained.
+      // Or sort when displaying. For simplicity, we'll just append here.
+
       await updateDoc(faqDocRef, {
-        answers: arrayUnion({
-          answerText: newAnswer.trim(),
-          answeredByUid: user.uid,
-          answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Anonymous',
-          answeredAt: serverTimestamp(),
-        })
+        answers: updatedAnswers
       });
+
       toast({ title: "Answer Submitted!", description: "Thank you for your contribution." });
       setNewAnswer('');
       setCurrentAnsweringFaqId(null); // Close dialog by resetting state
