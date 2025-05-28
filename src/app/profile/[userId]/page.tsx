@@ -18,7 +18,7 @@ import Image from 'next/image';
 import { StarRating } from '@/components/ui/star-rating';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 
@@ -115,6 +115,7 @@ export default function PublicProfilePage() {
               setIsLoadingClientGigs(true);
               // IMPORTANT: This query likely requires a composite index on 'gigs':
               // clientId (Ascending), status (Ascending), createdAt (Descending)
+              // Create it here: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoMCghjbGllbnRJZBABGgoKBnN0YXR1cxABGg0KCWNyZWF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
               const clientGigsQuery = query(
                 collection(db, 'gigs'),
                 where('clientId', '==', userId),
