@@ -31,8 +31,8 @@ interface ProgressReport {
   reportNumber: number;
   studentSubmission?: StudentSubmission;
   clientStatus?: 'pending_review' | 'approved' | 'rejected';
-  clientFeedback?: string | null; // Allow null
-  reviewedAt?: Timestamp | null;   // Allow null
+  clientFeedback?: string | null; 
+  reviewedAt?: Timestamp | null;   
 }
 
 
@@ -299,68 +299,71 @@ export default function StudentWorksPage() {
                     </Button>
                 </div>
               </CardHeader>
+              <div
+                className={cn(
+                  "transition-all duration-500 ease-in-out overflow-hidden",
+                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100" // Adjust max-h if content can be very long
+                )}
+              >
+                <CardContent className="space-y-3 pt-3">
+                  <div className="flex items-center text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
+                  <div className="flex items-center text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
+                  
+                  {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
+                    <div className="pt-2 border-t">
+                      <h4 className="font-semibold mt-2 mb-2 text-md">Progress Reports ({gig.progressReports?.filter(r => r.studentSubmission).length || 0} / {gig.numberOfReports})</h4>
+                      <div className="space-y-3">
+                        {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
+                          const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
+                          const previousReport = gig.progressReports?.find(r => r.reportNumber === reportNum - 1);
+                          const canSubmitThisReport = reportNum === 1 || (previousReport?.clientStatus === 'approved');
+                          const isRejected = report?.clientStatus === 'rejected';
 
-              {!isCollapsed && (
-                <>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
-                    <div className="flex items-center text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
-                    
-                    {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
-                      <div className="pt-2 border-t">
-                        <h4 className="font-semibold mt-2 mb-2 text-md">Progress Reports ({gig.progressReports?.filter(r => r.studentSubmission).length || 0} / {gig.numberOfReports})</h4>
-                        <div className="space-y-3">
-                          {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
-                            const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
-                            const canSubmitThisReport = reportNum === 1 || (gig.progressReports?.find(r => r.reportNumber === reportNum -1)?.clientStatus === 'approved');
-                            const isRejected = report?.clientStatus === 'rejected';
-
-                            return (
-                              <Card key={reportNum} className="bg-background/50 p-3">
-                                <div className="flex justify-between items-center mb-1">
-                                  <h5 className="font-medium text-sm">Report #{reportNum}</h5>
-                                  <Badge variant={getReportStatusBadgeVariant(report?.clientStatus)} size="sm" className="capitalize text-xs">
-                                    {report?.clientStatus ? report.clientStatus.replace('_', ' ') : 'Not Submitted'}
-                                  </Badge>
-                                </div>
-                                {report?.studentSubmission && (
-                                  <div className="text-xs space-y-1">
-                                    <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
-                                    {report.studentSubmission.fileUrl && (
-                                      <Button variant="link" size="xs" asChild className="p-0 h-auto">
-                                        <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer"><Paperclip className="mr-1 h-3 w-3" />View Attachment ({report.studentSubmission.fileName || 'file'})</a>
-                                      </Button>
-                                    )}
-                                    <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
-                                  </div>
-                                )}
-                                {report?.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
-                                  <div className="mt-1 pt-1 border-t border-dashed text-xs">
-                                    <p><span className="font-medium">Client Feedback:</span> {report.clientFeedback}</p>
-                                    <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
-                                  </div>
-                                )}
-                                {(!report?.studentSubmission || isRejected) && canSubmitThisReport && (
-                                    <Button size="xs" variant="outline" className="mt-2" onClick={() => handleOpenSubmitReportDialog(gig.id, reportNum)}>
-                                        <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{reportNum}
+                          return (
+                            <Card key={reportNum} className="bg-background/50 p-3">
+                              <div className="flex justify-between items-center mb-1">
+                                <h5 className="font-medium text-sm">Report #{reportNum}</h5>
+                                <Badge variant={getReportStatusBadgeVariant(report?.clientStatus)} size="sm" className="capitalize text-xs">
+                                  {report?.clientStatus ? report.clientStatus.replace('_', ' ') : 'Not Submitted'}
+                                </Badge>
+                              </div>
+                              {report?.studentSubmission && (
+                                <div className="text-xs space-y-1">
+                                  <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
+                                  {report.studentSubmission.fileUrl && (
+                                    <Button variant="link" size="xs" asChild className="p-0 h-auto">
+                                      <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer"><Paperclip className="mr-1 h-3 w-3" />View Attachment ({report.studentSubmission.fileName || 'file'})</a>
                                     </Button>
-                                )}
-                                {!canSubmitThisReport && !report?.studentSubmission && reportNum > (gig.progressReports?.filter(r => r.studentSubmission).length || 0) && (
-                                    <p className="text-xs text-muted-foreground italic mt-1">Previous report needs approval before submitting this one.</p>
-                                )}
-                              </Card>
-                            );
-                          })}
-                        </div>
+                                  )}
+                                  <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
+                                </div>
+                              )}
+                              {report?.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
+                                <div className="mt-1 pt-1 border-t border-dashed text-xs">
+                                  <p><span className="font-medium">Client Feedback:</span> {report.clientFeedback}</p>
+                                  <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
+                                </div>
+                              )}
+                              {(!report?.studentSubmission || isRejected) && canSubmitThisReport && (
+                                  <Button size="xs" variant="outline" className="mt-2" onClick={() => handleOpenSubmitReportDialog(gig.id, reportNum)}>
+                                      <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{reportNum}
+                                  </Button>
+                              )}
+                              {!canSubmitThisReport && !report?.studentSubmission && reportNum > (gig.progressReports?.filter(r => r.studentSubmission).length || 0) && (
+                                  <p className="text-xs text-muted-foreground italic mt-1">Previous report needs approval before submitting this one.</p>
+                              )}
+                            </Card>
+                          );
+                        })}
                       </div>
-                    )}
-                  </CardContent>
-                  <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch gap-2 border-t pt-4">
-                    <Button size="sm" asChild><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
-                    <Button variant="outline" size="sm" asChild><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
-                  </CardFooter>
-                </>
-              )}
+                    </div>
+                  )}
+                </CardContent>
+                <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch gap-2 border-t pt-4">
+                  <Button size="sm" asChild><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
+                  <Button variant="outline" size="sm" asChild><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
+                </CardFooter>
+              </div>
             </Card>
           )})}
         </div>
