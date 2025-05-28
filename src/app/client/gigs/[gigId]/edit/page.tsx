@@ -35,10 +35,10 @@ const gigSchema = z.object({
 
 type GigFormValues = z.infer<typeof gigSchema>;
 
-interface GigData extends GigFormValues {
+interface GigDataForForm extends GigFormValues { // Renamed to avoid conflict with potential global Gig type
   id: string;
   clientId: string;
-  currency: string; 
+  currency: string;
 }
 
 export default function EditGigPage() {
@@ -54,10 +54,10 @@ export default function EditGigPage() {
 
   const form = useForm<GigFormValues>({
     resolver: zodResolver(gigSchema),
-    defaultValues: { 
+    defaultValues: {
       title: '',
       description: '',
-      budget: undefined, 
+      budget: undefined, // Handled by coerce and validation
       deadline: undefined,
       requiredSkills: [],
       numberOfReports: 0,
@@ -74,7 +74,7 @@ export default function EditGigPage() {
       const docSnap = await getDoc(gigDocRef);
 
       if (docSnap.exists()) {
-        const gigData = { id: docSnap.id, ...docSnap.data() } as GigData;
+        const gigData = { id: docSnap.id, ...docSnap.data() } as GigDataForForm;
 
         if (gigData.clientId !== user.uid) {
           setError("You are not authorized to edit this gig.");
@@ -125,20 +125,39 @@ export default function EditGigPage() {
     setIsSubmitting(true);
     try {
       const gigDocRef = doc(db, 'gigs', gigId);
-      await updateDoc(gigDocRef, {
-        ...data, 
-        numberOfReports: data.numberOfReports || 0,
+
+      // Explicitly construct the object for Firestore update
+      // This ensures only fields defined in GigFormValues (and thus validated by Zod)
+      // are included. Zod defaults and required fields should prevent undefined values.
+      const updateData: {
+        title: string;
+        description: string;
+        budget: number;
+        deadline: Date; // Firestore handles Date objects
+        requiredSkills: string[];
+        numberOfReports: number;
+        updatedAt: any; // For serverTimestamp
+      } = {
+        title: data.title,
+        description: data.description,
+        budget: data.budget,
+        deadline: data.deadline,
+        requiredSkills: data.requiredSkills,
+        numberOfReports: data.numberOfReports, // This is ensured to be a number by Zod (default 0 if optional)
         updatedAt: serverTimestamp(),
-      });
+      };
+      
+      await updateDoc(gigDocRef, updateData);
 
       toast({
         title: 'Gig Updated Successfully!',
         description: `Your gig "${data.title}" has been updated.`,
       });
-      router.push(`/client/gigs/${gigId}/manage`); 
+      router.push(`/client/gigs/${gigId}/manage`);
 
     } catch (error: any) {
       console.error('Error updating gig:', error);
+      console.error('Data attempted to save during update:', data); // Log the data for debugging
       toast({
         title: 'Failed to Update Gig',
         description: `An error occurred: ${error.message}`,
@@ -220,7 +239,8 @@ export default function EditGigPage() {
                     <FormItem>
                       <FormLabel>Budget (INR)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} min="1" step="any" />
+                        {/* Ensure value is controlled and defaults to empty string if field.value is null/undefined to avoid uncontrolled to controlled error */}
+                        <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || undefined)} min="1" step="any" />
                       </FormControl>
                       <FormDescription>Enter the total amount in INR.</FormDescription>
                       <FormMessage />
@@ -301,13 +321,13 @@ export default function EditGigPage() {
                        Number of Progress Reports
                     </FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        placeholder="e.g., 3 (0 for no reports)" 
-                        {...field} 
-                        value={field.value ?? 0} 
+                      <Input
+                        type="number"
+                        placeholder="e.g., 3 (0 for no reports)"
+                        {...field}
+                        value={field.value ?? 0} // Ensure controlled, default to 0 if undefined
                         onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)}
-                        min="0" 
+                        min="0"
                         max="10"
                       />
                     </FormControl>
