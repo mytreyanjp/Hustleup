@@ -46,7 +46,7 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || suggestions.length > 0 && searchTerm.trim() === '') return;
+    if (!db || (suggestions.length > 0 && searchTerm.trim() === '')) return; // Avoid refetch if already populated and search is empty
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
@@ -57,7 +57,7 @@ export default function Navbar() {
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10)
+        limit(10) // Fetch a small number for suggestions
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -69,16 +69,17 @@ export default function Navbar() {
       setSuggestions(fetchedGigs);
     } catch (error) {
       console.error("Error fetching initial gig suggestions:", error);
-      setSuggestions([]);
+      setSuggestions([]); // Set to empty array on error
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [suggestions.length, searchTerm]);
+  }, [suggestions.length, searchTerm]); // Include searchTerm dependency
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  // Fetch initial suggestions when the popover opens and suggestions are empty
   useEffect(() => {
     if (isSuggestionsOpen && searchTerm.trim() !== '' && !isLoadingSuggestions) {
       // Client-side filtering happens in filteredSuggestions
@@ -125,8 +126,8 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center"> {/* Removed pl-4 to allow default container padding */}
-        <div className="mr-4 flex items-center space-x-2 cursor-default"> {/* Changed Link to div and added cursor-default */}
+      <div className="container flex h-16 items-center pl-4"> {/* Added pl-4 here */}
+        <div className="mr-4 flex items-center space-x-2 cursor-default">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
           </svg>
@@ -147,19 +148,11 @@ export default function Navbar() {
 
           {isClient && role === 'student' && (
             <>
-              {/* <Link href="/student/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
-                Dashboard
-              </Link> */}
               <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
                 <Briefcase className="mr-1 h-4 w-4 sm:inline-block" /> Your Works
               </Link>
             </>
           )}
-          {/* {isClient && role === 'client' && (
-            <Link href="/client/dashboard" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
-              Dashboard
-            </Link>
-          )} */}
           {isClient && user && (
             <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
               <MessageSquare className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
@@ -210,15 +203,14 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()} // Prevent auto-focus on internal command input
+                    onOpenAutoFocus={(e) => e.preventDefault()} 
                     onInteractOutside={(e) => {
-                        // Only close if the click is outside the trigger (search input)
                         if (searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
                              setIsSuggestionsOpen(false);
                         }
                     }}
                 >
-                  <Command shouldFilter={false}> {/* Disable CMDK's internal filtering, we do it manually */}
+                  <Command shouldFilter={false}> 
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -233,11 +225,11 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title} // For CMDK accessibility
+                              value={gig.title} 
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
                                 setIsSuggestionsOpen(false);
-                                setSearchTerm(''); // Clear search term after selection
+                                setSearchTerm(''); 
                               }}
                               className="cursor-pointer"
                             >
@@ -249,11 +241,10 @@ export default function Navbar() {
                       )}
                        <CommandGroup>
                         <CommandItem
-                            value={`search_all_for_${searchTerm}`} // Unique value
+                            value={`search_all_for_${searchTerm}`} 
                             onSelect={() => {
-                                handleSearchSubmit(); // This will navigate
-                                setIsSuggestionsOpen(false); // Close popover
-                                // setSearchTerm(''); // Already cleared by handleSearchSubmit if successful
+                                handleSearchSubmit(); 
+                                setIsSuggestionsOpen(false); 
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -372,6 +363,13 @@ export default function Navbar() {
                           <DropdownMenuItem asChild className="md:hidden">
                               <Link href="/hustlers/browse">
                                   <HustlersIcon className="mr-2 h-4 w-4" /> Hustlers
+                              </Link>
+                          </DropdownMenuItem>
+                      )}
+                       {isClient && role === 'student' && (
+                          <DropdownMenuItem asChild className="md:hidden">
+                              <Link href="/student/works">
+                                  <Briefcase className="mr-2 h-4 w-4" /> Your Works
                               </Link>
                           </DropdownMenuItem>
                       )}
