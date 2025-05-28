@@ -4,14 +4,15 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { useFirebase } from '@/context/firebase-context'; // Import useFirebase
+import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Search } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Search, UserCircle } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import type { Skill } from '@/lib/constants'; // Import Skill type
+import type { Skill } from '@/lib/constants';
 
 interface Gig {
   id: string;
@@ -20,9 +21,11 @@ interface Gig {
   budget: number;
   currency: string;
   deadline: Timestamp;
-  requiredSkills: Skill[]; // Use Skill type
+  requiredSkills: Skill[];
   clientId: string;
-  clientUsername?: string;
+  clientUsername?: string; // Legacy, prefer clientDisplayNameForCard
+  clientDisplayName?: string; // Denormalized display name
+  clientAvatarUrl?: string; // Denormalized avatar URL
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
@@ -31,7 +34,7 @@ interface Gig {
 export default function BrowseGigsPage() {
   const { user: currentUser, userProfile, loading: authLoading, role } = useFirebase();
   const [gigs, setGigs] = useState<Gig[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // For fetching gigs
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,9 +43,6 @@ export default function BrowseGigsPage() {
       setError(null);
       try {
         const gigsCollectionRef = collection(db, 'gigs');
-        // IMPORTANT: This query requires a composite index in Firestore.
-        // Collection: 'gigs', Fields: 'status' (Ascending), 'createdAt' (Descending)
-        // This ensures only open gigs (not yet approved/in-progress/completed/closed) are shown.
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -56,18 +56,15 @@ export default function BrowseGigsPage() {
 
         if (!authLoading) {
           if (currentUser && role === 'student') {
-            // First, filter out gigs the student has already applied to
             fetchedGigs = fetchedGigs.filter(gig => 
               !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
             );
 
-            // Then, filter by skills if the student has skills
             if (userProfile?.skills && userProfile.skills.length > 0) {
               const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
               const skillFilteredGigs = fetchedGigs.filter(gig =>
                 gig.requiredSkills.some(reqSkill => {
                   const reqSkillLower = reqSkill.toLowerCase();
-                  // Bi-directional substring match
                   return studentSkillsLower.some(studentSkillLower =>
                     studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
                   );
@@ -75,15 +72,12 @@ export default function BrowseGigsPage() {
               );
               setGigs(skillFilteredGigs);
             } else {
-              // Student is logged in but has no skills, show them the gigs they haven't applied to.
               setGigs(fetchedGigs); 
             }
           } else {
-            // Not a student, or not logged in, show all open gigs
             setGigs(fetchedGigs); 
           }
         } else {
-          // Auth still loading, show all open gigs temporarily
           setGigs(fetchedGigs); 
         }
 
@@ -98,7 +92,7 @@ export default function BrowseGigsPage() {
     fetchAndFilterGigs();
   }, [authLoading, currentUser, role, userProfile]);
 
-  const formatDate = (timestamp: Timestamp | undefined): string => {
+  const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     try {
       return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
@@ -117,6 +111,12 @@ export default function BrowseGigsPage() {
       return 'Invalid date';
     }
    };
+   
+  const getClientInitials = (displayName?: string, username?: string) => {
+    const nameToUse = displayName || username;
+    if (nameToUse) return nameToUse.substring(0, 2).toUpperCase();
+    return 'C';
+  };
 
   const pageIsLoading = authLoading || isLoading;
 
@@ -173,16 +173,22 @@ export default function BrowseGigsPage() {
             <Card key={gig.id} className="glass-card flex flex-col">
               <CardHeader>
                 <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">
-                  Posted by {gig.clientUsername || 'Client'} {formatDate(gig.createdAt)}
-                </CardDescription>
+                <div className="flex items-center gap-2 mt-1">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
+                    <AvatarFallback>{getClientInitials(gig.clientDisplayName, gig.clientUsername)}</AvatarFallback>
+                  </Avatar>
+                  <CardDescription className="text-sm text-muted-foreground">
+                    {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
+                  </CardDescription>
+                </div>
               </CardHeader>
               <CardContent className="flex-grow">
                 <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
                  <div className="mb-4">
                     <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
                     <div className="flex flex-wrap gap-1">
-                        {gig.requiredSkills?.slice(0, 5).map((skill, index) => ( // Show max 5 skills initially
+                        {gig.requiredSkills?.slice(0, 5).map((skill, index) => ( 
                             <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
                         ))}
                         {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}

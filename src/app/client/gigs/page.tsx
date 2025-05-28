@@ -7,11 +7,12 @@ import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2 } from 'lucide-react';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 
 interface ClientGig {
   id: string;
@@ -20,13 +21,15 @@ interface ClientGig {
   createdAt: Timestamp;
   deadline: Timestamp;
   budget: number;
-  currency: string; // Added currency
+  currency: string;
   applicantCount: number;
   selectedStudentId?: string;
+  clientDisplayName?: string; // Added for consistency, though redundant here
+  clientAvatarUrl?: string;   // Added for consistency
 }
 
 export default function ClientGigsPage() {
-  const { user, loading, role } = useFirebase();
+  const { user, userProfile, loading, role } = useFirebase();
   const router = useRouter();
   const [allGigs, setAllGigs] = useState<ClientGig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,9 +66,11 @@ export default function ClientGigsPage() {
           createdAt: data.createdAt,
           deadline: data.deadline,
           budget: data.budget || 0,
-          currency: data.currency || "INR", // Default to INR if not present
+          currency: data.currency || "INR",
           applicantCount: data.applicants?.length || 0,
           selectedStudentId: data.selectedStudentId || null,
+          clientDisplayName: data.clientDisplayName || userProfile?.companyName || userProfile?.username || 'Me',
+          clientAvatarUrl: data.clientAvatarUrl || userProfile?.profilePictureUrl || '',
         } as ClientGig;
       });
 
@@ -95,6 +100,15 @@ export default function ClientGigsPage() {
        return 'Invalid Date';
      }
    };
+   
+  const formatDateDistance = (timestamp: Timestamp | undefined): string => {
+    if (!timestamp) return 'N/A';
+    try {
+      return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
 
    const getStatusBadgeVariant = (status: ClientGig['status']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
@@ -108,9 +122,6 @@ export default function ClientGigsPage() {
 
    const handleDeleteGig = async (gigId: string) => {
        console.log(`Delete gig requested: ${gigId}`);
-       // TODO: Implement actual deletion with confirmation
-       // Consider implications: what happens to applicants, messages, etc.
-       // Perhaps change status to 'closed' or 'archived' instead of hard delete.
        alert("Delete functionality not yet fully implemented. For now, consider editing the gig to 'closed'.");
    };
 
@@ -141,12 +152,19 @@ export default function ClientGigsPage() {
                {gig.status}
            </Badge>
         </div>
+         {/* Since these are client's own gigs, client info is implicit. Show creation date. */}
         <CardDescription>
-          Deadline: {formatDeadline(gig.deadline)} | Budget: {gig.currency} {gig.budget.toFixed(2)}
+          Created {formatDateDistance(gig.createdAt)}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow">
-         <div className="flex items-center text-sm text-muted-foreground">
+         <div className="text-sm text-muted-foreground">
+            Deadline: {formatDeadline(gig.deadline)}
+         </div>
+         <div className="text-sm text-muted-foreground">
+            Budget: {gig.currency} {gig.budget.toFixed(2)}
+         </div>
+         <div className="flex items-center text-sm text-muted-foreground mt-2">
             <Users className="mr-1 h-4 w-4" /> {gig.applicantCount} Applicant(s)
          </div>
       </CardContent>
@@ -187,7 +205,7 @@ export default function ClientGigsPage() {
   );
 
   const renderGigSection = (title: string, gigs: ClientGig[], icon: React.ReactNode) => {
-    if (gigs.length === 0 && title !== "Open Gigs") return null; // Don't show empty sections other than Open Gigs if it's also empty
+    if (gigs.length === 0 && title !== "Open Gigs") return null;
 
     return (
       <section className="space-y-4">

@@ -45,7 +45,7 @@ export default function NewGigPage() {
     defaultValues: {
       title: '',
       description: '',
-      budget: '' as unknown as number,
+      budget: '' as unknown as number, // Keep for react-hook-form, Zod will coerce
       deadline: undefined,
       requiredSkills: [],
       numberOfReports: 0,
@@ -72,9 +72,11 @@ export default function NewGigPage() {
       await addDoc(gigsCollectionRef, {
         clientId: user.uid,
         clientUsername: userProfile.username || user.email?.split('@')[0] || 'Unknown Client',
+        clientDisplayName: userProfile.companyName || userProfile.username || user.email?.split('@')[0] || 'Client',
+        clientAvatarUrl: userProfile.profilePictureUrl || '',
         ...data,
         numberOfReports: data.numberOfReports || 0,
-        progressReports: [], // Initialize empty progress reports array
+        progressReports: [], 
         currency: "INR", 
         status: 'open',
         createdAt: serverTimestamp(),

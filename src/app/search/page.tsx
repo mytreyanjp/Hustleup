@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search as SearchIconLucide, Briefcase, Users, CalendarDays, DollarSign } from 'lucide-react';
+import { Loader2, Search as SearchIconLucide, Briefcase, Users, CalendarDays, DollarSign, UserCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
 import type { UserProfile } from '@/context/firebase-context';
@@ -24,7 +24,9 @@ interface GigSearchResult {
   currency: string;
   deadline: Timestamp;
   requiredSkills: Skill[];
-  clientUsername?: string;
+  clientUsername?: string; // Legacy
+  clientDisplayName?: string;
+  clientAvatarUrl?: string;
   createdAt: Timestamp;
 }
 
@@ -75,21 +77,22 @@ function SearchResultsPageContent() {
         const usersCollectionRef = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollectionRef);
         const allUsers = usersSnapshot.docs.map(doc => ({
-          uid: doc.id, // Ensure uid is mapped correctly
+          uid: doc.id, 
           ...doc.data(),
         })) as UserSearchResult[];
 
 
         const filteredUsers = allUsers.filter(userDoc => {
           const usernameMatch = userDoc.username?.toLowerCase().includes(lowerSearchTerm);
+          const companyNameMatch = userDoc.companyName?.toLowerCase().includes(lowerSearchTerm);
           let skillsMatch = false;
           if (userDoc.role === 'student' && userDoc.skills) {
             skillsMatch = userDoc.skills.some((skill: string) => skill.toLowerCase().includes(lowerSearchTerm));
           }
-          // Exclude current user from search results
+          
           if (currentUser && userDoc.uid === currentUser.uid) return false;
           
-          return usernameMatch || skillsMatch;
+          return usernameMatch || companyNameMatch || skillsMatch;
         });
         setUsers(filteredUsers);
 
@@ -104,7 +107,7 @@ function SearchResultsPageContent() {
     fetchResults();
   }, [searchQuery, currentUser]);
 
-  const formatDate = (timestamp: Timestamp | undefined): string => {
+  const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
   };
@@ -114,13 +117,14 @@ function SearchResultsPageContent() {
     return timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
    };
 
-  const getInitials = (email: string | null | undefined, username?: string | null) => {
-     if (username) return username.substring(0, 2).toUpperCase();
+  const getInitials = (displayName?: string | null, email?: string | null | undefined, username?: string | null) => {
+     const nameToUse = displayName || username;
+     if (nameToUse) return nameToUse.substring(0, 2).toUpperCase();
      if (email) return email.substring(0, 2).toUpperCase();
      return '??';
    };
 
-  if (authLoading) { // Still wait for auth to load to avoid showing current user in results briefly
+  if (authLoading) { 
     return <div className="flex justify-center items-center min-h-[calc(100vh-15rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   }
 
@@ -159,9 +163,15 @@ function SearchResultsPageContent() {
               <Card key={gig.id} className="glass-card flex flex-col">
                 <CardHeader>
                   <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
-                  <CardDescription className="text-sm text-muted-foreground">
-                    Posted by {gig.clientUsername || 'Client'} {formatDate(gig.createdAt)}
-                  </CardDescription>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
+                      <AvatarFallback>{getInitials(gig.clientDisplayName, undefined, gig.clientUsername)}</AvatarFallback>
+                    </Avatar>
+                    <CardDescription className="text-sm text-muted-foreground">
+                      {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
+                    </CardDescription>
+                  </div>
                 </CardHeader>
                 <CardContent className="flex-grow space-y-2">
                   <p className="text-sm line-clamp-3">{gig.description}</p>
@@ -208,9 +218,9 @@ function SearchResultsPageContent() {
                 <CardHeader className="items-center text-center">
                   <Avatar className="h-20 w-20 mb-2">
                     <AvatarImage src={userResult.profilePictureUrl} alt={userResult.username || 'User'} />
-                    <AvatarFallback>{getInitials(userResult.email, userResult.username)}</AvatarFallback>
+                    <AvatarFallback>{getInitials(userResult.companyName || userResult.username, userResult.email)}</AvatarFallback>
                   </Avatar>
-                  <CardTitle className="text-lg">{userResult.username || 'User'}</CardTitle>
+                  <CardTitle className="text-lg">{userResult.companyName || userResult.username || 'User'}</CardTitle>
                   <CardDescription className="capitalize">{userResult.role}</CardDescription>
                 </CardHeader>
                 {userResult.role === 'student' && userResult.skills && userResult.skills.length > 0 && (
@@ -224,15 +234,15 @@ function SearchResultsPageContent() {
                     </div>
                   </CardContent>
                 )}
+                 {userResult.role === 'client' && userResult.companyDescription && (
+                    <CardContent className="text-center">
+                        <p className="text-xs text-muted-foreground line-clamp-2">{userResult.companyDescription}</p>
+                    </CardContent>
+                )}
                 <CardFooter>
-                  {userResult.role === 'student' ? (
-                     <Button asChild className="w-full" variant="outline">
-                        <Link href={`/profile/${userResult.uid}`}>View Profile</Link>
-                     </Button>
-                  ) : (
-                    // Clients might not have public profiles in the same way, or could link to company page later
-                    <p className="text-sm text-muted-foreground w-full text-center">Client profile (details may be limited)</p>
-                  )}
+                   <Button asChild className="w-full" variant="outline">
+                      <Link href={`/profile/${userResult.uid}`}>View Profile</Link>
+                   </Button>
                 </CardFooter>
               </Card>
             ))}
@@ -246,8 +256,6 @@ function SearchResultsPageContent() {
 
 export default function SearchPage() {
   return (
-    // Suspense is generally used for server components with client components that use useSearchParams
-    // For a fully client-rendered page like this, it's less critical but good practice.
     <Suspense fallback={<div className="flex justify-center items-center min-h-[calc(100vh-15rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
       <SearchResultsPageContent />
     </Suspense>

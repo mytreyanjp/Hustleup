@@ -7,9 +7,10 @@ import { useRouter } from 'next/navigation';
 import { collection, doc, getDoc, getDocs, query, where, Timestamp, updateDoc, arrayRemove } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, BookmarkX, CalendarDays, DollarSign, Search, ArrowLeft } from 'lucide-react';
+import { Loader2, BookmarkX, CalendarDays, DollarSign, Search, ArrowLeft, UserCircle } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
@@ -23,7 +24,9 @@ interface BookmarkedGig {
   currency: string;
   deadline: Timestamp;
   requiredSkills: Skill[];
-  clientUsername?: string;
+  clientUsername?: string; // Legacy
+  clientDisplayName?: string;
+  clientAvatarUrl?: string;
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
 }
@@ -98,7 +101,7 @@ export default function StudentBookmarksPage() {
     }
   };
 
-  const formatDate = (timestamp: Timestamp | undefined): string => {
+  const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
   };
@@ -106,6 +109,12 @@ export default function StudentBookmarksPage() {
   const formatDeadline = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     return `Due on ${timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;
+  };
+
+  const getClientInitials = (displayName?: string, username?: string) => {
+    const nameToUse = displayName || username;
+    if (nameToUse) return nameToUse.substring(0, 2).toUpperCase();
+    return 'C';
   };
 
   if (isLoading || authLoading) {
@@ -155,9 +164,15 @@ export default function StudentBookmarksPage() {
             <Card key={gig.id} className="glass-card flex flex-col">
               <CardHeader>
                 <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">
-                  Posted by {gig.clientUsername || 'Client'} {formatDate(gig.createdAt)}
-                </CardDescription>
+                <div className="flex items-center gap-2 mt-1">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
+                    <AvatarFallback>{getClientInitials(gig.clientDisplayName, gig.clientUsername)}</AvatarFallback>
+                  </Avatar>
+                  <CardDescription className="text-sm text-muted-foreground">
+                    {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
+                  </CardDescription>
+                </div>
               </CardHeader>
               <CardContent className="flex-grow">
                 <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
@@ -201,5 +216,4 @@ export default function StudentBookmarksPage() {
     </div>
   );
 }
-
     
