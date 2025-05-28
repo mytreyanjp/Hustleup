@@ -18,6 +18,8 @@ import Image from 'next/image';
 import { StarRating } from '@/components/ui/star-rating';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 interface StudentPost {
@@ -51,8 +53,14 @@ export default function PublicProfilePage() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [isLoadingClientGigs, setIsLoadingClientGigs] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowingThisUser, setIsFollowingThisUser] = useState(false);
   const [isFollowProcessing, setIsFollowProcessing] = useState(false);
+
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [modalUserList, setModalUserList] = useState<UserProfile[]>([]);
+  const [isLoadingModalList, setIsLoadingModalList] = useState(false);
+
 
   useEffect(() => {
     if (!userId) {
@@ -82,7 +90,7 @@ export default function PublicProfilePage() {
            setProfile(fetchedProfile);
 
            if (viewerUserProfile && viewerUserProfile.following) {
-             setIsFollowing(viewerUserProfile.following.includes(fetchedProfile.uid));
+             setIsFollowingThisUser(viewerUserProfile.following.includes(fetchedProfile.uid));
            }
 
 
@@ -134,10 +142,11 @@ export default function PublicProfilePage() {
     };
 
     fetchProfileData();
-  }, [userId, viewerUserProfile]); // Re-run if viewerUserProfile changes (e.g., after they follow/unfollow someone)
+  }, [userId, viewerUserProfile]);
 
    const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
-     if (profile?.role === 'client' && companyName && companyName.trim() !== '') return companyName.substring(0, 2).toUpperCase();
+     const nameToUse = profile?.role === 'client' ? companyName : username;
+     if (nameToUse && nameToUse.trim() !== '') return nameToUse.substring(0, 2).toUpperCase();
      if (username && username.trim() !== '') return username.substring(0, 2).toUpperCase();
      if (email) return email.substring(0, 2).toUpperCase();
      return '??';
@@ -165,23 +174,20 @@ export default function PublicProfilePage() {
     const targetUserDocRef = doc(db, 'users', profile.uid);
 
     try {
-      if (isFollowing) { // Unfollow action
+      if (isFollowingThisUser) { // Unfollow action
         await updateDoc(viewerUserDocRef, { following: arrayRemove(profile.uid) });
-        // IMPORTANT: For production, use a Cloud Function for atomicity.
-        // This client-side update to another user's doc is simplified for this example.
         await updateDoc(targetUserDocRef, { followersCount: increment(-1) });
         toast({ title: "Unfollowed", description: `You are no longer following ${profile.companyName || profile.username || 'this user'}.` });
-        setIsFollowing(false);
-        setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 1) - 1 } : null);
+        setIsFollowingThisUser(false);
+        setProfile(prev => prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : null);
       } else { // Follow action
         await updateDoc(viewerUserDocRef, { following: arrayUnion(profile.uid) });
-        // IMPORTANT: For production, use a Cloud Function for atomicity.
         await updateDoc(targetUserDocRef, { followersCount: increment(1) });
         toast({ title: "Followed!", description: `You are now following ${profile.companyName || profile.username || 'this user'}.` });
-        setIsFollowing(true);
+        setIsFollowingThisUser(true);
         setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
       }
-      if (refreshUserProfile) await refreshUserProfile(); // Refresh viewer's profile in context
+      if (refreshUserProfile) await refreshUserProfile(); 
     } catch (err: any) {
       console.error("Error following/unfollowing user:", err);
       toast({ title: "Error", description: `Could not complete action: ${err.message}`, variant: "destructive" });
@@ -189,6 +195,38 @@ export default function PublicProfilePage() {
       setIsFollowProcessing(false);
     }
   };
+
+  const handleOpenFollowingModal = async () => {
+    if (!profile || !profile.following || profile.following.length === 0) {
+        setModalUserList([]);
+        setShowFollowingModal(true);
+        return;
+    }
+    setIsLoadingModalList(true);
+    setShowFollowingModal(true);
+    try {
+        const followingProfilesPromises = profile.following.map(uid => getDoc(doc(db, 'users', uid)));
+        const followingSnapshots = await Promise.all(followingProfilesPromises);
+        const fetchedProfiles = followingSnapshots
+            .filter(snap => snap.exists())
+            .map(snap => ({ uid: snap.id, ...snap.data() } as UserProfile));
+        setModalUserList(fetchedProfiles);
+    } catch (error) {
+        console.error("Error fetching following list:", error);
+        toast({ title: "Error", description: "Could not load following list.", variant: "destructive" });
+        setModalUserList([]);
+    } finally {
+        setIsLoadingModalList(false);
+    }
+  };
+
+  const handleOpenFollowersModal = () => {
+    // For now, this is a placeholder due to query complexity
+    setModalUserList([]);
+    setShowFollowersModal(true);
+    setIsLoadingModalList(false); // No actual loading for this placeholder
+  };
+
 
   if (isLoading) {
     return (
@@ -250,8 +288,8 @@ export default function PublicProfilePage() {
                         ) : viewerUser && profile.role && (
                             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                                 <Button size="sm" onClick={handleFollowToggle} disabled={isFollowProcessing} className="w-full sm:w-auto">
-                                  {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowing ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
-                                  {isFollowing ? 'Unfollow' : 'Follow'}
+                                  {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
+                                  {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
                                 <Button size="sm" asChild className="w-full sm:w-auto">
                                     <Link href={`/chat?userId=${profile.uid}`}>
@@ -263,14 +301,14 @@ export default function PublicProfilePage() {
                    </div>
                    
                     <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
+                        <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                             <Users className="h-4 w-4" />
                             <span className="font-semibold text-foreground">{profile.followersCount || 0}</span> Followers
-                        </span>
-                        <span className="flex items-center gap-1">
+                        </button>
+                        <button onClick={handleOpenFollowingModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                            <Users className="h-4 w-4" />
                            <span className="font-semibold text-foreground">{followingCount}</span> Following
-                        </span>
+                        </button>
                     </div>
 
                    {/* Display Contact Person if company name is different from username */}
@@ -332,7 +370,7 @@ export default function PublicProfilePage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="flex items-center gap-1.5">
+                     <div className="flex items-center gap-1.5">
                         <Info className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                         <p className="text-sm text-muted-foreground">Company description not provided.</p>
                     </div>
@@ -465,12 +503,85 @@ export default function PublicProfilePage() {
                         <div className="text-center text-muted-foreground py-8">
                             <Briefcase className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                             <p className="text-sm">This client has no open gigs currently.</p>
+                            {isOwnProfile && (
+                                <Button asChild variant="link" className="mt-2">
+                                    <Link href="/client/gigs/new">Post a Gig</Link>
+                                </Button>
+                            )}
                         </div>
                     )}
                 </div>
             </>
         )}
       </Card>
+
+      {/* Followers Modal */}
+      <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Followers</DialogTitle>
+            <DialogDescription>
+              Displaying the list of users who follow {displayName}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+                Fetching a complete list of followers requires a more advanced backend setup for optimal performance.
+                This feature will be enhanced in a future update.
+            </p>
+            {/* Placeholder for future list rendering */}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Following Modal */}
+      <Dialog open={showFollowingModal} onOpenChange={setShowFollowingModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Following</DialogTitle>
+            <DialogDescription>
+              Users {displayName} is following.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[300px] py-4">
+            {isLoadingModalList ? (
+              <div className="flex justify-center items-center h-20">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : modalUserList.length > 0 ? (
+              <ul className="space-y-3">
+                {modalUserList.map(user => (
+                  <li key={user.uid} className="flex items-center justify-between">
+                    <Link href={`/profile/${user.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.profilePictureUrl} alt={user.username} />
+                        <AvatarFallback>{getInitials(user.email, user.username, user.companyName)}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{user.companyName || user.username || 'User'}</span>
+                    </Link>
+                    {/* Optionally add a follow/unfollow button here if the viewerUser can interact */}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center">Not following anyone yet.</p>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
+
+    
