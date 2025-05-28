@@ -8,22 +8,24 @@
  * - SuggestGigSkillsOutput - The return type for the suggestGigSkills function.
  */
 
-import { ai } from '@/ai/ai-instance'; // Corrected path
+import { ai } from '@/ai/ai-instance';
 import { z } from 'genkit';
 import { PREDEFINED_SKILLS } from '@/lib/constants';
 
 // Prepare a snippet of predefined skills for the prompt to guide the AI
-const skillExamples = PREDEFINED_SKILLS.slice(0, 15).join(', '); // Provide some examples
+const skillExamples = PREDEFINED_SKILLS.slice(0, 15).join(', ');
 
-export const SuggestGigSkillsInputSchema = z.object({
+// Internal Zod schema for input - not exported
+const SuggestGigSkillsInputSchemaInternal = z.object({
   gigDescription: z
     .string()
     .min(30, { message: 'Description must be at least 30 characters for AI suggestion.' })
     .describe('The detailed description of the gig, used to suggest relevant skills.'),
 });
-export type SuggestGigSkillsInput = z.infer<typeof SuggestGigSkillsInputSchema>;
+export type SuggestGigSkillsInput = z.infer<typeof SuggestGigSkillsInputSchemaInternal>; // Export type
 
-export const SuggestGigSkillsOutputSchema = z.object({
+// Internal Zod schema for output - not exported
+const SuggestGigSkillsOutputSchemaInternal = z.object({
   suggestedSkills: z
     .array(z.string())
     .max(7, { message: 'AI should suggest a maximum of 7 skills.'})
@@ -31,7 +33,7 @@ export const SuggestGigSkillsOutputSchema = z.object({
       'An array of 3 to 7 suggested skill strings relevant to the gig description. These skills should ideally be from or very similar to a predefined list of common freelance skills.'
     ),
 });
-export type SuggestGigSkillsOutput = z.infer<typeof SuggestGigSkillsOutputSchema>;
+export type SuggestGigSkillsOutput = z.infer<typeof SuggestGigSkillsOutputSchemaInternal>; // Export type
 
 export async function suggestGigSkills(input: SuggestGigSkillsInput): Promise<SuggestGigSkillsOutput> {
   return suggestGigSkillsFlow(input);
@@ -39,8 +41,8 @@ export async function suggestGigSkills(input: SuggestGigSkillsInput): Promise<Su
 
 const suggestSkillsPrompt = ai.definePrompt({
   name: 'suggestGigSkillsPrompt',
-  input: { schema: SuggestGigSkillsInputSchema },
-  output: { schema: SuggestGigSkillsOutputSchema },
+  input: { schema: SuggestGigSkillsInputSchemaInternal }, // Use internal schema
+  output: { schema: SuggestGigSkillsOutputSchemaInternal }, // Use internal schema
   prompt: `You are an expert assistant helping users create effective job postings on a freelance platform.
 Based on the following gig description, suggest between 3 and 5 relevant skills required for the gig.
 The skills should be concise and commonly recognized in freelancing.
@@ -61,8 +63,8 @@ Analyze the description and provide your skill suggestions.
 const suggestGigSkillsFlow = ai.defineFlow(
   {
     name: 'suggestGigSkillsFlow',
-    inputSchema: SuggestGigSkillsInputSchema,
-    outputSchema: SuggestGigSkillsOutputSchema,
+    inputSchema: SuggestGigSkillsInputSchemaInternal, // Use internal schema
+    outputSchema: SuggestGigSkillsOutputSchemaInternal, // Use internal schema
   },
   async (input) => {
     const { output } = await suggestSkillsPrompt(input);
