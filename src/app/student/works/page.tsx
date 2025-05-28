@@ -18,7 +18,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import type { ProgressReport, StudentSubmission } from '@/app/client/gigs/[gigId]/manage/page'; // Import from client page
+// Import from client page - this type might need to be defined locally or in a shared types file if it causes issues
+// For now, assuming it's correctly defined for ProgressReport and StudentSubmission
+// If not, define them locally:
+interface StudentSubmission {
+  text: string;
+  fileUrl?: string;
+  fileName?: string;
+  submittedAt: Timestamp;
+}
+
+interface ProgressReport {
+  reportNumber: number;
+  studentSubmission?: StudentSubmission;
+  clientStatus?: 'pending_review' | 'approved' | 'rejected';
+  clientFeedback?: string;
+  reviewedAt?: Timestamp;
+}
+
 
 interface WorkGig {
   id: string;
@@ -57,6 +74,7 @@ export default function StudentWorksPage() {
     } else if (user && role === 'student') {
       fetchActiveGigs();
     }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, role, router]);
 
   const fetchActiveGigs = async () => {
@@ -64,6 +82,9 @@ export default function StudentWorksPage() {
     setIsLoading(true); setError(null);
     try {
       const gigsRef = collection(db, "gigs");
+      // IMPORTANT: This query requires a composite index on 'gigs' collection:
+      // selectedStudentId (Ascending), status (Ascending), createdAt (Descending)
+      // Create it in Firebase console if missing.
       const q = query( gigsRef, where("selectedStudentId", "==", user.uid), where("status", "==", "in-progress"), orderBy("createdAt", "desc") );
       const querySnapshot = await getDocs(q);
       const fetchedGigsPromises = querySnapshot.docs.map(async (gigDoc) => {
@@ -190,7 +211,7 @@ export default function StudentWorksPage() {
         };
       } else {
         progressReports.push({
-          reportNumber: currentReportNumber,
+          reportNumber: currentReportNumber as number,
           studentSubmission,
           clientStatus: 'pending_review',
         });
@@ -233,7 +254,7 @@ export default function StudentWorksPage() {
     <div className="space-y-8 max-w-4xl mx-auto">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">Your Works</h1>
-        <Button variant="outline" asChild> <Link href="/gigs/browse">Find More Gigs</Link> </Button>
+        <Button variant="outline" asChild><Link href="/gigs/browse">Find More Gigs</Link></Button>
       </div>
 
       {activeGigs.length === 0 ? (
@@ -254,8 +275,8 @@ export default function StudentWorksPage() {
             return (
             <Card key={gig.id} className="glass-card">
               <CardHeader>
-                <div className="flex justify-between items-start gap-2"> <Link href={`/gigs/${gig.id}`} className="hover:underline"> <CardTitle className="text-xl">{gig.title}</CardTitle> </Link> <Badge variant="secondary" className="capitalize">{gig.status}</Badge> </div>
-                <CardDescription> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline">{gig.clientCompanyName || gig.clientUsername}</Link> </CardDescription>
+                <div className="flex justify-between items-start gap-2"><Link href={`/gigs/${gig.id}`} className="hover:underline"><CardTitle className="text-xl">{gig.title}</CardTitle></Link><Badge variant="secondary" className="capitalize">{gig.status}</Badge> </div>
+                <CardDescription> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline">{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
@@ -283,7 +304,7 @@ export default function StudentWorksPage() {
                                 <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
                                 {report.studentSubmission.fileUrl && (
                                   <Button variant="link" size="xs" asChild className="p-0 h-auto">
-                                    <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer"> <Paperclip className="mr-1 h-3 w-3" /> View Attachment ({report.studentSubmission.fileName || 'file'}) </a>
+                                    <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer"><Paperclip className="mr-1 h-3 w-3" />View Attachment ({report.studentSubmission.fileName || 'file'})</a>
                                   </Button>
                                 )}
                                 <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
@@ -311,8 +332,8 @@ export default function StudentWorksPage() {
                 )}
               </CardContent>
               <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch gap-2 border-t pt-4">
-                <Button size="sm" asChild> <Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}> <MessageSquare className="mr-1 h-4 w-4" /> Chat with Client </Link> </Button>
-                <Button variant="outline" size="sm" asChild> <Link href={`/gigs/${gig.id}`}> View Gig Details </Link> </Button>
+                <Button size="sm" asChild><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
+                <Button variant="outline" size="sm" asChild><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
               </CardFooter>
             </Card>
           )})}
@@ -353,4 +374,3 @@ export default function StudentWorksPage() {
   );
 }
 
-    
