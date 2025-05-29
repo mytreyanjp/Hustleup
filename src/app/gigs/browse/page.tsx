@@ -50,7 +50,7 @@ export default function BrowseGigsPage() {
       try {
         const gigsCollectionRef = collection(db, 'gigs');
         // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
-        // Create it in Firebase console if missing. Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoKCgZzdGF0dXMQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
+        // Create it in Firebase console if missing.
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -67,15 +67,14 @@ export default function BrowseGigsPage() {
           const followedClientIds = userProfile.following || [];
           const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
 
-          // Filter out gigs already applied to by the student
-          allOpenGigs = allOpenGigs.filter(gig =>
-            !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
-          );
-          
           const gigsFromFollowedClients: Gig[] = [];
-          const otherGigsTemp: Gig[] = [];
+          let otherGigsTemp: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
+            // Filter out gigs already applied to by the student
+            if (gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid)) {
+              return; // Skip this gig
+            }
             if (followedClientIds.includes(gig.clientId)) {
               gigsFromFollowedClients.push({ ...gig, isFromFollowedClient: true });
             } else {
@@ -110,16 +109,13 @@ export default function BrowseGigsPage() {
             skillMatchedNonFollowedGigs = otherGigsTemp;
           }
           
-          // Combine followed client gigs (skills not checked) and skill-matched non-followed client gigs
           let finalGigs = [
             ...gigsFromFollowedClients, 
             ...skillMatchedNonFollowedGigs
           ];
           
-          // Ensure uniqueness
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
 
-          // Sort: followed client gigs first, then by creation date
           finalGigs.sort((a, b) => {
             if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
             if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
@@ -128,8 +124,9 @@ export default function BrowseGigsPage() {
           setGigs(finalGigs);
 
         } else {
-          // If not a student or profile not loaded, show all open gigs (they are already sorted by createdAt)
-          setGigs(allOpenGigs);
+          setGigs(allOpenGigs.filter(gig => // Filter out applied gigs even for non-students/logged-out users (though they can't apply)
+            !(currentUser && gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
+          ));
         }
 
       } catch (err: any) {
@@ -194,7 +191,7 @@ export default function BrowseGigsPage() {
 
   return (
     <div
-      className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] bg-cover bg-center bg-no-repeat bg-fixed"
+      className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] mt-[-2rem] mb-[-2rem] bg-cover bg-center bg-no-repeat bg-fixed"
       style={{ backgroundImage: "url('https://picsum.photos/seed/modernoffice/1920/1080')" }}
       data-ai-hint="modern office"
     >
@@ -231,7 +228,7 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 pb-8"> {/* Removed px-4 from here as container provides it */}
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8">
             {gigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader>
