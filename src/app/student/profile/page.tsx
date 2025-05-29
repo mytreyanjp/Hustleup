@@ -6,14 +6,14 @@ import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, updateDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIcon, Grid3X3, Image as ImageIconLucide, ExternalLink } from 'lucide-react';
@@ -25,6 +25,9 @@ import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 interface Gig {
   id: string;
@@ -67,6 +70,11 @@ export default function StudentProfilePage() {
   const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
   const [currentWorksCount, setCurrentWorksCount] = useState<number | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [modalUserList, setModalUserList] = useState<UserProfile[]>([]);
+  const [isLoadingModalList, setIsLoadingModalList] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -225,8 +233,7 @@ export default function StudentProfilePage() {
           await updateDoc(userDocRef, { profilePictureUrl: downloadURL, updatedAt: Timestamp.now() });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
           if (refreshUserProfile) await refreshUserProfile();
-          setSelectedImageFile(null); // Clear the selected file after successful upload
-          // No need to set imagePreview here, as userProfile refresh will update it via populateFormAndPreview
+          setSelectedImageFile(null); 
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
           toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
@@ -249,10 +256,10 @@ export default function StudentProfilePage() {
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
         updatedAt: Timestamp.now(),
       };
-      // Persist current profile picture URL if userProfile exists and has it
+      
       if (userProfile?.profilePictureUrl) {
         updateData.profilePictureUrl = userProfile.profilePictureUrl;
-      } else if (imagePreview && !selectedImageFile) { // If preview exists from initial load but no new file selected
+      } else if (imagePreview && !selectedImageFile) { 
          updateData.profilePictureUrl = imagePreview;
       }
 
@@ -280,6 +287,37 @@ export default function StudentProfilePage() {
     if (email) return email.substring(0, 2).toUpperCase();
     return '??';
   };
+
+  const handleOpenFollowingModal = async () => {
+    if (!userProfile || !userProfile.following || userProfile.following.length === 0) {
+        setModalUserList([]);
+        setShowFollowingModal(true);
+        return;
+    }
+    setIsLoadingModalList(true);
+    setShowFollowingModal(true);
+    try {
+        const followingProfilesPromises = userProfile.following.map(uid => getDoc(doc(db, 'users', uid)));
+        const followingSnapshots = await Promise.all(followingProfilesPromises);
+        const fetchedProfiles = followingSnapshots
+            .filter(snap => snap.exists())
+            .map(snap => ({ uid: snap.id, ...snap.data() } as UserProfile));
+        setModalUserList(fetchedProfiles);
+    } catch (error) {
+        console.error("Error fetching following list:", error);
+        toast({ title: "Error", description: "Could not load following list.", variant: "destructive" });
+        setModalUserList([]);
+    } finally {
+        setIsLoadingModalList(false);
+    }
+  };
+
+  const handleOpenFollowersModal = () => {
+    setModalUserList([]); 
+    setShowFollowersModal(true);
+    setIsLoadingModalList(false);
+  };
+
 
   const followersCount = userProfile?.followersCount || 0;
   const followingCount = userProfile?.following?.length || 0;
@@ -327,9 +365,13 @@ export default function StudentProfilePage() {
                 </div>
               )}
                <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
-                <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers</span>
-                <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following</span>
-              </div>
+                 <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
+                    <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers
+                 </button>
+                 <button onClick={handleOpenFollowingModal} className="flex items-center gap-1 hover:underline focus:outline-none">
+                    <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following
+                 </button>
+               </div>
             </div>
             {!isEditing && (
               <Button variant="outline" onClick={() => setIsEditing(true)} className="sm:ml-auto">
@@ -543,6 +585,74 @@ export default function StudentProfilePage() {
           <p className="text-sm text-muted-foreground">Your posts will appear here.</p>
         </CardContent>
       </Card>
+
+       {/* Followers Modal */}
+       <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Followers</DialogTitle>
+            <DialogDescription>
+              Users who follow you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+          {userProfile && userProfile.followersCount === 0 ? (
+                <p className="text-sm text-muted-foreground text-center">You have no followers yet.</p>
+            ) : (
+                <p className="text-sm text-muted-foreground">
+                    Fetching a complete list of followers requires a more advanced backend setup for optimal performance.
+                    This feature will be enhanced in a future update.
+                </p>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Following Modal */}
+      <Dialog open={showFollowingModal} onOpenChange={setShowFollowingModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Following</DialogTitle>
+            <DialogDescription>
+              Users you are following.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[300px] py-4">
+            {isLoadingModalList ? (
+              <div className="flex justify-center items-center h-20">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : modalUserList.length > 0 ? (
+              <ul className="space-y-3">
+                {modalUserList.map(followedUser => (
+                  <li key={followedUser.uid} className="flex items-center justify-between">
+                    <Link href={`/profile/${followedUser.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={followedUser.profilePictureUrl} alt={followedUser.username} />
+                        <AvatarFallback>{getInitials(followedUser.email, followedUser.username)}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{followedUser.companyName || followedUser.username || 'User'}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center">You are not following anyone yet.</p>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
