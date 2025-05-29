@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, updateDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore'; // Added Firestore imports
+import { doc, updateDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText, Search, Wallet, Edit, Bookmark, Briefcase } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIcon, Grid3X3, Image as ImageIconLucide, ExternalLink } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -24,6 +24,7 @@ import { Progress } from '@/components/ui/progress';
 import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 interface Gig {
   id: string;
@@ -34,13 +35,12 @@ interface Gig {
   selectedStudentId?: string;
 }
 
-
 const portfolioLinkSchema = z.object({
-  value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
+  value: z.string().url({ message: 'Invalid URL format (e.g., https://example.com)' }).or(z.literal('')),
 });
 
 const profileSchema = z.object({
-  username: z.string().min(3, { message: 'Username must be at least 3 characters' }),
+  username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, {message: 'Username cannot exceed 30 characters'}),
   bio: z.string().max(500, { message: 'Bio cannot exceed 500 characters' }).optional().or(z.literal('')),
   skills: z.array(z.string()).max(15, { message: 'Maximum 15 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
@@ -54,6 +54,7 @@ export default function StudentProfilePage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormReady, setIsFormReady] = useState(false);
+  const [isEditing, setIsEditing] = useState(false); // New state for edit mode
 
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -61,13 +62,11 @@ export default function StudentProfilePage() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State for dashboard stats
   const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
   const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
   const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
   const [currentWorksCount, setCurrentWorksCount] = useState<number | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
-
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -84,50 +83,49 @@ export default function StudentProfilePage() {
     name: "portfolioLinks"
   });
 
+  const populateFormAndPreview = useCallback((profile: UserProfile | null) => {
+    if (profile) {
+      form.reset({
+        username: profile.username || user?.email?.split('@')[0] || '',
+        bio: profile.bio || '',
+        skills: (profile.skills as Skill[]) || [],
+        portfolioLinks: profile.portfolioLinks?.map(link => ({ value: link })) || [],
+      });
+      setImagePreview(profile.profilePictureUrl || null);
+    } else if (user) {
+      form.reset({
+        username: user.email?.split('@')[0] || '',
+        bio: '',
+        skills: [],
+        portfolioLinks: [],
+      });
+      setImagePreview(null);
+    }
+  }, [form, user]);
 
-   useEffect(() => {
-     if (!authLoading) {
-       if (!user || role !== 'student') {
-         router.push('/auth/login?redirect=/student/profile');
-       } else if (userProfile) {
-         form.reset({
-           username: userProfile.username || user.email?.split('@')[0] || '',
-           bio: userProfile.bio || '',
-           skills: (userProfile.skills as Skill[]) || [],
-           portfolioLinks: userProfile.portfolioLinks?.map(link => ({ value: link })) || [],
-         });
-         setImagePreview(userProfile.profilePictureUrl || null);
-         setIsFormReady(true);
-       } else if (user && !userProfile) { 
-         form.reset({ 
-             username: user.email?.split('@')[0] || '',
-             bio: '',
-             skills: [],
-             portfolioLinks: [],
-         });
-         setIsFormReady(true); 
-       }
-     }
-   }, [user, userProfile, authLoading, role, router, form]);
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user || role !== 'student') {
+        router.push('/auth/login?redirect=/student/profile');
+      } else {
+        populateFormAndPreview(userProfile);
+        setIsFormReady(true);
+      }
+    }
+  }, [user, userProfile, authLoading, role, router, populateFormAndPreview]);
 
-   // Fetch dashboard stats
-   useEffect(() => {
+  useEffect(() => {
     if (user && userProfile && role === 'student' && db) {
       const fetchStudentDashboardStats = async () => {
         setIsLoadingStats(true);
         try {
           const gigsCollectionRef = collection(db, 'gigs');
-          
-          // 1. Fetch available gigs based on student skills
           const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
           const openGigsSnapshot = await getDocs(openGigsQuery);
-          
           let allOpenGigs = openGigsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Gig));
-          
-          allOpenGigs = allOpenGigs.filter(gig => 
+          allOpenGigs = allOpenGigs.filter(gig =>
             !(gig.applicants && gig.applicants.some(app => app.studentId === user.uid))
           );
-          
           let matchingGigsCount = 0;
           if (userProfile.skills && userProfile.skills.length > 0) {
             const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
@@ -140,15 +138,13 @@ export default function StudentProfilePage() {
               })
             ).length;
           } else {
-            matchingGigsCount = allOpenGigs.length; 
+            matchingGigsCount = allOpenGigs.length;
           }
           setAvailableGigsCount(matchingGigsCount);
 
-          // 2. Fetch active applications & current works
-          const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs')); 
+          const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs'));
           let currentActiveApplications = 0;
           let currentActiveWorks = 0;
-
           allGigsForAppsSnapshot.forEach(doc => {
             const gig = doc.data() as Gig;
             if (gig.applicants) {
@@ -163,14 +159,11 @@ export default function StudentProfilePage() {
           });
           setActiveApplicationsCount(currentActiveApplications);
           setCurrentWorksCount(currentActiveWorks);
-
-          // 3. Count bookmarked gigs
           setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
-
         } catch (error) {
           console.error("Error fetching student dashboard stats:", error);
           toast({ title: "Stats Error", description: "Could not load dashboard statistics.", variant: "destructive" });
-          setAvailableGigsCount(0); 
+          setAvailableGigsCount(0);
           setActiveApplicationsCount(0);
           setBookmarkedGigsCount(0);
           setCurrentWorksCount(0);
@@ -188,16 +181,15 @@ export default function StudentProfilePage() {
     }
   }, [user, userProfile, role, authLoading, toast]);
 
-
   const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       if (file.size > 5 * 1024 * 1024) {
-        toast({ title: "Image Too Large", description: "Please select an image smaller than 5MB.", variant: "destructive"});
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 5MB.", variant: "destructive" });
         return;
       }
       if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-        toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, WEBP, or GIF image.", variant: "destructive"});
+        toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, WEBP, or GIF image.", variant: "destructive" });
         return;
       }
       setSelectedImageFile(file);
@@ -214,276 +206,252 @@ export default function StudentProfilePage() {
       toast({ title: "Storage Error", description: "Firebase Storage is not configured.", variant: "destructive" });
       return;
     }
-
     setIsUploading(true);
     setUploadProgress(0);
-
     const filePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedImageFile.name}`;
     const fileStorageRef = storageRef(storage, filePath);
     const uploadTask = uploadBytesResumable(fileStorageRef, selectedImageFile);
-
     uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(progress);
-      },
+      (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
       (error) => {
         console.error("Image upload error:", error);
         toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
-        setIsUploading(false);
-        setUploadProgress(null);
-        setSelectedImageFile(null); 
+        setIsUploading(false); setUploadProgress(null); setSelectedImageFile(null);
       },
       async () => {
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           const userDocRef = doc(db, 'users', user.uid);
-          await updateDoc(userDocRef, {
-            profilePictureUrl: downloadURL,
-            updatedAt: Timestamp.now(), 
-          });
+          await updateDoc(userDocRef, { profilePictureUrl: downloadURL, updatedAt: Timestamp.now() });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
-          if (refreshUserProfile) await refreshUserProfile(); 
-          setSelectedImageFile(null); 
+          if (refreshUserProfile) await refreshUserProfile();
+          setSelectedImageFile(null);
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
           toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
         } finally {
-          setIsUploading(false);
-          setUploadProgress(null);
+          setIsUploading(false); setUploadProgress(null);
         }
       }
     );
   };
 
-
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
     setIsSubmitting(true);
-
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      const updateData: Partial<UserProfile> = { 
+      const updateData: Partial<UserProfile> = {
         username: data.username,
-        bio: data.bio || '', 
+        bio: data.bio || '',
         skills: data.skills || [],
-        portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [], 
-        updatedAt: Timestamp.now(), 
+        portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
+        updatedAt: Timestamp.now(),
       };
-      
-       if (userProfile?.profilePictureUrl) {
-           updateData.profilePictureUrl = userProfile.profilePictureUrl;
-       }
-
-
-      await updateDoc(userDocRef, updateData);
-
-      toast({
-        title: 'Profile Updated',
-        description: 'Your profile details have been successfully saved.',
-      });
-      if (refreshUserProfile) { 
-           await refreshUserProfile();
+      if (userProfile?.profilePictureUrl) { // Persist existing profile picture if not changed during this save
+        updateData.profilePictureUrl = userProfile.profilePictureUrl;
       }
+      await updateDoc(userDocRef, updateData);
+      toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
+      if (refreshUserProfile) await refreshUserProfile();
+      setIsEditing(false); // Exit edit mode on successful save
     } catch (error: any) {
       console.error('Profile update error:', error);
-      toast({
-        title: 'Update Failed',
-        description: `Could not update profile: ${error.message}`,
-        variant: 'destructive',
-      });
+      toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-   const getInitials = (email: string | null | undefined, username?: string | null) => {
-     if (username) return username.substring(0, 2).toUpperCase();
-     if (email) return email.substring(0, 2).toUpperCase();
-     return '??';
-   };
-   
-   const followersCount = userProfile?.followersCount || 0;
-   const followingCount = userProfile?.following?.length || 0;
-
-   const getProfileCompletion = () => {
-    if (!userProfile) return 0;
-    let score = 0;
-    const totalFields = 4; 
-    if (userProfile.username && user?.email && userProfile.username !== user.email.split('@')[0]) score++;
-    else if (userProfile.username && !user?.email) score++;
-    if (userProfile.bio && userProfile.bio.trim() !== '') score++;
-    if (userProfile.skills && userProfile.skills.length > 0) score++;
-    if (userProfile.portfolioLinks && userProfile.portfolioLinks.filter(link => link.trim() !== '').length > 0) score++;
-    return Math.round((score / totalFields) * 100);
+  const handleCancelEdit = () => {
+    populateFormAndPreview(userProfile); // Reset form to original values
+    setSelectedImageFile(null); // Clear any staged image file
+    // Image preview is reset by populateFormAndPreview
+    setIsEditing(false);
   };
-  const profileCompletion = getProfileCompletion();
 
+  const getInitials = (email: string | null | undefined, username?: string | null) => {
+    if (username) return username.substring(0, 2).toUpperCase();
+    if (email) return email.substring(0, 2).toUpperCase();
+    return '??';
+  };
 
-   if (authLoading || !isFormReady) { 
-     return (
-        <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-     );
-   }
+  const followersCount = userProfile?.followersCount || 0;
+  const followingCount = userProfile?.following?.length || 0;
+
+  if (authLoading || !isFormReady) {
+    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
-       <Card className="glass-card">
+      {/* Profile Header and Edit Toggle */}
+      <Card className="glass-card">
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-center gap-4">
-             <div className="relative group">
-                <Avatar className="h-24 w-24 sm:h-28 sm:w-28 text-3xl border-2 border-muted shadow-md">
-                  <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
-                  <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
-                </Avatar>
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 h-8 w-8 p-0 rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Change profile picture"
-                    disabled={isUploading}
+            <div className="relative group">
+              <Avatar className="h-24 w-24 sm:h-28 sm:w-28 text-3xl border-2 border-muted shadow-md">
+                <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
+                <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
+              </Avatar>
+              {isEditing && (
+                <Button
+                  variant="outline" size="sm"
+                  className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 h-8 w-8 p-0 rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Change profile picture"
+                  disabled={isUploading}
                 >
-                    <UploadCloud className="h-4 w-4" />
+                  <UploadCloud className="h-4 w-4" />
                 </Button>
-             </div>
-             <input 
-                type="file" 
-                ref={fileInputRef} 
-                hidden 
-                accept="image/png, image/jpeg, image/webp, image/gif" 
-                onChange={handleImageFileChange}
-             />
-             <div className='text-center sm:text-left flex-grow'>
-               <CardTitle className="text-2xl">Edit Your Profile</CardTitle>
-               <CardDescription>Keep your information up-to-date to attract clients.</CardDescription>
-                {selectedImageFile && !isUploading && (
-                    <Button onClick={handleImageUpload} size="sm" className="mt-2">
-                        <UploadCloud className="mr-2 h-4 w-4" /> Upload New Picture
-                    </Button>
-                )}
-                {isUploading && uploadProgress !== null && (
-                    <div className="mt-2 space-y-1">
-                        <Progress value={uploadProgress} className="w-full h-2" />
-                        <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
-                    </div>
-                )}
-                <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
-                    <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers</span>
-                    <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following</span>
+              )}
+            </div>
+            <input type="file" ref={fileInputRef} hidden accept="image/png, image/jpeg, image/webp, image/gif" onChange={handleImageFileChange} disabled={!isEditing} />
+            
+            <div className='text-center sm:text-left flex-grow'>
+              <CardTitle className="text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
+              <CardDescription>{userProfile?.email || 'No email provided'}</CardDescription>
+              {isEditing && selectedImageFile && !isUploading && (
+                <Button onClick={handleImageUpload} size="sm" className="mt-2">
+                  <UploadCloud className="mr-2 h-4 w-4" /> Upload New Picture
+                </Button>
+              )}
+              {isEditing && isUploading && uploadProgress !== null && (
+                <div className="mt-2 space-y-1">
+                  <Progress value={uploadProgress} className="w-full h-2" />
+                  <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
                 </div>
-             </div>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/profile/${user?.uid}`}>View My Public Profile</Link>
-            </Button>
+              )}
+              <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
+                <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers</span>
+                <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following</span>
+              </div>
+            </div>
+            {!isEditing && (
+              <Button variant="outline" onClick={() => setIsEditing(true)} className="sm:ml-auto">
+                <Edit className="mr-2 h-4 w-4" /> Edit Profile
+              </Button>
+            )}
           </div>
         </CardHeader>
+
+        {/* Conditional Rendering of Profile Info or Form */}
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Your public username" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="bio"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Bio</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Tell clients about yourself (max 500 chars)" {...field} value={field.value ?? ''} rows={4} />
-                    </FormControl>
-                     <FormDescription>A short introduction about your skills and experience.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="skills"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Skills</FormLabel>
-                    <FormControl>
-                      <MultiSelectSkills
-                        options={PREDEFINED_SKILLS}
-                        selected={(field.value as Skill[]) || []}
-                        onChange={field.onChange}
-                        placeholder="Select your skills"
-                        maxSkills={15}
-                      />
-                    </FormControl>
-                    <FormDescription>List your key skills (max 15).</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-               <div>
-                 <FormLabel>Portfolio Links</FormLabel>
-                 <div className="space-y-2 mt-2">
-                   {actualLinkFields.map((field, index) => (
-                     <div key={field.id} className="flex items-center gap-2">
-                       <FormField
-                         control={form.control}
-                         name={`portfolioLinks.${index}.value`}
-                         render={({ field: linkField }) => (
-                           <FormItem className="flex-1">
-                              <FormControl>
-                               <Input placeholder="https://your-portfolio.com" {...linkField} value={linkField.value ?? ''} />
-                               </FormControl>
-                             <FormMessage />
-                           </FormItem>
-                         )}
-                       />
-                       <Button
-                         type="button"
-                         variant="ghost"
-                         size="icon"
-                          className="h-9 w-9 text-destructive hover:bg-destructive/10"
-                         onClick={() => actualRemoveLink(index)}
-                       >
-                         <Trash2 className="h-4 w-4" />
-                       </Button>
-                     </div>
-                   ))}
-                 </div>
-                 <Button
-                   type="button"
-                   variant="outline"
-                   size="sm"
-                   className="mt-2"
-                   onClick={() => actualAppendLink({ value: '' })}
-                   disabled={actualLinkFields.length >= 5}
-                 >
-                   <PlusCircle className="mr-2 h-4 w-4" /> Add Link
-                 </Button>
+          {isEditing ? (
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <FormField
+                  control={form.control} name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Username</FormLabel>
+                      <FormControl><Input placeholder="Your public username" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control} name="bio"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bio</FormLabel>
+                      <FormControl><Textarea placeholder="Tell us about yourself (max 500 chars)" {...field} value={field.value ?? ''} rows={4} /></FormControl>
+                      <FormDescription>A short introduction about your skills and experience.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control} name="skills"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Skills</FormLabel>
+                      <FormControl>
+                        <MultiSelectSkills
+                          options={PREDEFINED_SKILLS}
+                          selected={(field.value as Skill[]) || []}
+                          onChange={field.onChange}
+                          placeholder="Select your skills"
+                          maxSkills={15}
+                        />
+                      </FormControl>
+                      <FormDescription>List your key skills (max 15).</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div>
+                  <FormLabel>Portfolio Links</FormLabel>
+                  <div className="space-y-2 mt-2">
+                    {actualLinkFields.map((field, index) => (
+                      <div key={field.id} className="flex items-center gap-2">
+                        <FormField
+                          control={form.control} name={`portfolioLinks.${index}.value`}
+                          render={({ field: linkField }) => (
+                            <FormItem className="flex-1">
+                              <FormControl><Input placeholder="https://your-portfolio.com" {...linkField} value={linkField.value ?? ''} /></FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => actualRemoveLink(index)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => actualAppendLink({ value: '' })} disabled={actualLinkFields.length >= 5}>
+                    <PlusCircle className="mr-2 h-4 w-4" /> Add Link
+                  </Button>
                   <FormMessage>{form.formState.errors.portfolioLinks?.message || (form.formState.errors.portfolioLinks as any)?.root?.message}</FormMessage>
-                 <FormDescription className="mt-1">Links to your work (GitHub, Behance, personal site, etc. max 5).</FormDescription>
-               </div>
-
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isUploading}>
-                {(isSubmitting || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Changes
-              </Button>
-            </form>
-          </Form>
+                  <FormDescription className="mt-1">Links to your work (GitHub, Behance, personal site, etc. max 5).</FormDescription>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSubmitting || isUploading}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting || isUploading}>
+                    {(isSubmitting || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          ) : (
+            <div className="space-y-6">
+              {userProfile?.bio && (
+                <div>
+                  <h3 className="font-semibold text-lg mb-1">Bio</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{userProfile.bio}</p>
+                </div>
+              )}
+              {userProfile?.skills && userProfile.skills.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">Skills</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {userProfile.skills.map((skill, index) => (
+                      <Badge key={index} variant="secondary">{skill}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {userProfile?.portfolioLinks && userProfile.portfolioLinks.filter(link => link.trim() !== '').length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">Portfolio & Links</h3>
+                  <ul className="space-y-1">
+                    {userProfile.portfolioLinks.filter(link => link.trim() !== '').map((link, index) => (
+                      <li key={index}>
+                        <a href={link.startsWith('http') ? link : `https://${link}`} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" /> {link}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!userProfile?.bio && (!userProfile?.skills || userProfile.skills.length === 0) && (!userProfile?.portfolioLinks || userProfile.portfolioLinks.filter(link => link.trim() !== '').length === 0) && (
+                <p className="text-muted-foreground text-center py-4">Your profile is looking a bit empty. Click "Edit Profile" to add your details!</p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -493,110 +461,86 @@ export default function StudentProfilePage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-semibold tracking-tight">Your Activity Overview</h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-            <Card className="glass-card">
+          <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Available Gigs</CardTitle>
-                <Search className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Available Gigs</CardTitle>
+              <Search className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">
-                    {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : availableGigsCount}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                Opportunities matching your skills.
-                </p>
-                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                <Link href="/gigs/browse">Browse Gigs</Link>
-                </Button>
+              <div className="text-2xl font-bold">
+                {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : availableGigsCount}
+              </div>
+              <p className="text-xs text-muted-foreground">Opportunities matching your skills.</p>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/gigs/browse">Browse Gigs</Link></Button>
             </CardContent>
-            </Card>
-
-            <Card className="glass-card">
+          </Card>
+          <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Applications</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Active Applications</CardTitle>
+              <ApplicationsIcon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">
-                    {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeApplicationsCount}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                Applications that are pending or accepted.
-                </p>
-                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                    <Link href="/student/applications">View Applications</Link>
-                </Button>
+              <div className="text-2xl font-bold">
+                {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeApplicationsCount}
+              </div>
+              <p className="text-xs text-muted-foreground">Applications that are pending or accepted.</p>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/applications">View Applications</Link></Button>
             </CardContent>
-            </Card>
-            
-            <Card className="glass-card">
+          </Card>
+          <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Bookmarked Gigs</CardTitle>
-                <Bookmark className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Bookmarked Gigs</CardTitle>
+              <Bookmark className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">
-                    {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : bookmarkedGigsCount}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                Gigs you've saved for later.
-                </p>
-                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                    <Link href="/student/bookmarks">View Bookmarks</Link>
-                </Button>
+              <div className="text-2xl font-bold">
+                {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : bookmarkedGigsCount}
+              </div>
+              <p className="text-xs text-muted-foreground">Gigs you've saved for later.</p>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/bookmarks">View Bookmarks</Link></Button>
             </CardContent>
-            </Card>
-            
-            <Card className="glass-card">
+          </Card>
+          <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Current Works</CardTitle>
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Current Works</CardTitle>
+              <Briefcase className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">
-                    {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : currentWorksCount}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                Gigs you are currently working on.
-                </p>
-                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                    <Link href="/student/works">Manage Works</Link>
-                </Button>
+              <div className="text-2xl font-bold">
+                {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : currentWorksCount}
+              </div>
+              <p className="text-xs text-muted-foreground">Gigs you are currently working on.</p>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/works">Manage Works</Link></Button>
             </CardContent>
-            </Card>
-
-            <Card className="glass-card">
+          </Card>
+          <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Wallet Balance</CardTitle>
-                <Wallet className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Wallet Balance</CardTitle>
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">$0.00</div> {/* Placeholder */}
-                <p className="text-xs text-muted-foreground">
-                Total earnings from completed gigs.
-                </p>
-                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                    <Link href="/student/wallet">View Wallet History</Link>
-                </Button>
+              <div className="text-2xl font-bold">$0.00</div>
+              <p className="text-xs text-muted-foreground">Total earnings from completed gigs.</p>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/wallet">View Wallet History</Link></Button>
             </CardContent>
-            </Card>
+          </Card>
         </div>
       </div>
 
       <Separator className="my-8" />
 
       <Card className="glass-card">
-         <CardHeader>
-           <CardTitle>My Recent Posts</CardTitle>
-            <CardDescription>A quick look at your latest content.</CardDescription>
-         </CardHeader>
-         <CardContent>
-           <p className="text-sm text-muted-foreground">Your posts will appear here. <Link href="/student/posts/new" className="text-primary hover:underline">Create your first post!</Link></p>
-           {/* TODO: Implement recent posts preview similar to public profile */}
-         </CardContent>
-       </Card>
-
+        <CardHeader>
+          <CardTitle>My Recent Posts</CardTitle>
+          <CardDescription>A quick look at your latest content. <Link href="/student/posts/new" className="text-sm text-primary hover:underline">Create a new post</Link></CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Placeholder for recent posts preview - will need to fetch student's own posts here */}
+          <p className="text-sm text-muted-foreground">Your posts will appear here.</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
+
     
