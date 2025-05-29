@@ -60,7 +60,7 @@ export default function BrowseGigsPage() {
         let allOpenGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          isFromFollowedClient: false, 
+          isFromFollowedClient: false,
         })) as Gig[];
 
         if (!authLoading && currentUser && role === 'student' && userProfile) {
@@ -88,16 +88,12 @@ export default function BrowseGigsPage() {
             skillMatchedGigs = otherGigsNotFromFollowed.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
-                // Split skills into words (more than 1 char) for keyword matching
                 const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
 
                 return studentSkillsLower.some(studentSkillLower => {
-                  // 1. Substring match (existing logic for direct overlaps)
                   if (studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)) {
                     return true;
                   }
-
-                  // 2. Common significant word match
                   const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
                   for (const sword of studentSkillWords) {
                     if (reqSkillWords.has(sword)) {
@@ -109,17 +105,16 @@ export default function BrowseGigsPage() {
               })
             );
           } else {
-            // If student has no skills, they see all non-followed, non-applied-to open gigs from other clients
             skillMatchedGigs = otherGigsNotFromFollowed;
           }
           
-          // Gigs from followed clients are always included, regardless of skill match
-          let finalGigs = [...gigsFromFollowedClients, ...skillMatchedGigs];
+          let finalGigs = [
+            ...gigsFromFollowedClients, // Gigs from followed clients, regardless of skill match (but not applied to)
+            ...skillMatchedGigs.filter(gig => !followedClientIds.includes(gig.clientId)) // Skill-matched gigs from non-followed clients
+          ];
           
-          // Remove duplicates that might occur if a followed client's gig also matched skills
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
 
-          // Sort: gigs from followed clients first, then by creation date
           finalGigs.sort((a, b) => {
             if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
             if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
@@ -128,7 +123,6 @@ export default function BrowseGigsPage() {
           setGigs(finalGigs);
 
         } else {
-          // If not a student, or profile not loaded, or auth still loading, show all open gigs
           setGigs(allOpenGigs);
         }
 
@@ -194,13 +188,13 @@ export default function BrowseGigsPage() {
 
   return (
     <div 
-      className="space-y-8 relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat" // Adjusted for navbar height
-      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png')" }}
+      className="space-y-8 relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('https://picsum.photos/seed/modernoffice/1920/1080')" }}
       data-ai-hint="modern office"
     >
-      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div> {/* Overlay for readability */}
+      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="relative z-10 space-y-8 pt-8"> {/* Content wrapper with z-index */}
+      <div className="relative z-10 space-y-8 pt-8">
         <h1 className="text-3xl font-bold tracking-tight text-center">Explore Gigs</h1>
 
         {gigs.length === 0 && !pageIsLoading ? (
@@ -286,4 +280,3 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
-
