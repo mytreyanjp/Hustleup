@@ -1,3 +1,4 @@
+
 // src/lib/constants.ts
 export const PREDEFINED_SKILLS = [
   // 🎨 Creative & Design
@@ -51,6 +52,69 @@ export const PREDEFINED_SKILLS = [
   "Photo Retouching",
   "Product Photography",
   "Lightroom",
+
+  // 🎞️ Film Making
+  "Director",
+  "Producer",
+  "Screenwriter",
+  "Cinematographer",
+  "Gaffer",
+  "Sound Recordist",
+  "Boom Operator",
+  "Production Designer",
+  "Art Director (Film)",
+  "Set Decorator",
+  "Costume Designer (Film)",
+  "Makeup Artist (Film)",
+  "Hair Stylist (Film)",
+  "Film Editor",
+  "Colorist",
+  "Visual Effects (VFX) Artist",
+  "Storyboarding",
+  "Drone Pilot (Film)",
+  "Steadicam Operator",
+
+  // 🧵 Fashion Designing
+  "Fashion Designer",
+  "Pattern Maker",
+  "Seamstress / Tailor",
+  "Fashion Illustrator",
+  "Textile Designer",
+  "Fashion Stylist",
+  "Merchandiser (Fashion)",
+  "Garment Technologist",
+  "CAD Fashion Design (e.g., Lectra, Clo3D)",
+  "Sustainable Fashion Design",
+  "Accessory Design",
+
+  // 🍳 Cooking & Culinary Arts
+  "Chef",
+  "Pastry Chef",
+  "Baker",
+  "Recipe Developer",
+  "Food Stylist",
+  "Caterer",
+  "Menu Planning",
+  "Culinary Instructor",
+  "Food Blogger / Vlogger",
+  "Bartender / Mixologist",
+  "Dietary & Nutrition Planning",
+  "Cake Decorating",
+
+  // 🖼️ Fine Arts & Crafts
+  "Painter (Fine Arts)",
+  "Sculptor",
+  "Illustrator (Traditional)",
+  "Digital Painter",
+  "Concept Artist",
+  "Muralist",
+  "Pottery / Ceramics Artist",
+  "Jewelry Designer",
+  "Calligrapher",
+  "Printmaker",
+  "Art Curation",
+  "Art Restoration",
+  "Craft Artist (e.g., knitting, macrame)",
 
   // 🌐 Development & Tech
   "Web Developer",
