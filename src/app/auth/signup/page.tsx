@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { createUserWithEmailAndPassword, signInWithPopup, OAuthProvider } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, Timestamp } from 'firebase/firestore';
 import { auth, db, googleAuthProvider, appleAuthProvider, githubAuthProvider } from '@/config/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,7 +45,6 @@ const signupSchema = z.object({
         });
     } else {
         try {
-            // Ensure website parsing doesn't throw for empty string if it passed optional().or(z.literal(''))
             if (data.website) z.string().url().parse(data.website);
         } catch (e) {
             ctx.addIssue({
@@ -182,7 +181,7 @@ export default function SignupPage() {
         description: `Welcome to HustleUp as a ${data.role}. Redirecting...`,
       });
       
-      router.push(data.role === 'student' ? '/student/dashboard' : '/client/dashboard');
+      router.push(data.role === 'student' ? '/student/profile' : '/client/dashboard'); // Updated for student
 
     } catch (error: any) {
       console.error('Signup error:', error);
@@ -199,7 +198,7 @@ export default function SignupPage() {
             errorMessage = 'Password is too weak. Please choose a stronger password.';
             break;
           case 'auth/operation-not-allowed': 
-             errorMessage = 'Email/Password sign-up is currently disabled. Please check the Firebase project console (Authentication -> Sign-in method).';
+             errorMessage = 'Email/Password sign-up is currently disabled. Please enable it in your Firebase project console (Authentication -> Sign-in method).';
              break;
           case 'auth/configuration-not-found': 
              errorMessage = 'Firebase Authentication configuration is missing or incomplete. Please ensure Email/Password sign-in is enabled in your Firebase project.';
@@ -250,7 +249,8 @@ export default function SignupPage() {
           title: 'Welcome Back!',
           description: `Signed in as ${user.displayName || user.email}. Redirecting...`,
         });
-        router.push('/'); 
+        const userRole = docSnap.data()?.role;
+        router.push(userRole === 'student' ? '/student/profile' : '/client/dashboard');  // Updated for student
       } else {
         // New user via OAuth, or existing user without a role (needs profile completion)
         toast({
@@ -543,5 +543,4 @@ export default function SignupPage() {
     </div>
   );
 }
-
     

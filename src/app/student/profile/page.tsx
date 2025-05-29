@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore'; // Added Firestore imports
 import { db, storage } from '@/config/firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
@@ -16,13 +16,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud, Users } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText, Search, Wallet, Edit, Bookmark, Briefcase } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import { Progress } from '@/components/ui/progress';
 import type { UserProfile } from '@/context/firebase-context';
-import Link from 'next/link'; 
+import Link from 'next/link';
+import { Separator } from '@/components/ui/separator';
+
+interface Gig {
+  id: string;
+  title: string;
+  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  requiredSkills: Skill[];
+  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+  selectedStudentId?: string;
+}
+
 
 const portfolioLinkSchema = z.object({
   value: z.string().url({ message: 'Invalid URL format' }).or(z.literal('')),
@@ -49,6 +60,13 @@ export default function StudentProfilePage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // State for dashboard stats
+  const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
+  const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
+  const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
+  const [currentWorksCount, setCurrentWorksCount] = useState<number | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
 
   const form = useForm<ProfileFormValues>({
@@ -91,6 +109,85 @@ export default function StudentProfilePage() {
        }
      }
    }, [user, userProfile, authLoading, role, router, form]);
+
+   // Fetch dashboard stats
+   useEffect(() => {
+    if (user && userProfile && role === 'student' && db) {
+      const fetchStudentDashboardStats = async () => {
+        setIsLoadingStats(true);
+        try {
+          const gigsCollectionRef = collection(db, 'gigs');
+          
+          // 1. Fetch available gigs based on student skills
+          const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
+          const openGigsSnapshot = await getDocs(openGigsQuery);
+          
+          let allOpenGigs = openGigsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Gig));
+          
+          allOpenGigs = allOpenGigs.filter(gig => 
+            !(gig.applicants && gig.applicants.some(app => app.studentId === user.uid))
+          );
+          
+          let matchingGigsCount = 0;
+          if (userProfile.skills && userProfile.skills.length > 0) {
+            const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
+            matchingGigsCount = allOpenGigs.filter(gig =>
+              gig.requiredSkills.some(reqSkill => {
+                const reqSkillLower = reqSkill.toLowerCase();
+                return studentSkillsLower.some(studentSkillLower =>
+                  studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
+                );
+              })
+            ).length;
+          } else {
+            matchingGigsCount = allOpenGigs.length; 
+          }
+          setAvailableGigsCount(matchingGigsCount);
+
+          // 2. Fetch active applications & current works
+          const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs')); 
+          let currentActiveApplications = 0;
+          let currentActiveWorks = 0;
+
+          allGigsForAppsSnapshot.forEach(doc => {
+            const gig = doc.data() as Gig;
+            if (gig.applicants) {
+              const studentApplication = gig.applicants.find(app => app.studentId === user.uid);
+              if (studentApplication && (studentApplication.status === 'pending' || studentApplication.status === 'accepted')) {
+                currentActiveApplications++;
+              }
+            }
+            if (gig.selectedStudentId === user.uid && gig.status === 'in-progress') {
+              currentActiveWorks++;
+            }
+          });
+          setActiveApplicationsCount(currentActiveApplications);
+          setCurrentWorksCount(currentActiveWorks);
+
+          // 3. Count bookmarked gigs
+          setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
+
+        } catch (error) {
+          console.error("Error fetching student dashboard stats:", error);
+          toast({ title: "Stats Error", description: "Could not load dashboard statistics.", variant: "destructive" });
+          setAvailableGigsCount(0); 
+          setActiveApplicationsCount(0);
+          setBookmarkedGigsCount(0);
+          setCurrentWorksCount(0);
+        } finally {
+          setIsLoadingStats(false);
+        }
+      };
+      fetchStudentDashboardStats();
+    } else if (!authLoading && userProfile === null && user && role === 'student') {
+      setIsLoadingStats(false);
+      setAvailableGigsCount(0);
+      setActiveApplicationsCount(0);
+      setBookmarkedGigsCount(0);
+      setCurrentWorksCount(0);
+    }
+  }, [user, userProfile, role, authLoading, toast]);
+
 
   const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -143,7 +240,7 @@ export default function StudentProfilePage() {
           const userDocRef = doc(db, 'users', user.uid);
           await updateDoc(userDocRef, {
             profilePictureUrl: downloadURL,
-            updatedAt: new Date(), 
+            updatedAt: Timestamp.now(), 
           });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
           if (refreshUserProfile) await refreshUserProfile(); 
@@ -171,7 +268,7 @@ export default function StudentProfilePage() {
         bio: data.bio || '', 
         skills: data.skills || [],
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [], 
-        updatedAt: new Date(), 
+        updatedAt: Timestamp.now(), 
       };
       
        if (userProfile?.profilePictureUrl) {
@@ -209,6 +306,19 @@ export default function StudentProfilePage() {
    const followersCount = userProfile?.followersCount || 0;
    const followingCount = userProfile?.following?.length || 0;
 
+   const getProfileCompletion = () => {
+    if (!userProfile) return 0;
+    let score = 0;
+    const totalFields = 4; 
+    if (userProfile.username && user?.email && userProfile.username !== user.email.split('@')[0]) score++;
+    else if (userProfile.username && !user?.email) score++;
+    if (userProfile.bio && userProfile.bio.trim() !== '') score++;
+    if (userProfile.skills && userProfile.skills.length > 0) score++;
+    if (userProfile.portfolioLinks && userProfile.portfolioLinks.filter(link => link.trim() !== '').length > 0) score++;
+    return Math.round((score / totalFields) * 100);
+  };
+  const profileCompletion = getProfileCompletion();
+
 
    if (authLoading || !isFormReady) { 
      return (
@@ -219,7 +329,7 @@ export default function StudentProfilePage() {
    }
 
   return (
-    <div className="max-w-3xl mx-auto py-8">
+    <div className="max-w-3xl mx-auto py-8 space-y-6">
        <Card className="glass-card">
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -376,7 +486,117 @@ export default function StudentProfilePage() {
           </Form>
         </CardContent>
       </Card>
+
+      <Separator className="my-8" />
+
+      {/* Dashboard Section */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Your Activity Overview</h2>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+            <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Available Gigs</CardTitle>
+                <Search className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">
+                    {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : availableGigsCount}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                Opportunities matching your skills.
+                </p>
+                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                <Link href="/gigs/browse">Browse Gigs</Link>
+                </Button>
+            </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Applications</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">
+                    {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeApplicationsCount}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                Applications that are pending or accepted.
+                </p>
+                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                    <Link href="/student/applications">View Applications</Link>
+                </Button>
+            </CardContent>
+            </Card>
+            
+            <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Bookmarked Gigs</CardTitle>
+                <Bookmark className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">
+                    {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : bookmarkedGigsCount}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                Gigs you've saved for later.
+                </p>
+                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                    <Link href="/student/bookmarks">View Bookmarks</Link>
+                </Button>
+            </CardContent>
+            </Card>
+            
+            <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Current Works</CardTitle>
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">
+                    {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : currentWorksCount}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                Gigs you are currently working on.
+                </p>
+                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                    <Link href="/student/works">Manage Works</Link>
+                </Button>
+            </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Wallet Balance</CardTitle>
+                <Wallet className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">$0.00</div> {/* Placeholder */}
+                <p className="text-xs text-muted-foreground">
+                Total earnings from completed gigs.
+                </p>
+                <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
+                    <Link href="/student/wallet">View Wallet History</Link>
+                </Button>
+            </CardContent>
+            </Card>
+        </div>
+      </div>
+
+      <Separator className="my-8" />
+
+      <Card className="glass-card">
+         <CardHeader>
+           <CardTitle>My Recent Posts</CardTitle>
+            <CardDescription>A quick look at your latest content.</CardDescription>
+         </CardHeader>
+         <CardContent>
+           <p className="text-sm text-muted-foreground">Your posts will appear here. <Link href="/student/posts/new" className="text-primary hover:underline">Create your first post!</Link></p>
+           {/* TODO: Implement recent posts preview similar to public profile */}
+         </CardContent>
+       </Card>
+
     </div>
   );
 }
-
+    

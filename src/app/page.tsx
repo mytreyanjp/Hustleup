@@ -13,20 +13,16 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Don't redirect if auth is still loading
     if (authLoading) {
       return;
     }
 
     if (user) {
       if (role === 'student') {
-        router.replace('/student/dashboard');
+        router.replace('/student/profile'); // Changed from /student/dashboard
       } else if (role === 'client') {
         router.replace('/client/dashboard');
       }
-      // If role is null but user exists, they might land here briefly.
-      // This can happen if the profile fetch is slightly delayed after auth.
-      // The dashboard pages themselves also have redirect logic if the role is incorrect.
     }
   }, [user, role, authLoading, router]);
 
@@ -39,12 +35,6 @@ export default function Home() {
     );
   }
 
-  // If user is logged in but role is still being determined, or if redirection is about to happen,
-  // showing a minimal loader or even the homepage briefly is fine as dashboard pages have their own guards.
-  // However, if we are certain a redirect should have happened but didn't (e.g. user exists but no role yet),
-  // we might still show homepage.
-
-  // Show homepage content if not logged in, or if role isn't student/client yet (e.g. role is null during initial load)
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4">
       <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
@@ -76,3 +66,4 @@ export default function Home() {
     </div>
   );
 }
+    

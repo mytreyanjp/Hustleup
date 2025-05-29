@@ -118,7 +118,7 @@ export default function Navbar() {
     (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
   ).slice(0,5);
 
-  const dashboardUrl = role === 'student' ? '/student/dashboard' : role === 'client' ? '/client/dashboard' : '/';
+  const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : '/'; // Updated for student
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -269,12 +269,10 @@ export default function Navbar() {
             ) : user ? (
               <div className="flex items-center space-x-1">
                 <Link href={dashboardUrl} passHref>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0" aria-label="Dashboard">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
-                      <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
-                    </Avatar>
-                  </Button>
+                  <Avatar className="h-8 w-8 cursor-pointer">
+                    <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
+                    <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
+                  </Avatar>
                 </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -300,18 +298,12 @@ export default function Navbar() {
                     {role === 'student' && (
                       <>
                         <DropdownMenuItem asChild>
-                          <Link href="/student/dashboard">
+                          <Link href="/student/profile"> {/* Changed from dashboard */}
                             <LayoutDashboard className="mr-2 h-4 w-4" />
-                            <span>Dashboard</span>
+                            <span>My Hub</span> {/* Renamed from Dashboard */}
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                          <Link href="/student/profile">
-                            <GraduationCap className="mr-2 h-4 w-4" />
-                            <span>My Profile</span>
-                          </Link>
-                        </DropdownMenuItem>
-                         <DropdownMenuItem asChild>
                           <Link href="/student/applications">
                             <ApplicationsIcon className="mr-2 h-4 w-4" />
                             <span>My Applications</span>
@@ -424,3 +416,4 @@ export default function Navbar() {
     </header>
   );
 }
+    

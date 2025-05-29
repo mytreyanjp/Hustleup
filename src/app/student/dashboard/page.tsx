@@ -1,293 +1,31 @@
 
 "use client";
 
-import { useFirebase } from '@/context/firebase-context';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Search, Wallet, UserCircle, Edit, Loader2, PlusCircle, Bookmark, Briefcase } from 'lucide-react'; // Added Briefcase
-import Link from 'next/link';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import type { Skill } from '@/lib/constants';
-
-interface Gig {
-  id: string;
-  title: string;
-  status: 'open' | 'in-progress' | 'completed' | 'closed';
-  requiredSkills: Skill[];
-  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
-  selectedStudentId?: string; // Added for current works count
-  // other gig properties
-}
+import { useFirebase } from '@/context/firebase-context';
+import { Loader2 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
-  const { user, userProfile, loading: authLoading, role } = useFirebase();
+  const { user, loading: authLoading, role } = useFirebase();
   const router = useRouter();
 
-  const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
-  const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
-  const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
-  const [currentWorksCount, setCurrentWorksCount] = useState<number | null>(null); // New state for current works
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-
-  // Protect route
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'student') {
-        router.push('/auth/login?redirect=/student/dashboard');
+        router.replace('/auth/login?redirect=/student/profile'); // Redirect to login if not student
+      } else {
+        router.replace('/student/profile'); // Redirect student dashboard to profile page
       }
     }
   }, [user, role, authLoading, router]);
 
-  // Fetch dashboard stats
-  useEffect(() => {
-    if (user && userProfile && role === 'student') {
-      const fetchStudentDashboardStats = async () => {
-        setIsLoadingStats(true);
-        try {
-          const gigsCollectionRef = collection(db, 'gigs');
-          
-          // 1. Fetch available gigs based on student skills
-          const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
-          const openGigsSnapshot = await getDocs(openGigsQuery);
-          
-          let allOpenGigs = openGigsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Gig));
-          
-          allOpenGigs = allOpenGigs.filter(gig => 
-            !(gig.applicants && gig.applicants.some(app => app.studentId === user.uid))
-          );
-          
-          let matchingGigsCount = 0;
-          if (userProfile.skills && userProfile.skills.length > 0) {
-            const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
-            matchingGigsCount = allOpenGigs.filter(gig =>
-              gig.requiredSkills.some(reqSkill => {
-                const reqSkillLower = reqSkill.toLowerCase();
-                return studentSkillsLower.some(studentSkillLower =>
-                  studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
-                );
-              })
-            ).length;
-          } else {
-            matchingGigsCount = allOpenGigs.length; 
-          }
-          setAvailableGigsCount(matchingGigsCount);
-
-          // 2. Fetch active applications & current works
-          const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs')); 
-          let currentActiveApplications = 0;
-          let currentActiveWorks = 0;
-
-          allGigsForAppsSnapshot.forEach(doc => {
-            const gig = doc.data() as Gig;
-            if (gig.applicants) {
-              const studentApplication = gig.applicants.find(app => app.studentId === user.uid);
-              if (studentApplication && (studentApplication.status === 'pending' || studentApplication.status === 'accepted')) {
-                currentActiveApplications++;
-              }
-            }
-            if (gig.selectedStudentId === user.uid && gig.status === 'in-progress') {
-              currentActiveWorks++;
-            }
-          });
-          setActiveApplicationsCount(currentActiveApplications);
-          setCurrentWorksCount(currentActiveWorks);
-
-          // 3. Count bookmarked gigs
-          setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
-
-        } catch (error) {
-          console.error("Error fetching student dashboard stats:", error);
-          setAvailableGigsCount(0); 
-          setActiveApplicationsCount(0);
-          setBookmarkedGigsCount(0);
-          setCurrentWorksCount(0);
-        } finally {
-          setIsLoadingStats(false);
-        }
-      };
-      fetchStudentDashboardStats();
-    } else if (!authLoading && userProfile === null && user && role === 'student') {
-      setIsLoadingStats(false);
-      setAvailableGigsCount(0);
-      setActiveApplicationsCount(0);
-      setBookmarkedGigsCount(0);
-      setCurrentWorksCount(0);
-    }
-  }, [user, userProfile, role, authLoading]);
-
-
-  const getProfileCompletion = () => {
-    if (!userProfile) return 0;
-    let score = 0;
-    const totalFields = 4; 
-    
-    if (userProfile.username && user?.email && userProfile.username !== user.email.split('@')[0]) {
-      score++;
-    } else if (userProfile.username && !user?.email) { 
-      score++;
-    }
-
-    if (userProfile.bio && userProfile.bio.trim() !== '') score++;
-    if (userProfile.skills && userProfile.skills.length > 0) score++;
-    if (userProfile.portfolioLinks && userProfile.portfolioLinks.filter(link => link.trim() !== '').length > 0) score++;
-    
-    return Math.round((score / totalFields) * 100);
-  };
-  const profileCompletion = getProfileCompletion();
-
-  if (authLoading || (isLoadingStats && user && role === 'student' && userProfile)) {
-    return (
-      <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!user || role !== 'student') {
-    return (
-      <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
-        <p className="text-muted-foreground">Verifying access...</p>
-      </div>
-    );
-  }
-
+  // Show a loading indicator while checking auth/role and redirecting
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-       <h1 className="text-3xl font-bold tracking-tight">Student Dashboard</h1>
-       <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href="/student/profile">
-              <Edit className="mr-2 h-4 w-4" /> Edit Profile
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/student/posts/new">
-              <PlusCircle className="mr-2 h-4 w-4" /> New Post
-            </Link>
-          </Button>
-       </div>
-      </div>
-
-       <Card className="glass-card">
-         <CardHeader>
-           <CardTitle>Welcome, {userProfile?.username || user.email?.split('@')[0] || 'Student'}!</CardTitle>
-           <CardDescription>Manage your profile, applications, posts, and earnings here.</CardDescription>
-         </CardHeader>
-         <CardContent>
-            <p>Profile Completion: {profileCompletion}%</p>
-            {profileCompletion < 100 && (
-             <p className="text-sm text-muted-foreground mt-1">
-               Complete your profile to attract more clients!{' '}
-               <Link href="/student/profile" className="text-primary hover:underline">Update Profile</Link>
-             </p>
-           )}
-         </CardContent>
-       </Card>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
-         <Card className="glass-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Available Gigs</CardTitle>
-            <Search className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-                {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : availableGigsCount}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Opportunities matching your skills.
-            </p>
-            <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-              <Link href="/gigs/browse">Browse Gigs</Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-         <Card className="glass-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Applications</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-                {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeApplicationsCount}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Applications that are pending or accepted.
-            </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                 <Link href="/student/applications">View Applications</Link>
-             </Button>
-          </CardContent>
-        </Card>
-        
-        <Card className="glass-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Bookmarked Gigs</CardTitle>
-            <Bookmark className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-                {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : bookmarkedGigsCount}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Gigs you've saved for later.
-            </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                 <Link href="/student/bookmarks">View Bookmarks</Link>
-             </Button>
-          </CardContent>
-        </Card>
-        
-        <Card className="glass-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Current Works</CardTitle>
-            <Briefcase className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-                {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : currentWorksCount}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Gigs you are currently working on.
-            </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                 <Link href="/student/works">Manage Works</Link>
-             </Button>
-          </CardContent>
-        </Card>
-
-         <Card className="glass-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Wallet Balance</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">$0.00</div>
-            <p className="text-xs text-muted-foreground">
-              Total earnings from completed gigs.
-            </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild>
-                 <Link href="/student/wallet">View Wallet History</Link>
-             </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-       <Card className="glass-card">
-         <CardHeader>
-           <CardTitle>My Recent Posts</CardTitle>
-            <CardDescription>A quick look at your latest content.</CardDescription>
-         </CardHeader>
-         <CardContent>
-           {/* TODO: Implement recent posts preview */}
-           <p className="text-sm text-muted-foreground">Your posts will appear here. <Link href="/student/posts/new" className="text-primary hover:underline">Create your first post!</Link></p>
-         </CardContent>
-       </Card>
+    <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="ml-2 text-muted-foreground">Loading your dashboard...</p>
     </div>
   );
 }
+    

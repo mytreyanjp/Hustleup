@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,6 @@ const completeProfileSchema = z.object({
         });
     } else {
         try {
-            // Ensure website parsing doesn't throw for empty string if it passed optional().or(z.literal(''))
              if (data.website) z.string().url().parse(data.website);
         } catch (e) {
             ctx.addIssue({
@@ -137,7 +136,7 @@ export default function CompleteProfilePage() {
 
       if (refreshUserProfile) await refreshUserProfile();
 
-      router.push(data.role === 'student' ? '/student/dashboard' : '/client/dashboard');
+      router.push(data.role === 'student' ? '/student/profile' : '/client/dashboard'); // Updated for student
 
     } catch (error: any) {
       console.error('Complete profile error:', error);
@@ -293,3 +292,4 @@ export default function CompleteProfilePage() {
     </div>
   );
 }
+    
