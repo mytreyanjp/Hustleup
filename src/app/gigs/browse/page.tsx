@@ -60,7 +60,7 @@ export default function BrowseGigsPage() {
         let allOpenGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          isFromFollowedClient: false, // Initialize
+          isFromFollowedClient: false, 
         })) as Gig[];
 
         if (!authLoading && currentUser && role === 'student' && userProfile) {
@@ -97,7 +97,7 @@ export default function BrowseGigsPage() {
                     return true;
                   }
 
-                  // 2. Common significant word match (new logic)
+                  // 2. Common significant word match
                   const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
                   for (const sword of studentSkillWords) {
                     if (reqSkillWords.has(sword)) {
@@ -195,8 +195,8 @@ export default function BrowseGigsPage() {
   return (
     <div 
       className="space-y-8 relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat" // Adjusted for navbar height
-      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=Explore+Gigs+Background')" }}
-      data-ai-hint="abstract office"
+      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png')" }}
+      data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div> {/* Overlay for readability */}
       
@@ -233,13 +233,15 @@ export default function BrowseGigsPage() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {gigs.map((gig) => (
-              <Card key={gig.id} className="glass-card flex flex-col"> {/* Ensured glass-card for consistency */}
+              <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader>
                   <div className="flex justify-between items-start">
-                      <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
+                      <Link href={`/gigs/${gig.id}`} className="hover:underline flex-grow mr-2">
+                        <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
+                      </Link>
                       {gig.isFromFollowedClient && (
-                          <Badge variant="outline" className="text-xs border-primary text-primary ml-2 shrink-0">
-                              <Star className="mr-1 h-3 w-3" /> Following
+                          <Badge variant="outline" className="text-xs border-primary text-primary ml-auto shrink-0 flex items-center gap-1">
+                              <Star className="h-3 w-3" /> Following
                           </Badge>
                       )}
                   </div>
