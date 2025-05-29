@@ -73,19 +73,19 @@ export default function BrowseGigsPage() {
           );
           
           const gigsFromFollowedClients: Gig[] = [];
-          const otherGigsNotFromFollowed: Gig[] = [];
+          const otherGigs: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
             if (followedClientIds.includes(gig.clientId)) {
               gigsFromFollowedClients.push({ ...gig, isFromFollowedClient: true });
             } else {
-              otherGigsNotFromFollowed.push(gig);
+              otherGigs.push(gig);
             }
           });
           
           let skillMatchedGigs: Gig[] = [];
           if (studentSkillsLower.length > 0) {
-            skillMatchedGigs = otherGigsNotFromFollowed.filter(gig =>
+            skillMatchedGigs = otherGigs.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
                 const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
@@ -105,16 +105,20 @@ export default function BrowseGigsPage() {
               })
             );
           } else {
-            skillMatchedGigs = otherGigsNotFromFollowed;
+            // If student has no skills, they see all non-followed gigs (that they haven't applied to)
+            skillMatchedGigs = otherGigs;
           }
           
+          // Combine followed client gigs (skills not checked) and skill-matched non-followed client gigs
           let finalGigs = [
-            ...gigsFromFollowedClients, // Gigs from followed clients, regardless of skill match (but not applied to)
-            ...skillMatchedGigs.filter(gig => !followedClientIds.includes(gig.clientId)) // Skill-matched gigs from non-followed clients
+            ...gigsFromFollowedClients, 
+            ...skillMatchedGigs
           ];
           
+          // Ensure uniqueness (in case a followed gig was also skill-matched and somehow duplicated)
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
 
+          // Sort: followed client gigs first, then by creation date
           finalGigs.sort((a, b) => {
             if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
             if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
@@ -123,6 +127,7 @@ export default function BrowseGigsPage() {
           setGigs(finalGigs);
 
         } else {
+          // If not a student or profile not loaded, show all open gigs (they are already sorted by createdAt)
           setGigs(allOpenGigs);
         }
 
@@ -188,14 +193,14 @@ export default function BrowseGigsPage() {
 
   return (
     <div 
-      className="space-y-8 relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat"
+      className="relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('https://picsum.photos/seed/modernoffice/1920/1080')" }}
       data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="relative z-10 space-y-8 pt-8">
-        <h1 className="text-3xl font-bold tracking-tight text-center">Explore Gigs</h1>
+      <div className="relative z-10 space-y-8"> {/* Removed pt-8 here */}
+        <h1 className="text-3xl font-bold tracking-tight text-center pt-8">Explore Gigs</h1> {/* Added pt-8 to h1 */}
 
         {gigs.length === 0 && !pageIsLoading ? (
           <Card className="glass-card text-center py-10 max-w-lg mx-auto">
@@ -225,7 +230,7 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8"> {/* Added px-4 pb-8 for content padding */}
             {gigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader>
@@ -280,3 +285,4 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
+
