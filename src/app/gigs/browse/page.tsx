@@ -88,12 +88,13 @@ export default function BrowseGigsPage() {
             skillMatchedGigs = otherGigs.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
+                // Check for substring match
+                if (studentSkillsLower.some(studentSkillLower => studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower))) {
+                  return true;
+                }
+                // Check for common significant word match
                 const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
-
                 return studentSkillsLower.some(studentSkillLower => {
-                  if (studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)) {
-                    return true;
-                  }
                   const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
                   for (const sword of studentSkillWords) {
                     if (reqSkillWords.has(sword)) {
@@ -105,7 +106,7 @@ export default function BrowseGigsPage() {
               })
             );
           } else {
-            // If student has no skills, they see all non-followed gigs (that they haven't applied to)
+            // If student has no skills, they see all non-followed, non-applied-to gigs
             skillMatchedGigs = otherGigs;
           }
           
@@ -193,17 +194,17 @@ export default function BrowseGigsPage() {
 
   return (
     <div 
-      className="relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat"
+      className="relative min-h-[calc(100vh-4rem)] bg-cover bg-center bg-no-repeat bg-fixed"
       style={{ backgroundImage: "url('https://picsum.photos/seed/modernoffice/1920/1080')" }}
       data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="relative z-10 space-y-8"> {/* Removed pt-8 here */}
-        <h1 className="text-3xl font-bold tracking-tight text-center pt-8">Explore Gigs</h1> {/* Added pt-8 to h1 */}
-
+      <div className="relative z-10 space-y-4"> {/* Adjusted space-y from 8 to 4 */}
+        <h1 className="text-3xl font-bold tracking-tight text-center pt-8">Explore Gigs</h1>
+        
         {gigs.length === 0 && !pageIsLoading ? (
-          <Card className="glass-card text-center py-10 max-w-lg mx-auto">
+          <Card className="glass-card text-center py-10 max-w-lg mx-auto mt-4"> {/* Added mt-4 for spacing */}
               <CardHeader>
                   <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <CardTitle>No Gigs Found</CardTitle>
@@ -230,7 +231,7 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8"> {/* Added px-4 pb-8 for content padding */}
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8">
             {gigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader>
