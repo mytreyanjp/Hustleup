@@ -73,26 +73,26 @@ export default function BrowseGigsPage() {
           );
           
           const gigsFromFollowedClients: Gig[] = [];
-          const otherGigs: Gig[] = [];
+          const otherGigsTemp: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
             if (followedClientIds.includes(gig.clientId)) {
               gigsFromFollowedClients.push({ ...gig, isFromFollowedClient: true });
             } else {
-              otherGigs.push(gig);
+              otherGigsTemp.push(gig);
             }
           });
           
-          let skillMatchedGigs: Gig[] = [];
+          let skillMatchedNonFollowedGigs: Gig[] = [];
           if (studentSkillsLower.length > 0) {
-            skillMatchedGigs = otherGigs.filter(gig =>
+            skillMatchedNonFollowedGigs = otherGigsTemp.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
                 // Check for substring match
                 if (studentSkillsLower.some(studentSkillLower => studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower))) {
                   return true;
                 }
-                // Check for common significant word match
+                // Check for common significant word match (ignoring single letter words)
                 const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
                 return studentSkillsLower.some(studentSkillLower => {
                   const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
@@ -107,16 +107,16 @@ export default function BrowseGigsPage() {
             );
           } else {
             // If student has no skills, they see all non-followed, non-applied-to gigs
-            skillMatchedGigs = otherGigs;
+            skillMatchedNonFollowedGigs = otherGigsTemp;
           }
           
           // Combine followed client gigs (skills not checked) and skill-matched non-followed client gigs
           let finalGigs = [
             ...gigsFromFollowedClients, 
-            ...skillMatchedGigs
+            ...skillMatchedNonFollowedGigs
           ];
           
-          // Ensure uniqueness (in case a followed gig was also skill-matched and somehow duplicated)
+          // Ensure uniqueness
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
 
           // Sort: followed client gigs first, then by creation date
@@ -193,18 +193,18 @@ export default function BrowseGigsPage() {
   }
 
   return (
-    <div 
-      className="relative min-h-[calc(100vh-4rem)] bg-cover bg-center bg-no-repeat bg-fixed"
+    <div
+      className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] bg-cover bg-center bg-no-repeat bg-fixed"
       style={{ backgroundImage: "url('https://picsum.photos/seed/modernoffice/1920/1080')" }}
       data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="relative z-10 space-y-4"> {/* Adjusted space-y from 8 to 4 */}
-        <h1 className="text-3xl font-bold tracking-tight text-center pt-8">Explore Gigs</h1>
+      <div className="container mx-auto px-4 py-8 relative z-10 space-y-4">
+        <h1 className="text-3xl font-bold tracking-tight text-center text-foreground pt-8">Explore Gigs</h1>
         
         {gigs.length === 0 && !pageIsLoading ? (
-          <Card className="glass-card text-center py-10 max-w-lg mx-auto mt-4"> {/* Added mt-4 for spacing */}
+          <Card className="glass-card text-center py-10 max-w-lg mx-auto mt-4">
               <CardHeader>
                   <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <CardTitle>No Gigs Found</CardTitle>
@@ -231,7 +231,7 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 pb-8"> {/* Removed px-4 from here as container provides it */}
             {gigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader>
@@ -287,3 +287,4 @@ export default function BrowseGigsPage() {
   );
 }
 
+    
