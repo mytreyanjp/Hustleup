@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,7 +54,7 @@ export default function StudentProfilePage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormReady, setIsFormReady] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); // New state for edit mode
+  const [isEditing, setIsEditing] = useState(false);
 
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -225,7 +225,8 @@ export default function StudentProfilePage() {
           await updateDoc(userDocRef, { profilePictureUrl: downloadURL, updatedAt: Timestamp.now() });
           toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
           if (refreshUserProfile) await refreshUserProfile();
-          setSelectedImageFile(null);
+          setSelectedImageFile(null); // Clear the selected file after successful upload
+          // No need to set imagePreview here, as userProfile refresh will update it via populateFormAndPreview
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
           toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
@@ -248,13 +249,18 @@ export default function StudentProfilePage() {
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
         updatedAt: Timestamp.now(),
       };
-      if (userProfile?.profilePictureUrl) { // Persist existing profile picture if not changed during this save
+      // Persist current profile picture URL if userProfile exists and has it
+      if (userProfile?.profilePictureUrl) {
         updateData.profilePictureUrl = userProfile.profilePictureUrl;
+      } else if (imagePreview && !selectedImageFile) { // If preview exists from initial load but no new file selected
+         updateData.profilePictureUrl = imagePreview;
       }
+
+
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
-      setIsEditing(false); // Exit edit mode on successful save
+      setIsEditing(false); 
     } catch (error: any) {
       console.error('Profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -264,9 +270,8 @@ export default function StudentProfilePage() {
   };
 
   const handleCancelEdit = () => {
-    populateFormAndPreview(userProfile); // Reset form to original values
-    setSelectedImageFile(null); // Clear any staged image file
-    // Image preview is reset by populateFormAndPreview
+    populateFormAndPreview(userProfile); 
+    setSelectedImageFile(null); 
     setIsEditing(false);
   };
 
@@ -285,7 +290,6 @@ export default function StudentProfilePage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
-      {/* Profile Header and Edit Toggle */}
       <Card className="glass-card">
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -306,7 +310,7 @@ export default function StudentProfilePage() {
                 </Button>
               )}
             </div>
-            <input type="file" ref={fileInputRef} hidden accept="image/png, image/jpeg, image/webp, image/gif" onChange={handleImageFileChange} disabled={!isEditing} />
+            <input type="file" ref={fileInputRef} hidden accept="image/png, image/jpeg, image/webp, image/gif" onChange={handleImageFileChange} disabled={!isEditing || isUploading} />
             
             <div className='text-center sm:text-left flex-grow'>
               <CardTitle className="text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
@@ -322,7 +326,7 @@ export default function StudentProfilePage() {
                   <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
                 </div>
               )}
-              <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
+               <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
                 <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers</span>
                 <span className="flex items-center gap-1"><Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following</span>
               </div>
@@ -335,7 +339,6 @@ export default function StudentProfilePage() {
           </div>
         </CardHeader>
 
-        {/* Conditional Rendering of Profile Info or Form */}
         <CardContent>
           {isEditing ? (
             <Form {...form}>
@@ -400,9 +403,11 @@ export default function StudentProfilePage() {
                       </div>
                     ))}
                   </div>
-                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => actualAppendLink({ value: '' })} disabled={actualLinkFields.length >= 5}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Link
-                  </Button>
+                  {actualLinkFields.length < 5 && (
+                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => actualAppendLink({ value: '' })}>
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add Link
+                    </Button>
+                  )}
                   <FormMessage>{form.formState.errors.portfolioLinks?.message || (form.formState.errors.portfolioLinks as any)?.root?.message}</FormMessage>
                   <FormDescription className="mt-1">Links to your work (GitHub, Behance, personal site, etc. max 5).</FormDescription>
                 </div>
@@ -457,7 +462,6 @@ export default function StudentProfilePage() {
 
       <Separator className="my-8" />
 
-      {/* Dashboard Section */}
       <div className="space-y-6">
         <h2 className="text-2xl font-semibold tracking-tight">Your Activity Overview</h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
@@ -543,4 +547,3 @@ export default function StudentProfilePage() {
   );
 }
 
-    
