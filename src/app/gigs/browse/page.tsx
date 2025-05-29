@@ -67,49 +67,57 @@ export default function BrowseGigsPage() {
           const followedClientIds = userProfile.following || [];
           const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
 
-          // Mark gigs from followed clients
-          allOpenGigs = allOpenGigs.map(gig => ({
-            ...gig,
-            isFromFollowedClient: followedClientIds.includes(gig.clientId),
-          }));
-
           // Filter out gigs already applied to by the student
           allOpenGigs = allOpenGigs.filter(gig =>
             !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
           );
-
-          let recommendedGigs: Gig[] = [];
-          const otherGigs: Gig[] = [];
+          
+          const gigsFromFollowedClients: Gig[] = [];
+          const otherGigsNotFromFollowed: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
-            if (gig.isFromFollowedClient) {
-              recommendedGigs.push(gig); // Gigs from followed clients are always recommended
+            if (followedClientIds.includes(gig.clientId)) {
+              gigsFromFollowedClients.push({ ...gig, isFromFollowedClient: true });
             } else {
-              otherGigs.push(gig);
+              otherGigsNotFromFollowed.push(gig);
             }
           });
-
+          
           let skillMatchedGigs: Gig[] = [];
           if (studentSkillsLower.length > 0) {
-            skillMatchedGigs = otherGigs.filter(gig =>
+            skillMatchedGigs = otherGigsNotFromFollowed.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
-                return studentSkillsLower.some(studentSkillLower =>
-                  studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
-                );
+                // Split skills into words (more than 1 char) for keyword matching
+                const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
+
+                return studentSkillsLower.some(studentSkillLower => {
+                  // 1. Substring match (existing logic for direct overlaps)
+                  if (studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)) {
+                    return true;
+                  }
+
+                  // 2. Common significant word match (new logic)
+                  const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
+                  for (const sword of studentSkillWords) {
+                    if (reqSkillWords.has(sword)) {
+                      return true;
+                    }
+                  }
+                  return false;
+                });
               })
             );
           } else {
-            // If student has no skills, they see all non-followed, non-applied-to open gigs
-            skillMatchedGigs = otherGigs;
+            // If student has no skills, they see all non-followed, non-applied-to open gigs from other clients
+            skillMatchedGigs = otherGigsNotFromFollowed;
           }
 
-          // Combine followed client gigs (unfiltered by skill) with skill-matched other gigs
-          let finalGigs = [...recommendedGigs, ...skillMatchedGigs];
+          // Gigs from followed clients are always included, regardless of skill match for now
+          let finalGigs = [...gigsFromFollowedClients, ...skillMatchedGigs];
           
-          // Remove duplicates that might occur if a followed client's gig also matched skills (though logic above should prevent this)
+          // Remove duplicates that might occur (though logic above should prevent this)
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
-
 
           // Sort: gigs from followed clients first, then by creation date
           finalGigs.sort((a, b) => {
@@ -117,9 +125,7 @@ export default function BrowseGigsPage() {
             if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
             return b.createdAt.toMillis() - a.createdAt.toMillis();
           });
-
           setGigs(finalGigs);
-
         } else {
           // If not a student, or profile not loaded, or auth still loading, show all open gigs
           setGigs(allOpenGigs);
@@ -133,17 +139,13 @@ export default function BrowseGigsPage() {
       }
     };
 
-    // Run fetch only after auth loading is complete to ensure userProfile is available
     if (!authLoading) {
         fetchAndFilterGigs();
     } else {
-        // If auth is still loading, you might want to show a general loading state or fetch all open gigs initially
-        // For simplicity, we wait for auth to resolve.
-        setIsLoading(true); // Keep loading until auth is resolved
+        setIsLoading(true); 
     }
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, currentUser, role, userProfile]); // userProfile added as dependency
+  }, [authLoading, currentUser, role, userProfile]);
 
   const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
