@@ -112,11 +112,11 @@ export default function BrowseGigsPage() {
             // If student has no skills, they see all non-followed, non-applied-to open gigs from other clients
             skillMatchedGigs = otherGigsNotFromFollowed;
           }
-
-          // Gigs from followed clients are always included, regardless of skill match for now
+          
+          // Gigs from followed clients are always included, regardless of skill match
           let finalGigs = [...gigsFromFollowedClients, ...skillMatchedGigs];
           
-          // Remove duplicates that might occur (though logic above should prevent this)
+          // Remove duplicates that might occur if a followed client's gig also matched skills
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
 
           // Sort: gigs from followed clients first, then by creation date
@@ -126,6 +126,7 @@ export default function BrowseGigsPage() {
             return b.createdAt.toMillis() - a.createdAt.toMillis();
           });
           setGigs(finalGigs);
+
         } else {
           // If not a student, or profile not loaded, or auth still loading, show all open gigs
           setGigs(allOpenGigs);
@@ -192,86 +193,94 @@ export default function BrowseGigsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Explore Gigs</h1>
+    <div 
+      className="space-y-8 relative min-h-[calc(100vh-8rem)] bg-cover bg-center bg-no-repeat" // Adjusted for navbar height
+      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=Explore+Gigs+Background')" }}
+      data-ai-hint="abstract office"
+    >
+      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div> {/* Overlay for readability */}
+      
+      <div className="relative z-10 space-y-8 pt-8"> {/* Content wrapper with z-index */}
+        <h1 className="text-3xl font-bold tracking-tight text-center">Explore Gigs</h1>
 
-      {gigs.length === 0 && !pageIsLoading ? (
-        <Card className="glass-card text-center py-10">
-            <CardHeader>
-                <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <CardTitle>No Gigs Found</CardTitle>
-            </CardHeader>
-            <CardContent>
-                {currentUser && role === 'student' && (!userProfile?.skills || userProfile.skills.length === 0) ? (
-                    <>
-                        <p className="text-muted-foreground mb-4">
-                            Add skills to your profile to discover relevant freelance opportunities. Gigs are matched based on your skills.
-                        </p>
-                        <Button asChild>
-                            <Link href="/student/profile">Update Your Profile Skills</Link>
-                        </Button>
-                    </>
-                ) : currentUser && role === 'student' ? (
-                     <p className="text-muted-foreground">
-                        No open gigs currently match your preferences or from clients you follow, or you've applied to all available matching gigs. Check back later or expand your skills!
-                    </p>
-                ) : (
-                    <p className="text-muted-foreground">
-                        There are no open gigs at the moment. Please check back later!
-                    </p>
-                )}
-            </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {gigs.map((gig) => (
-            <Card key={gig.id} className="glass-card flex flex-col">
+        {gigs.length === 0 && !pageIsLoading ? (
+          <Card className="glass-card text-center py-10 max-w-lg mx-auto">
               <CardHeader>
-                <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
-                    {gig.isFromFollowedClient && (
-                        <Badge variant="outline" className="text-xs border-primary text-primary ml-2 shrink-0">
-                            <Star className="mr-1 h-3 w-3" /> Following
-                        </Badge>
-                    )}
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <Avatar className="h-6 w-6">
-                    <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
-                    <AvatarFallback>{getClientInitials(gig.clientDisplayName, gig.clientUsername)}</AvatarFallback>
-                  </Avatar>
-                  <CardDescription className="text-sm text-muted-foreground">
-                    {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
-                  </CardDescription>
-                </div>
+                  <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <CardTitle>No Gigs Found</CardTitle>
               </CardHeader>
-              <CardContent className="flex-grow">
-                <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
-                 <div className="mb-4">
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
-                    <div className="flex flex-wrap gap-1">
-                        {gig.requiredSkills?.slice(0, 5).map((skill, index) => ( 
-                            <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
-                        ))}
-                        {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}
-                    </div>
-                 </div>
-                 <div className="flex items-center text-sm text-muted-foreground mb-1">
-                     <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
-                 </div>
-                 <div className="flex items-center text-sm text-muted-foreground">
-                     <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
-                 </div>
+              <CardContent>
+                  {currentUser && role === 'student' && (!userProfile?.skills || userProfile.skills.length === 0) ? (
+                      <>
+                          <p className="text-muted-foreground mb-4">
+                              Add skills to your profile to discover relevant freelance opportunities. Gigs are matched based on your skills.
+                          </p>
+                          <Button asChild>
+                              <Link href="/student/profile">Update Your Profile Skills</Link>
+                          </Button>
+                      </>
+                  ) : currentUser && role === 'student' ? (
+                       <p className="text-muted-foreground">
+                          No open gigs currently match your preferences or from clients you follow, or you've applied to all available matching gigs. Check back later or expand your skills!
+                      </p>
+                  ) : (
+                      <p className="text-muted-foreground">
+                          There are no open gigs at the moment. Please check back later!
+                      </p>
+                  )}
               </CardContent>
-              <CardFooter>
-                <Button asChild className="w-full">
-                  <Link href={`/gigs/${gig.id}`}>View Details & Apply</Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      )}
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {gigs.map((gig) => (
+              <Card key={gig.id} className="glass-card flex flex-col"> {/* Ensured glass-card for consistency */}
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                      <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
+                      {gig.isFromFollowedClient && (
+                          <Badge variant="outline" className="text-xs border-primary text-primary ml-2 shrink-0">
+                              <Star className="mr-1 h-3 w-3" /> Following
+                          </Badge>
+                      )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
+                      <AvatarFallback>{getClientInitials(gig.clientDisplayName, gig.clientUsername)}</AvatarFallback>
+                    </Avatar>
+                    <CardDescription className="text-sm text-muted-foreground">
+                      {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                  <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
+                   <div className="mb-4">
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
+                      <div className="flex flex-wrap gap-1">
+                          {gig.requiredSkills?.slice(0, 5).map((skill, index) => ( 
+                              <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
+                          ))}
+                          {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}
+                      </div>
+                   </div>
+                   <div className="flex items-center text-sm text-muted-foreground mb-1">
+                       <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
+                   </div>
+                   <div className="flex items-center text-sm text-muted-foreground">
+                       <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
+                   </div>
+                </CardContent>
+                <CardFooter>
+                  <Button asChild className="w-full">
+                    <Link href={`/gigs/${gig.id}`}>View Details & Apply</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
