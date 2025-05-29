@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Search, UserCircle, Star } from 'lucide-react'; // Added Star
+import { Loader2, CalendarDays, DollarSign, Search, UserCircle, Star } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
@@ -23,13 +23,13 @@ interface Gig {
   deadline: Timestamp;
   requiredSkills: Skill[];
   clientId: string;
-  clientUsername?: string; 
-  clientDisplayName?: string; 
-  clientAvatarUrl?: string; 
+  clientUsername?: string;
+  clientDisplayName?: string;
+  clientAvatarUrl?: string;
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
-  isFromFollowedClient?: boolean; // New property
+  isFromFollowedClient?: boolean;
 }
 
 export default function BrowseGigsPage() {
@@ -42,67 +42,87 @@ export default function BrowseGigsPage() {
     const fetchAndFilterGigs = async () => {
       setIsLoading(true);
       setError(null);
+      if (!db) {
+        setError("Database not available.");
+        setIsLoading(false);
+        return;
+      }
       try {
         const gigsCollectionRef = collection(db, 'gigs');
         // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
-        // Create it in Firebase console if missing.
+        // Create it in Firebase console if missing. Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoKCgZzdGF0dXMQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
           orderBy('createdAt', 'desc')
         );
         const querySnapshot = await getDocs(q);
-        let fetchedGigs = querySnapshot.docs.map(doc => ({
+        let allOpenGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           isFromFollowedClient: false, // Initialize
         })) as Gig[];
 
-        if (!authLoading) {
-          if (currentUser && role === 'student' && userProfile) {
-            // Mark gigs from followed clients
-            const followedClientIds = userProfile.following || [];
-            if (followedClientIds.length > 0) {
-              fetchedGigs = fetchedGigs.map(gig => ({
-                ...gig,
-                isFromFollowedClient: followedClientIds.includes(gig.clientId),
-              }));
-            }
+        if (!authLoading && currentUser && role === 'student' && userProfile) {
+          const followedClientIds = userProfile.following || [];
+          const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
 
-            // Filter out gigs already applied to
-            fetchedGigs = fetchedGigs.filter(gig => 
-              !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
+          // Mark gigs from followed clients
+          allOpenGigs = allOpenGigs.map(gig => ({
+            ...gig,
+            isFromFollowedClient: followedClientIds.includes(gig.clientId),
+          }));
+
+          // Filter out gigs already applied to by the student
+          allOpenGigs = allOpenGigs.filter(gig =>
+            !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
+          );
+
+          let recommendedGigs: Gig[] = [];
+          const otherGigs: Gig[] = [];
+
+          allOpenGigs.forEach(gig => {
+            if (gig.isFromFollowedClient) {
+              recommendedGigs.push(gig); // Gigs from followed clients are always recommended
+            } else {
+              otherGigs.push(gig);
+            }
+          });
+
+          let skillMatchedGigs: Gig[] = [];
+          if (studentSkillsLower.length > 0) {
+            skillMatchedGigs = otherGigs.filter(gig =>
+              gig.requiredSkills.some(reqSkill => {
+                const reqSkillLower = reqSkill.toLowerCase();
+                return studentSkillsLower.some(studentSkillLower =>
+                  studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
+                );
+              })
             );
-
-            // Filter by student skills
-            if (userProfile.skills && userProfile.skills.length > 0) {
-              const studentSkillsLower = (userProfile.skills as Skill[]).map(s => s.toLowerCase());
-              fetchedGigs = fetchedGigs.filter(gig =>
-                gig.requiredSkills.some(reqSkill => {
-                  const reqSkillLower = reqSkill.toLowerCase();
-                  return studentSkillsLower.some(studentSkillLower =>
-                    studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower)
-                  );
-                })
-              );
-            }
-            
-            // Sort: gigs from followed clients first, then by creation date
-            fetchedGigs.sort((a, b) => {
-              if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
-              if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
-              // If both are same (either both followed or both not), sort by createdAt
-              return b.createdAt.toMillis() - a.createdAt.toMillis();
-            });
-
-            setGigs(fetchedGigs);
           } else {
-            // If not a student or profile not loaded, show all open gigs
-            setGigs(fetchedGigs); 
+            // If student has no skills, they see all non-followed, non-applied-to open gigs
+            skillMatchedGigs = otherGigs;
           }
+
+          // Combine followed client gigs (unfiltered by skill) with skill-matched other gigs
+          let finalGigs = [...recommendedGigs, ...skillMatchedGigs];
+          
+          // Remove duplicates that might occur if a followed client's gig also matched skills (though logic above should prevent this)
+          finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
+
+
+          // Sort: gigs from followed clients first, then by creation date
+          finalGigs.sort((a, b) => {
+            if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
+            if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
+            return b.createdAt.toMillis() - a.createdAt.toMillis();
+          });
+
+          setGigs(finalGigs);
+
         } else {
-          // If auth is still loading, show all open gigs for now (will re-filter once auth resolves)
-          setGigs(fetchedGigs); 
+          // If not a student, or profile not loaded, or auth still loading, show all open gigs
+          setGigs(allOpenGigs);
         }
 
       } catch (err: any) {
@@ -113,8 +133,17 @@ export default function BrowseGigsPage() {
       }
     };
 
-    fetchAndFilterGigs();
-  }, [authLoading, currentUser, role, userProfile]);
+    // Run fetch only after auth loading is complete to ensure userProfile is available
+    if (!authLoading) {
+        fetchAndFilterGigs();
+    } else {
+        // If auth is still loading, you might want to show a general loading state or fetch all open gigs initially
+        // For simplicity, we wait for auth to resolve.
+        setIsLoading(true); // Keep loading until auth is resolved
+    }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, currentUser, role, userProfile]); // userProfile added as dependency
 
   const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -182,7 +211,7 @@ export default function BrowseGigsPage() {
                     </>
                 ) : currentUser && role === 'student' ? (
                      <p className="text-muted-foreground">
-                        No gigs currently match your skills, or you've applied to all available matching gigs. Check back later or expand your skills!
+                        No open gigs currently match your preferences or from clients you follow, or you've applied to all available matching gigs. Check back later or expand your skills!
                     </p>
                 ) : (
                     <p className="text-muted-foreground">
@@ -244,3 +273,4 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
+
