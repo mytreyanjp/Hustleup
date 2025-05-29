@@ -99,6 +99,7 @@ export default function PublicProfilePage() {
               // IMPORTANT: This query requires a composite index in Firestore.
               // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
               // Create it via the link in the Firebase console error message if it's missing.
+              // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=ClRwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvc3R1ZGVudF9wb3N0cy9pbmRleGVzL18QARoNCglzdHVkZW50SWQQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -115,7 +116,7 @@ export default function PublicProfilePage() {
               setIsLoadingClientGigs(true);
               // IMPORTANT: This query likely requires a composite index on 'gigs':
               // clientId (Ascending), status (Ascending), createdAt (Descending)
-              // Create it here: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoMCghjbGllbnRJZBABGgoKBnN0YXR1cxABGg0KCWNyZWF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
+              // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoMCghjbGllbnRJZBABGgoKBnN0YXR1cxABGg0KCWNyZWF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
               const clientGigsQuery = query(
                 collection(db, 'gigs'),
                 where('clientId', '==', userId),
@@ -222,10 +223,9 @@ export default function PublicProfilePage() {
   };
 
   const handleOpenFollowersModal = () => {
-    // For now, this is a placeholder due to query complexity
-    setModalUserList([]);
+    setModalUserList([]); // Reset any previous list
     setShowFollowersModal(true);
-    setIsLoadingModalList(false); // No actual loading for this placeholder
+    setIsLoadingModalList(false); // No loading for this as it's a placeholder or simple message
   };
 
 
@@ -522,15 +522,18 @@ export default function PublicProfilePage() {
           <DialogHeader>
             <DialogTitle>Followers</DialogTitle>
             <DialogDescription>
-              Displaying the list of users who follow {displayName}.
+              Users who follow {displayName}.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-                Fetching a complete list of followers requires a more advanced backend setup for optimal performance.
-                This feature will be enhanced in a future update.
-            </p>
-            {/* Placeholder for future list rendering */}
+          {profile && profile.followersCount === 0 ? (
+                <p className="text-sm text-muted-foreground text-center">This user has no followers yet.</p>
+            ) : (
+                <p className="text-sm text-muted-foreground">
+                    Fetching a complete list of followers requires a more advanced backend setup for optimal performance.
+                    This feature will be enhanced in a future update.
+                </p>
+            )}
           </div>
           <DialogFooter>
             <DialogClose asChild>
@@ -584,5 +587,4 @@ export default function PublicProfilePage() {
     </div>
   );
 }
-
     
