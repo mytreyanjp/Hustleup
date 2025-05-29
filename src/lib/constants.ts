@@ -116,6 +116,28 @@ export const PREDEFINED_SKILLS = [
   "Art Restoration",
   "Craft Artist (e.g., knitting, macrame)",
 
+  // 🎮 Game Development
+  "Game Designer",
+  "Gameplay Programmer",
+  "Game Engine Programmer (Unity, Unreal)",
+  "Unity Developer",
+  "Unreal Engine Developer",
+  "Game Artist (2D/3D)",
+  "Character Artist",
+  "Environment Artist",
+  "Game Animator",
+  "Level Designer",
+  "Quest Designer",
+  "Game UI/UX Designer",
+  "Game Audio Designer/Composer",
+  "Game Tester/QA",
+  "Game Producer",
+  "Technical Artist (Game)",
+  "C# for Unity",
+  "C++ for Unreal Engine",
+  "Mobile Game Development",
+  "VR/AR Game Development",
+
   // 🌐 Development & Tech
   "Web Developer",
   "Mobile App Developer",
