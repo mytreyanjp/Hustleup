@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon, User as UserIcon, Edit3 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -46,7 +46,7 @@ export default function Navbar() {
 
 
   const fetchInitialSuggestions = useCallback(async () => {
-    if (!db || (suggestions.length > 0 && searchTerm.trim() === '')) return; 
+    if (!db || (suggestions.length > 0 && searchTerm.trim() === '')) return;
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
@@ -54,7 +54,7 @@ export default function Navbar() {
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10) 
+        limit(10)
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -66,11 +66,11 @@ export default function Navbar() {
       setSuggestions(fetchedGigs);
     } catch (error) {
       console.error("Error fetching initial gig suggestions:", error);
-      setSuggestions([]); 
+      setSuggestions([]);
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, [suggestions.length, searchTerm]); 
+  }, [suggestions.length, searchTerm]);
 
   useEffect(() => {
     setIsClient(true);
@@ -108,8 +108,8 @@ export default function Navbar() {
     e?.preventDefault();
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
-      setIsSuggestionsOpen(false); 
-      setSearchTerm(''); 
+      setIsSuggestionsOpen(false);
+      setSearchTerm('');
     }
   };
 
@@ -118,11 +118,11 @@ export default function Navbar() {
     (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
   ).slice(0,5);
 
-  const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : '/'; // Updated for student
+  const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : '/';
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center pl-4"> 
+      <div className="container flex h-16 items-center pl-4">
         <div className="mr-4 flex items-center space-x-2 cursor-default">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -143,11 +143,9 @@ export default function Navbar() {
           )}
 
           {isClient && role === 'student' && (
-            <>
-              <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+            <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
                 <Briefcase className="mr-1 h-4 w-4 sm:inline-block" /> Your Works
-              </Link>
-            </>
+            </Link>
           )}
           {isClient && user && (
             <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
@@ -185,7 +183,7 @@ export default function Navbar() {
                             setIsSuggestionsOpen(true);
                              if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
                         } else {
-                            setIsSuggestionsOpen(false); 
+                            setIsSuggestionsOpen(false);
                         }
                     }}
                     onFocus={() => {
@@ -199,14 +197,14 @@ export default function Navbar() {
                 <PopoverContent
                     className="w-[--radix-popover-trigger-width] p-0"
                     align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()} 
+                    onOpenAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
                         if (searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
                              setIsSuggestionsOpen(false);
                         }
                     }}
                 >
-                  <Command shouldFilter={false}> 
+                  <Command shouldFilter={false}>
                     <CommandList>
                       {isLoadingSuggestions && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -221,11 +219,11 @@ export default function Navbar() {
                           {filteredSuggestions.map((gig) => (
                             <CommandItem
                               key={gig.id}
-                              value={gig.title} 
+                              value={gig.title}
                               onSelect={() => {
                                 router.push(`/gigs/${gig.id}`);
                                 setIsSuggestionsOpen(false);
-                                setSearchTerm(''); 
+                                setSearchTerm('');
                               }}
                               className="cursor-pointer"
                             >
@@ -237,10 +235,10 @@ export default function Navbar() {
                       )}
                        <CommandGroup>
                         <CommandItem
-                            value={`search_all_for_${searchTerm}`} 
+                            value={`search_all_for_${searchTerm}`}
                             onSelect={() => {
-                                handleSearchSubmit(); 
-                                setIsSuggestionsOpen(false); 
+                                handleSearchSubmit();
+                                setIsSuggestionsOpen(false);
                             }}
                             className="cursor-pointer italic"
                             disabled={!searchTerm.trim()}
@@ -298,9 +296,9 @@ export default function Navbar() {
                     {role === 'student' && (
                       <>
                         <DropdownMenuItem asChild>
-                          <Link href="/student/profile"> {/* Changed from dashboard */}
-                            <LayoutDashboard className="mr-2 h-4 w-4" />
-                            <span>My Hub</span> {/* Renamed from Dashboard */}
+                          <Link href="/student/profile">
+                            <UserIcon className="mr-2 h-4 w-4" />
+                            <span>My Profile</span>
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
@@ -329,6 +327,12 @@ export default function Navbar() {
                           <Link href="/client/dashboard">
                             <LayoutDashboard className="mr-2 h-4 w-4" />
                             <span>Dashboard</span>
+                          </Link>
+                        </DropdownMenuItem>
+                         <DropdownMenuItem asChild>
+                          <Link href="/client/profile/edit">
+                            <Edit3 className="mr-2 h-4 w-4" />
+                            <span>Edit Profile</span>
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
@@ -409,11 +413,10 @@ export default function Navbar() {
               </>
             )
           ) : (
-            <div style={{ width: '7rem' }} /> 
+            <div style={{ width: '7rem' }} />
           )}
         </div>
       </div>
     </header>
   );
 }
-    
