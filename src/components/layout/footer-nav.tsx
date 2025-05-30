@@ -11,26 +11,31 @@ import { Badge } from '@/components/ui/badge';
 interface NavItemProps {
   href: string;
   icon: React.ElementType;
-  label: string;
+  label: string; // Label is kept for aria-label or title, but not displayed
   isActive: boolean;
   unreadCount?: number;
 }
 
 const NavItem: React.FC<NavItemProps> = ({ href, icon: Icon, label, isActive, unreadCount }) => {
   return (
-    <Link href={href} className={cn(
-      "flex flex-col items-center justify-center flex-1 py-2 px-1 text-xs",
-      isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
-    )}>
+    <Link 
+      href={href} 
+      className={cn(
+        "flex flex-col items-center justify-center flex-1 py-2 px-1 text-xs h-full", // Ensure full height for centering
+        isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+      )}
+      aria-label={label}
+      title={label}
+    >
       <div className="relative">
-        <Icon className="h-5 w-5 mb-0.5" />
+        <Icon className="h-6 w-6" /> {/* Slightly larger icon */}
         {unreadCount && unreadCount > 0 && (
           <Badge variant="destructive" className="absolute -top-1 -right-2 text-[9px] h-4 w-4 p-0 flex items-center justify-center">
             {unreadCount > 9 ? '9+' : unreadCount}
           </Badge>
         )}
       </div>
-      <span className={cn("truncate", isActive && "font-semibold")}>{label}</span>
+      {/* Removed the span for the label text display */}
     </Link>
   );
 };
@@ -39,14 +44,14 @@ export default function FooterNav() {
   const { user, role, totalUnreadChats } = useFirebase();
   const pathname = usePathname();
 
-  if (!user) { // Don't show footer nav if user is not logged in for now
+  if (!user) { 
     return null;
   }
 
   const getDashboardUrl = () => {
     if (role === 'student') return '/student/profile';
     if (role === 'client') return '/client/dashboard';
-    return '/'; // Fallback, though ideally user has a role
+    return '/'; 
   };
 
   const navItems = [
@@ -55,7 +60,7 @@ export default function FooterNav() {
     role === 'student' && { href: "/student/works", icon: Briefcase, label: "Works", show: true },
     { href: "/chat", icon: MessageSquare, label: "Messages", show: !!user, unreadCount: totalUnreadChats },
     { href: getDashboardUrl(), icon: UserIcon, label: role === 'student' ? "Profile" : "Dashboard", show: !!user },
-  ].filter(Boolean) as NavItemProps[]; // Filter out false values from conditional rendering
+  ].filter(Boolean) as unknown as NavItemProps[]; // Use unknown for filtering boolean out
 
   return (
     <footer className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-md z-40">
