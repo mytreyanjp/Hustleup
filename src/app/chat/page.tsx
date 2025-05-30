@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon } from 'lucide-react'; // Renamed Share to ShareIcon
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -538,12 +538,18 @@ export default function ChatPage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading && typeof window !== 'undefined') {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
+  useEffect(() => {
+    if (!authLoading && !user && typeof window !== 'undefined') {
+      router.push('/auth/login?redirect=/chat');
+    }
+  }, [authLoading, user, router]);
+
+
   if (!user) {
-    // Handled by useEffect redirection
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
@@ -600,10 +606,12 @@ export default function ChatPage() {
                   {isUnread && (
                     <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary rounded-full"></span>
                   )}
-                  <Avatar className="h-10 w-10 ml-2">
-                    <AvatarImage src={partnerProfilePic} alt={chatPartnerUsername} />
-                    <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
-                  </Avatar>
+                  <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}>
+                    <Avatar className="h-10 w-10 ml-2">
+                        <AvatarImage src={partnerProfilePic} alt={chatPartnerUsername} />
+                        <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                  </Link>
                   <div className="flex-grow overflow-hidden">
                     {otherParticipantId ? (
                        <Link href={`/profile/${otherParticipantId}`} passHref
@@ -705,7 +713,7 @@ export default function ChatPage() {
                     >
                        {msg.isDetailShareRequest && (
                          <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
-                            <p className="font-semibold break-words">{msg.text || "Contact details request"}</p>
+                            <p className="font-semibold break-words whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
                          </div>
                        )}
                        {msg.isDetailsShared && msg.sharedContactInfo && (
@@ -723,7 +731,7 @@ export default function ChatPage() {
                                    <span className="break-all">{msg.sharedContactInfo.phone}</span>
                                 </div>
                             )}
-                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-words">{msg.text}</p>}
+                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-words whitespace-pre-wrap">{msg.text}</p>}
                         </div>
                        )}
 
@@ -732,11 +740,12 @@ export default function ChatPage() {
                               className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
                           <div className="flex items-center gap-2 mb-1">
                             <Link2 className={`h-4 w-4 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                            <h4 className={`font-semibold text-sm ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
+                            <h4 className={`font-semibold text-sm break-words ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
                           </div>
                           <p className={`text-xs ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground underline' : 'text-primary hover:underline'}`}>
                             View Gig Details
                           </p>
+                           {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-words whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
                         </Link>
                       )}
                       {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>}
@@ -749,7 +758,7 @@ export default function ChatPage() {
                         <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className={`mt-1 block ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground' : 'text-accent-foreground hover:text-accent-foreground/80'} underline`}>
                           <div className="flex items-center gap-2 p-2 rounded-md bg-black/10 dark:bg-white/10">
                             <FileIcon className="h-5 w-5" />
-                            <span className="text-sm">View Attachment ({msg.mediaType || 'file'})</span>
+                            <span className="text-sm break-all">View Attachment ({msg.mediaType || 'file'})</span>
                           </div>
                         </a>
                       )}
