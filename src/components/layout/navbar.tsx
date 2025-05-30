@@ -51,11 +51,12 @@ export default function Navbar() {
     try {
       const gigsCollectionRef = collection(db, 'gigs');
       // Query for open gigs, ordered by creation date, limit to 5 for suggestions
+      // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(5) // Fetch a few for initial suggestions
+        limit(5) 
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -78,11 +79,10 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    // Simplified logic: fetch initial suggestions if popover opens and no suggestions exist
-    if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
+    if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions && searchTerm.trim() === '') {
       fetchInitialSuggestions();
     }
-  }, [isSuggestionsOpen, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions]);
+  }, [isSuggestionsOpen, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions, searchTerm]);
 
 
   const handleSignOut = async () => {
@@ -109,22 +109,22 @@ export default function Navbar() {
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
       setIsSuggestionsOpen(false);
-      setSearchTerm('');
+      // setSearchTerm(''); // Keep search term if user wants to refine from search page
     }
   };
 
-  const filteredSuggestions = searchTerm.trim() === '' 
-    ? suggestions // Show initial fetched suggestions if search is empty
+  const filteredSuggestions = searchTerm.trim() === '' && suggestions.length > 0
+    ? suggestions // Show initial fetched suggestions if search is empty and suggestions exist
     : suggestions.filter(suggestion =>
         suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
-      ).slice(0,5); // Limit to 5 filtered suggestions
+      ).slice(0,5); 
 
   const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : '/';
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center pl-4"> {/* Added pl-4 for left margin */}
+      <div className="container flex h-16 items-center pl-4"> 
         <div className="mr-4 flex items-center space-x-2 cursor-default">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -132,10 +132,9 @@ export default function Navbar() {
           <span className="font-bold hidden sm:inline-block">HustleUp</span>
         </div>
 
-        {/* Main navigation links - hidden on mobile, shown on md and up */}
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-            <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
+            <Compass className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
              {isClient && role === 'student' ? 'Explore' : 'Gigs'}
           </Link>
 
@@ -155,7 +154,7 @@ export default function Navbar() {
               <MessageSquare className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
               <span className="hidden lg:inline-block">Messages</span>
               {totalUnreadChats > 0 && (
-                <span className="absolute top-0 right-0 flex h-4 w-4 -translate-y-1/3 translate-x-1/3 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none">
+                <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px] -translate-y-1/3 translate-x-1/3 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] leading-none p-0">
                   {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
                 </span>
               )}
@@ -167,7 +166,7 @@ export default function Navbar() {
           {isClient && (
             <Popover open={isSuggestionsOpen} onOpenChange={(open) => {
               setIsSuggestionsOpen(open);
-              if (open && suggestions.length === 0 && !isLoadingSuggestions) {
+              if (open && suggestions.length === 0 && !isLoadingSuggestions && searchTerm.trim() === '') {
                 fetchInitialSuggestions();
               }
             }}>
@@ -181,17 +180,20 @@ export default function Navbar() {
                     className={cn("pl-8 h-9 w-full")}
                     value={searchTerm}
                     onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        if (e.target.value.trim() !== '') {
+                        const newSearchTerm = e.target.value;
+                        setSearchTerm(newSearchTerm);
+                        if (newSearchTerm.trim() !== '') {
                             setIsSuggestionsOpen(true);
                              if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
                         } else {
-                            setIsSuggestionsOpen(false);
+                            setIsSuggestionsOpen(false); 
                         }
                     }}
                     onFocus={() => {
                          setIsSuggestionsOpen(true);
-                         if (suggestions.length === 0 && !isLoadingSuggestions) fetchInitialSuggestions();
+                         if (suggestions.length === 0 && !isLoadingSuggestions && searchTerm.trim() === '') {
+                             fetchInitialSuggestions();
+                         }
                     }}
                   />
                 </form>
@@ -202,16 +204,17 @@ export default function Navbar() {
                     align="start"
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
-                        if (searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
-                             setIsSuggestionsOpen(false);
+                        if (searchInputRef.current && searchInputRef.current.contains(e.target as Node)) {
+                            return; 
                         }
+                        setIsSuggestionsOpen(false);
                     }}
                 >
                   <Command shouldFilter={false}>
                     <CommandList>
-                      {isLoadingSuggestions && (
+                      {isLoadingSuggestions && searchTerm.trim() === '' && (
                         <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center">
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading...
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading suggestions...
                         </div>
                       )}
                       {!isLoadingSuggestions && searchTerm.trim() !== '' && filteredSuggestions.length === 0 && (
@@ -346,7 +349,6 @@ export default function Navbar() {
                         </DropdownMenuItem>
                       </>
                     )}
-                    {/* Mobile specific dropdown items will be handled by FooterNav */}
                     <DropdownMenuItem asChild>
                       <Link href="/settings">
                         <Settings className="mr-2 h-4 w-4" />
@@ -381,7 +383,6 @@ export default function Navbar() {
               </>
             )
           ) : (
-            // Placeholder for SSR to avoid layout shifts when not client-side rendered yet
             <div style={{ width: '7rem' }} />
           )}
         </div>
