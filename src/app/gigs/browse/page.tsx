@@ -67,7 +67,7 @@ export default function BrowseGigsPage() {
         const gigsCollectionRef = collection(db, 'gigs');
         // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
         // Create it in Firebase console if missing.
-        // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoKCgZzdGF0dXMQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
+        // Example Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Cktwcm9qZWN0cy9ZT1VSX1BST0pFQ1RfSUQvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2dpZ3MvaW5kZXhlcy9fEAEaCgoGc3RhdHVzEAESDQoJY3JlYXRlZEF0EAJaDAoIX19uYW1lX18QAg
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -86,43 +86,45 @@ export default function BrowseGigsPage() {
 
           let followedGigsTemp: Gig[] = [];
           let skillBasedGigsTemp: Gig[] = [];
+          let otherGigsTemp: Gig[] = []; // Gigs not from followed clients and not matching student skills (if student has skills)
 
-          allOpenGigs = allOpenGigs.filter(gig => 
+          const unappliedGigs = allOpenGigs.filter(gig => 
             !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
           );
 
-          allOpenGigs.forEach(gig => {
+          unappliedGigs.forEach(gig => {
             if (followedClientIds.includes(gig.clientId)) {
               followedGigsTemp.push({ ...gig, isFromFollowedClient: true });
             } else {
               if (studentSkillsLower.length > 0) {
                 const gigSkillsLower = gig.requiredSkills.map(s => s.toLowerCase());
                 const hasMatchingSkill = studentSkillsLower.some(studentSkill => 
-                  gigSkillsLower.some(reqSkill => 
-                    studentSkill.includes(reqSkill) || reqSkill.includes(studentSkill) ||
-                    (studentSkill.split(/\s+/).filter(w=>w.length > 1).some(word => reqSkill.split(/\s+/).filter(w=>w.length > 1).includes(word)))
-                  )
+                  gigSkillsLower.some(reqSkill => {
+                    const studentSkillWords = studentSkill.split(/\s+/).filter(w => w.length > 1);
+                    const reqSkillWords = reqSkill.split(/\s+/).filter(w => w.length > 1);
+                    return studentSkill.includes(reqSkill) || reqSkill.includes(studentSkill) ||
+                           studentSkillWords.some(word => reqSkillWords.includes(word));
+                  })
                 );
                 if (hasMatchingSkill) {
                   skillBasedGigsTemp.push(gig);
+                } else {
+                  otherGigsTemp.push(gig); // Keep for potential display if no filters applied etc.
                 }
               } else {
-                // If student has no skills, all non-followed, unapplied gigs are potential matches
-                skillBasedGigsTemp.push(gig);
+                // If student has no skills, all non-followed, unapplied gigs are potential matches for the "other" category
+                otherGigsTemp.push(gig);
               }
             }
           });
           
-          // Combine, ensuring followed gigs are distinct and come first
-          const finalGigsSet = new Set([...followedGigsTemp.map(g => g.id), ...skillBasedGigsTemp.map(g => g.id)]);
-          let finalGigs = Array.from(finalGigsSet).map(id => {
-            const followedGig = followedGigsTemp.find(g => g.id === id);
-            if (followedGig) return followedGig;
-            return skillBasedGigsTemp.find(g => g.id === id)!;
-          });
-          setGigs(finalGigs);
+          // Combine: followed client gigs first, then skill-based, then others.
+          // The actual display filtering (user-selected filters) happens later in filteredAndSortedGigs.
+          // This `gigs` state is the base dataset for the page.
+          setGigs([...followedGigsTemp, ...skillBasedGigsTemp, ...otherGigsTemp]);
 
         } else {
+          // For anonymous users or clients, or students without profiles yet.
           setGigs(allOpenGigs.filter(gig => 
             !(currentUser && gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
           ));
@@ -166,10 +168,11 @@ export default function BrowseGigsPage() {
       });
     }
     
+    // Sort: followed client gigs first, then by creation date.
     processedGigs.sort((a, b) => {
       if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
       if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
-      return b.createdAt.toMillis() - a.createdAt.toMillis();
+      return b.createdAt.toMillis() - a.createdAt.toMillis(); // Newest first
     });
 
     return processedGigs;
@@ -218,14 +221,14 @@ export default function BrowseGigsPage() {
   return (
     <div
       className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] mt-[-2rem] mb-[-2rem] bg-cover bg-center bg-no-repeat bg-fixed"
-      style={{ backgroundImage: "url('https://picsum.photos/seed/modernoffice/1920/1080')" }}
+      style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
       data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="container mx-auto px-4 py-8 relative z-10 space-y-8">
-        <div className="flex flex-col sm:flex-row justify-between items-center text-center sm:text-left">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Explore Gigs</h1>
+      <div className="container mx-auto px-4 py-8 relative z-10">
+        <div className="flex flex-col sm:flex-row justify-between items-center text-center sm:text-left mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground pt-8 sm:pt-0">Explore Gigs</h1>
             <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
                 <PopoverTrigger asChild>
                     <Button variant="outline" className="mt-4 sm:mt-0">
