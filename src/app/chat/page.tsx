@@ -538,10 +538,6 @@ export default function ChatPage() {
     }
   };
 
-  if (authLoading && typeof window !== 'undefined') {
-    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
-
   useEffect(() => {
     if (!authLoading && !user && typeof window !== 'undefined') {
       router.push('/auth/login?redirect=/chat');
@@ -549,10 +545,11 @@ export default function ChatPage() {
   }, [authLoading, user, router]);
 
 
+  if (authLoading && typeof window !== 'undefined') {
+    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
   if (!user) {
-    // This check ensures the user is not null, which would cause a redirect in the useEffect above.
-    // If router.push hasn't completed, this can be briefly shown.
-    // Or, if useEffect doesn't run immediately on server (it doesn't), then this is the SSR fallback before hydration.
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
   
@@ -708,7 +705,7 @@ export default function ChatPage() {
                     className={`flex ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}
                   >
                     <div // This is the chat bubble
-                      className={`p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 ${ 
+                      className={`p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden ${ 
                         msg.senderId === user?.uid
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-secondary dark:bg-muted'
@@ -716,12 +713,12 @@ export default function ChatPage() {
                     >
                        {msg.isDetailShareRequest && (
                          <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
-                            <p className="font-semibold break-words whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
+                            <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
                          </div>
                        )}
                        {msg.isDetailsShared && msg.sharedContactInfo && (
                         <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
-                            <p className="text-xs font-medium mb-1 break-words">{msg.sharedContactInfo.note || "Contact Information:"}</p>
+                            <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
                             {msg.sharedContactInfo.email && (
                                 <div className="flex items-center gap-1.5 text-sm">
                                    <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
@@ -734,7 +731,7 @@ export default function ChatPage() {
                                    <span className="break-all">{msg.sharedContactInfo.phone}</span>
                                 </div>
                             )}
-                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-words whitespace-pre-wrap">{msg.text}</p>}
+                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
                         </div>
                        )}
 
@@ -743,15 +740,15 @@ export default function ChatPage() {
                               className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
                           <div className="flex items-center gap-2 mb-1">
                             <Link2 className={`h-4 w-4 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                            <h4 className={`font-semibold text-sm break-words ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
+                            <h4 className={`font-semibold text-sm break-all ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
                           </div>
                           <p className={`text-xs ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground underline' : 'text-primary hover:underline'}`}>
                             View Gig Details
                           </p>
-                           {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-words whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
+                           {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
                         </Link>
                       )}
-                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>}
+                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
                       {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
                         <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
                           <img src={msg.mediaUrl} alt="Uploaded media" className="max-w-xs max-h-64 object-contain rounded-md mt-1 cursor-pointer hover:opacity-80" data-ai-hint="chat image" />
