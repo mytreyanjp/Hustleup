@@ -3,10 +3,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Users, Briefcase, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Compass, Users, Briefcase, MessageSquare, User as UserIcon, PlusCircle } from 'lucide-react';
 import { useFirebase } from '@/context/firebase-context';
 import { cn } from '@/lib/utils';
-// Removed Badge import as we'll use a simple span for consistency with Navbar
 
 interface NavItemProps {
   href: string;
@@ -21,7 +20,7 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon: Icon, label, isActive, un
     <Link
       href={href}
       className={cn(
-        "flex items-center justify-center flex-1 py-2 px-1 h-full", // Removed flex-col
+        "flex items-center justify-center flex-1 py-2 px-1 h-full",
         isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
       )}
       aria-label={label}
@@ -29,7 +28,6 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon: Icon, label, isActive, un
     >
       <div className="relative inline-flex items-center justify-center">
         <Icon className="h-6 w-6" />
-        {/* Conditionally render the badge as a span if unreadCount > 0 */}
         {typeof unreadCount === 'number' && unreadCount > 0 && (
           <span
             className="absolute -top-1.5 -right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-none text-destructive-foreground"
@@ -56,24 +54,25 @@ export default function FooterNav() {
     return '/';
   };
 
-  const navItemsBase = [
-    { href: "/gigs/browse", icon: Compass, label: "Explore", show: true },
-    { href: "/chat", icon: MessageSquare, label: "Messages", show: !!user, unreadCount: totalUnreadChats },
-    { href: getDashboardUrl(), icon: UserIcon, label: role === 'student' ? "Profile" : "Dashboard", show: !!user },
-  ];
+  let generatedNavItems: Omit<NavItemProps, 'isActive'>[] = [];
 
-  let specificNavItems = [];
-  if (role === 'client') {
-    specificNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers", show: true });
-  } else if (role === 'student') {
-    specificNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works", show: true });
+  generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
+
+  if (role === 'student') {
+    generatedNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works" });
+  } else if (role === 'client') {
+    generatedNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers" });
+    generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
   }
-
-  const navItems = [
-    navItemsBase[0],
-    ...specificNavItems,
-    ...navItemsBase.slice(1)
-  ].filter(Boolean) as NavItemProps[];
+  
+  generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Messages", unreadCount: totalUnreadChats });
+  generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: role === 'student' ? "Profile" : "Dashboard" });
+  
+  const navItems = generatedNavItems.map(item => ({
+      ...item,
+      isActive: pathname === item.href,
+      show: true, // All generated items are shown if user exists
+  }));
 
 
   return (
@@ -86,7 +85,7 @@ export default function FooterNav() {
               href={item.href}
               icon={item.icon}
               label={item.label}
-              isActive={pathname === item.href}
+              isActive={item.isActive}
               unreadCount={item.unreadCount}
             />
           )
