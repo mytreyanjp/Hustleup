@@ -77,7 +77,7 @@ export default function BrowseGigsPage() {
         let allOpenGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          isFromFollowedClient: false, // Default to false
+          isFromFollowedClient: false, 
         })) as Gig[];
 
         if (!authLoading && currentUser && role === 'student' && userProfile) {
@@ -85,57 +85,44 @@ export default function BrowseGigsPage() {
           const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
 
           let followedGigsTemp: Gig[] = [];
-          let otherGigsTemp: Gig[] = [];
+          let skillBasedGigsTemp: Gig[] = [];
+
+          allOpenGigs = allOpenGigs.filter(gig => 
+            !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
+          );
 
           allOpenGigs.forEach(gig => {
-            if (gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid)) {
-              return; // Skip gigs already applied to
-            }
             if (followedClientIds.includes(gig.clientId)) {
               followedGigsTemp.push({ ...gig, isFromFollowedClient: true });
             } else {
-              otherGigsTemp.push(gig);
+              if (studentSkillsLower.length > 0) {
+                const gigSkillsLower = gig.requiredSkills.map(s => s.toLowerCase());
+                const hasMatchingSkill = studentSkillsLower.some(studentSkill => 
+                  gigSkillsLower.some(reqSkill => 
+                    studentSkill.includes(reqSkill) || reqSkill.includes(studentSkill) ||
+                    (studentSkill.split(/\s+/).filter(w=>w.length > 1).some(word => reqSkill.split(/\s+/).filter(w=>w.length > 1).includes(word)))
+                  )
+                );
+                if (hasMatchingSkill) {
+                  skillBasedGigsTemp.push(gig);
+                }
+              } else {
+                // If student has no skills, all non-followed, unapplied gigs are potential matches
+                skillBasedGigsTemp.push(gig);
+              }
             }
           });
           
-          // Skill-based filtering for non-followed gigs
-          let skillMatchedNonFollowedGigs: Gig[] = [];
-          if (studentSkillsLower.length > 0) {
-             skillMatchedNonFollowedGigs = otherGigsTemp.filter(gig =>
-              gig.requiredSkills.some(reqSkill => {
-                const reqSkillLower = reqSkill.toLowerCase();
-                // Check for substring match (covers cases like "Video Editing" vs "Editing")
-                if (studentSkillsLower.some(studentSkillLower => studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower))) {
-                  return true;
-                }
-                // Check for common significant word match (covers cases like "Video Editing" vs "Video Production")
-                const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1)); // Ignore single letter words
-                return studentSkillsLower.some(studentSkillLower => {
-                  const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
-                  for (const sword of studentSkillWords) {
-                    if (reqSkillWords.has(sword)) return true;
-                  }
-                  return false;
-                });
-              })
-            );
-          } else {
-            skillMatchedNonFollowedGigs = otherGigsTemp; // If student has no skills, show all non-followed, unapplied gigs
-          }
-
-          // Combine followed gigs (skills not mandatory for followed clients before filtering)
-          // with skill-matched non-followed gigs
-          let finalGigs = [
-            ...followedGigsTemp, 
-            ...skillMatchedNonFollowedGigs
-          ];
-          
-          // Remove duplicates by ID if any (e.g. if a followed gig also matched skills by chance)
-          finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
+          // Combine, ensuring followed gigs are distinct and come first
+          const finalGigsSet = new Set([...followedGigsTemp.map(g => g.id), ...skillBasedGigsTemp.map(g => g.id)]);
+          let finalGigs = Array.from(finalGigsSet).map(id => {
+            const followedGig = followedGigsTemp.find(g => g.id === id);
+            if (followedGig) return followedGig;
+            return skillBasedGigsTemp.find(g => g.id === id)!;
+          });
           setGigs(finalGigs);
 
         } else {
-           // For guests or non-students, just filter out already applied gigs if user is logged in (though less likely scenario)
           setGigs(allOpenGigs.filter(gig => 
             !(currentUser && gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
           ));
@@ -149,17 +136,16 @@ export default function BrowseGigsPage() {
       }
     };
 
-    if (!authLoading) { // Only fetch once auth state is resolved
+    if (!authLoading) { 
         fetchAndFilterGigs();
     } else {
-        setIsLoading(true); // Ensure loading is true while auth is resolving
+        setIsLoading(true); 
     }
-  }, [authLoading, currentUser, role, userProfile]); // Rerun if auth state or profile changes
+  }, [authLoading, currentUser, role, userProfile]);
 
   const filteredAndSortedGigs = useMemo(() => {
-    let processedGigs = [...gigs]; // Start with already contextually filtered gigs
+    let processedGigs = [...gigs]; 
 
-    // Apply user-selected skill filter
     if (selectedSkillsFilter.length > 0) {
       const filterSkillsLower = selectedSkillsFilter.map(s => s.toLowerCase());
       processedGigs = processedGigs.filter(gig => 
@@ -167,21 +153,19 @@ export default function BrowseGigsPage() {
       );
     }
 
-    // Apply user-selected budget filter
     if (selectedBudgetFilter !== "any") {
       const [minStr, maxStr] = selectedBudgetFilter.split('-');
       const min = parseInt(minStr, 10);
       const max = maxStr ? parseInt(maxStr, 10) : undefined;
       
       processedGigs = processedGigs.filter(gig => {
-        if (max === undefined) { // For "> X" case (e.g., "50000-")
+        if (max === undefined) { 
           return gig.budget >= min;
         }
         return gig.budget >= min && gig.budget <= max;
       });
     }
     
-    // Sort: followed clients first, then by creation date
     processedGigs.sort((a, b) => {
       if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
       if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
@@ -210,7 +194,7 @@ export default function BrowseGigsPage() {
   const handleClearFilters = () => {
     setSelectedSkillsFilter([]);
     setSelectedBudgetFilter("any");
-    setIsFilterPopoverOpen(false); // Close popover after clearing
+    setIsFilterPopoverOpen(false); 
   };
 
   const pageIsLoading = authLoading || isLoading;
@@ -239,16 +223,16 @@ export default function BrowseGigsPage() {
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="container mx-auto px-4 relative z-10 space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-center pt-8">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-center text-foreground">Explore Gigs</h1>
+      <div className="container mx-auto px-4 py-8 relative z-10 space-y-8">
+        <div className="flex flex-col sm:flex-row justify-between items-center text-center sm:text-left">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Explore Gigs</h1>
             <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
                 <PopoverTrigger asChild>
                     <Button variant="outline" className="mt-4 sm:mt-0">
                         <FilterIcon className="mr-2 h-4 w-4" /> Filter Gigs
                     </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-80 p-4" align="end">
+                <PopoverContent className="w-[calc(100vw-2rem)] max-w-sm p-4" align="end">
                     <div className="space-y-4">
                         <div>
                             <label htmlFor="skill-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>

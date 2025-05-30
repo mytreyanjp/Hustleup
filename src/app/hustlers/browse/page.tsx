@@ -74,7 +74,7 @@ export default function BrowseHustlersPage() {
 
   const handleClearFilters = () => {
     setSelectedSkillsFilter([]);
-    setIsFilterPopoverOpen(false); // Close popover after clearing
+    setIsFilterPopoverOpen(false); 
   };
 
   if (isLoading) {
@@ -106,7 +106,7 @@ export default function BrowseHustlersPage() {
                     <FilterIcon className="mr-2 h-4 w-4" /> Filter Hustlers
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-4" align="end">
+            <PopoverContent className="w-[calc(100vw-2rem)] max-w-sm p-4" align="end">
                 <div className="space-y-4">
                     <div>
                         <label htmlFor="skill-filter-hustlers" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
@@ -118,11 +118,6 @@ export default function BrowseHustlersPage() {
                             className="w-full"
                         />
                     </div>
-                    {/* Placeholder for future Rating filter */}
-                    {/* <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-1">Rating</label>
-                        <p className="text-xs text-muted-foreground italic">(Rating filter coming soon)</p>
-                    </div> */}
                     <Separator />
                     <Button onClick={handleClearFilters} variant="ghost" className="w-full justify-start text-sm">
                         <XIcon className="mr-2 h-4 w-4" /> Clear All Filters
