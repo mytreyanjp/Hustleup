@@ -1,21 +1,24 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Users, Search, ArrowRight } from 'lucide-react';
+import { Loader2, Users, Search, ArrowRight, Filter, X as XIcon } from 'lucide-react';
 import Link from 'next/link';
 import type { UserProfile } from '@/context/firebase-context'; 
+import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
+import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 
 export default function BrowseHustlersPage() {
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSkillsFilter, setSelectedSkillsFilter] = useState<Skill[]>([]);
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -28,11 +31,8 @@ export default function BrowseHustlersPage() {
       }
       try {
         const usersRef = collection(db, 'users');
-        // Query for users where role is 'student' and order by username
         // IMPORTANT: This query requires a composite index in Firestore:
         // Collection: 'users', Fields: 'role' (Ascending), 'username' (Ascending)
-        // You should have received a console error with a link to create this if it was missing.
-        // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvdXNlcnMvaW5kZXhlcy9fEAEaCAoEcm9sZRABGgwKCHVzZXJuYW1lEAEaDAoIX19uYW1lX18QAQ
         const q = query(usersRef, where('role', '==', 'student'), orderBy('username', 'asc'));
         const querySnapshot = await getDocs(q);
 
@@ -52,10 +52,24 @@ export default function BrowseHustlersPage() {
     fetchStudents();
   }, []);
 
+  const filteredStudents = useMemo(() => {
+    if (selectedSkillsFilter.length === 0) {
+      return students;
+    }
+    const filterSkillsLower = selectedSkillsFilter.map(s => s.toLowerCase());
+    return students.filter(student =>
+      student.skills && student.skills.some(skill => filterSkillsLower.includes(skill.toLowerCase()))
+    );
+  }, [students, selectedSkillsFilter]);
+
   const getInitials = (email?: string | null, username?: string | null) => {
     if (username && username.trim() !== '') return username.substring(0, 2).toUpperCase();
     if (email) return email.substring(0, 2).toUpperCase();
     return '??';
+  };
+
+  const handleClearFilters = () => {
+    setSelectedSkillsFilter([]);
   };
 
   if (isLoading) {
@@ -82,19 +96,41 @@ export default function BrowseHustlersPage() {
         <p className="text-muted-foreground text-sm sm:text-base">Discover talented students ready for your next project.</p>
       </div>
 
-      {students.length === 0 ? (
+      {/* Filters Section */}
+      <Card className="my-6 p-4 glass-card">
+        <CardHeader className="p-2 pb-4">
+          <CardTitle className="text-lg flex items-center gap-2"><Filter className="h-5 w-5" /> Filter Hustlers</CardTitle>
+        </CardHeader>
+        <CardContent className="p-2 space-y-4 md:space-y-0 md:flex md:flex-row md:gap-4 md:items-end">
+          <div className="flex-1 min-w-0">
+            <label htmlFor="skill-filter-hustlers" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
+            <MultiSelectSkills
+              options={PREDEFINED_SKILLS}
+              selected={selectedSkillsFilter}
+              onChange={setSelectedSkillsFilter}
+              placeholder="Filter by skills..."
+              className="w-full"
+            />
+          </div>
+          <Button onClick={handleClearFilters} variant="outline" className="w-full md:w-auto">
+            <XIcon className="mr-2 h-4 w-4" /> Clear Filters
+          </Button>
+        </CardContent>
+      </Card>
+
+      {filteredStudents.length === 0 ? (
         <Card className="glass-card text-center py-10">
           <CardHeader className="p-4 sm:p-6">
             <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
             <CardTitle>No Students Found</CardTitle>
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0">
-            <p className="text-muted-foreground">No student profiles are available at the moment. Check back later!</p>
+            <p className="text-muted-foreground">No student profiles match your current filters. Try broadening your search!</p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {students.map((student) => (
+          {filteredStudents.map((student) => (
             <Card key={student.uid} className="glass-card flex flex-col">
               <CardHeader className="items-center text-center p-4 sm:p-6">
                 <Avatar className="h-20 w-20 sm:h-24 sm:w-24 mb-3">
@@ -141,3 +177,4 @@ export default function BrowseHustlersPage() {
   );
 }
 
+    

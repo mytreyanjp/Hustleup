@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
@@ -9,10 +9,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Search, UserCircle, Star } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Search, UserCircle, Star, Filter, X as XIcon } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import type { Skill } from '@/lib/constants';
+import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
+import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Gig {
   id: string;
@@ -32,11 +34,22 @@ interface Gig {
   isFromFollowedClient?: boolean;
 }
 
+const budgetRanges = [
+  { label: "Any Budget", value: "any" },
+  { label: "< ₹5,000", value: "0-5000" },
+  { label: "₹5,000 - ₹20,000", value: "5000-20000" },
+  { label: "₹20,000 - ₹50,000", value: "20000-50000" },
+  { label: "> ₹50,000", value: "50000-" },
+];
+
 export default function BrowseGigsPage() {
   const { user: currentUser, userProfile, loading: authLoading, role } = useFirebase();
   const [gigs, setGigs] = useState<Gig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [selectedSkillsFilter, setSelectedSkillsFilter] = useState<Skill[]>([]);
+  const [selectedBudgetFilter, setSelectedBudgetFilter] = useState<string>("any");
 
   useEffect(() => {
     const fetchAndFilterGigs = async () => {
@@ -72,7 +85,6 @@ export default function BrowseGigsPage() {
           let otherGigsTemp: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
-            // Filter out gigs already applied to by the student
             if (gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid)) {
               return; 
             }
@@ -88,11 +100,11 @@ export default function BrowseGigsPage() {
             skillMatchedNonFollowedGigs = otherGigsTemp.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
-                 // Check for substring match (covers "JS" vs "JavaScript", "Edit" vs "Video Editing")
+                // Check for substring match
                 if (studentSkillsLower.some(studentSkillLower => studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower))) {
                   return true;
                 }
-                // Check for common significant word match (ignoring single letter words)
+                // Check for common significant word match
                 const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
                 return studentSkillsLower.some(studentSkillLower => {
                   const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
@@ -106,23 +118,15 @@ export default function BrowseGigsPage() {
               })
             );
           } else {
-            // If student has no skills, they see all non-followed, non-applied-to gigs
             skillMatchedNonFollowedGigs = otherGigsTemp;
           }
           
           let finalGigs = [
-            ...gigsFromFollowedClients, // Gigs from followed clients (skills not mandatory)
-            ...skillMatchedNonFollowedGigs // Other gigs, matched by skills
+            ...gigsFromFollowedClients, // Gigs from followed clients (skills not mandatory for followed clients *before* filtering)
+            ...skillMatchedNonFollowedGigs
           ];
           
-          // Remove duplicates that might have occurred if a followed client's gig also matched skills
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
-
-          finalGigs.sort((a, b) => {
-            if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
-            if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
-            return b.createdAt.toMillis() - a.createdAt.toMillis();
-          });
           setGigs(finalGigs);
 
         } else {
@@ -144,33 +148,59 @@ export default function BrowseGigsPage() {
     } else {
         setIsLoading(true); 
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, currentUser, role, userProfile]);
+
+  const filteredAndSortedGigs = useMemo(() => {
+    let processedGigs = [...gigs];
+
+    // Apply skill filter
+    if (selectedSkillsFilter.length > 0) {
+      const filterSkillsLower = selectedSkillsFilter.map(s => s.toLowerCase());
+      processedGigs = processedGigs.filter(gig => 
+        gig.requiredSkills.some(reqSkill => filterSkillsLower.includes(reqSkill.toLowerCase()))
+      );
+    }
+
+    // Apply budget filter
+    if (selectedBudgetFilter !== "any") {
+      const [min, max] = selectedBudgetFilter.split('-').map(Number);
+      processedGigs = processedGigs.filter(gig => {
+        if (max === undefined) { // For "> X" case (e.g., "50000-")
+          return gig.budget >= min;
+        }
+        return gig.budget >= min && gig.budget <= max;
+      });
+    }
+    
+    // Sort: followed clients first, then by creation date
+    processedGigs.sort((a, b) => {
+      if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
+      if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
+      return b.createdAt.toMillis() - a.createdAt.toMillis();
+    });
+
+    return processedGigs;
+  }, [gigs, selectedSkillsFilter, selectedBudgetFilter]);
 
   const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
-    try {
-      return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
-    } catch (e) {
-      console.error("Error formatting date:", e);
-      return 'Invalid date';
-    }
+    return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
   };
 
    const formatDeadline = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
-    try {
-      return `Due on ${timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;
-    } catch (e) {
-      console.error("Error formatting deadline:", e);
-      return 'Invalid date';
-    }
+    return `Due on ${timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;
    };
    
   const getClientInitials = (displayName?: string, username?: string) => {
     const nameToUse = displayName || username;
     if (nameToUse) return nameToUse.substring(0, 2).toUpperCase();
     return 'C';
+  };
+
+  const handleClearFilters = () => {
+    setSelectedSkillsFilter([]);
+    setSelectedBudgetFilter("any");
   };
 
   const pageIsLoading = authLoading || isLoading;
@@ -199,39 +229,61 @@ export default function BrowseGigsPage() {
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="container mx-auto px-4 py-8 relative z-10 space-y-4">
+      <div className="container mx-auto px-4 py-8 relative z-10">
         <h1 className="text-3xl font-bold tracking-tight text-center text-foreground pt-8">Explore Gigs</h1>
         
-        {gigs.length === 0 && !pageIsLoading ? (
+        {/* Filters Section */}
+        <Card className="my-6 p-4 glass-card">
+          <CardHeader className="p-2 pb-4">
+            <CardTitle className="text-lg flex items-center gap-2"><Filter className="h-5 w-5" /> Filter Gigs</CardTitle>
+          </CardHeader>
+          <CardContent className="p-2 space-y-4 md:space-y-0 md:flex md:flex-row md:gap-4 md:items-end">
+            <div className="flex-1 min-w-0">
+              <label htmlFor="skill-filter" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
+              <MultiSelectSkills
+                options={PREDEFINED_SKILLS}
+                selected={selectedSkillsFilter}
+                onChange={setSelectedSkillsFilter}
+                placeholder="Filter by skills..."
+                className="w-full"
+              />
+            </div>
+            <div className="flex-1 min-w-0 md:max-w-xs">
+              <label htmlFor="budget-filter" className="block text-sm font-medium text-muted-foreground mb-1">Budget (INR)</label>
+              <Select value={selectedBudgetFilter} onValueChange={setSelectedBudgetFilter}>
+                <SelectTrigger id="budget-filter" className="w-full">
+                  <SelectValue placeholder="Select budget range" />
+                </SelectTrigger>
+                <SelectContent>
+                  {budgetRanges.map(range => (
+                    <SelectItem key={range.value} value={range.value}>
+                      {range.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleClearFilters} variant="outline" className="w-full md:w-auto">
+              <XIcon className="mr-2 h-4 w-4" /> Clear Filters
+            </Button>
+          </CardContent>
+        </Card>
+
+        {filteredAndSortedGigs.length === 0 && !pageIsLoading ? (
           <Card className="glass-card text-center py-10 max-w-lg mx-auto mt-4">
               <CardHeader className="p-4 sm:p-6">
                   <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <CardTitle>No Gigs Found</CardTitle>
               </CardHeader>
               <CardContent className="p-4 sm:p-6 pt-0">
-                  {currentUser && role === 'student' && (!userProfile?.skills || userProfile.skills.length === 0) ? (
-                      <>
-                          <p className="text-muted-foreground mb-4">
-                              Add skills to your profile to discover relevant freelance opportunities. Gigs are matched based on your skills.
-                          </p>
-                          <Button asChild>
-                              <Link href="/student/profile">Update Your Profile Skills</Link>
-                          </Button>
-                      </>
-                  ) : currentUser && role === 'student' ? (
-                       <p className="text-muted-foreground">
-                          No open gigs currently match your preferences or from clients you follow, or you've applied to all available matching gigs. Check back later or expand your skills!
-                      </p>
-                  ) : (
-                      <p className="text-muted-foreground">
-                          There are no open gigs at the moment. Please check back later!
-                      </p>
-                  )}
+                  <p className="text-muted-foreground">
+                     No open gigs match your current filters or skill preferences. Try adjusting your filters or check back later!
+                  </p>
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8">
-            {gigs.map((gig) => (
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3 px-0 pb-8"> {/* Removed px-4 here as container has it */}
+            {filteredAndSortedGigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader className="p-4 sm:p-6">
                   <div className="flex justify-between items-start">
@@ -285,4 +337,6 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
+    
+
     
