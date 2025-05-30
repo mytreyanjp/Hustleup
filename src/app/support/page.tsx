@@ -6,7 +6,7 @@ import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send } from 'lucide-react';
+import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/config/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
@@ -15,6 +15,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useRouter } from 'next/navigation'; // Import useRouter
 
 interface AnswerEntry {
   answerText: string;
@@ -36,6 +37,7 @@ export default function SupportPage() {
   const supportEmail = "promoflixindia@gmail.com";
   const { user, userProfile, loading: authLoading } = useFirebase();
   const { toast } = useToast();
+  const router = useRouter(); // Initialize router
 
   const [faqs, setFaqs] = useState<FAQEntry[]>([]);
   const [isLoadingFaqs, setIsLoadingFaqs] = useState(true);
@@ -112,7 +114,7 @@ export default function SupportPage() {
         answerText: newAnswer.trim(),
         answeredByUid: user.uid,
         answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Anonymous',
-        answeredAt: Timestamp.now(), // Use client-generated timestamp
+        answeredAt: Timestamp.now(), 
       };
 
       const updatedAnswers = [...existingAnswers, newAnswerObject];
@@ -147,6 +149,9 @@ export default function SupportPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-8">
+      <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2 self-start">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+      </Button>
       <div className="text-center">
         <HelpCircle className="mx-auto h-16 w-16 text-primary mb-4" />
         <h1 className="text-3xl font-bold tracking-tight">Support & Community FAQs</h1>
@@ -279,12 +284,6 @@ export default function SupportPage() {
           </p>
         </CardContent>
       </Card>
-
-      <div className="text-center">
-        <Button variant="outline" asChild>
-          <Link href="/">Back to Home</Link>
-        </Button>
-      </div>
     </div>
   );
 }

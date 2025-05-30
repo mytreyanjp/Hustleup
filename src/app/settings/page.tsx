@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { sendPasswordResetEmail, deleteUser as deleteFirebaseAuthUser } from 'firebase/auth';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
@@ -95,7 +95,12 @@ export default function SettingsPage() {
       console.log("User document deleted from Firestore.");
 
       // 2. Delete Firebase Auth user
-      await deleteFirebaseAuthUser(auth.currentUser!); // auth.currentUser should be the same as user from context
+      if (auth.currentUser) { // Ensure currentUser is available
+        await deleteFirebaseAuthUser(auth.currentUser); 
+      } else {
+        throw new Error("Current user not available in Firebase Auth for deletion.");
+      }
+      
 
       toast({
         title: 'Account Deleted Successfully',
@@ -124,6 +129,9 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto py-8">
+       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-6 self-start">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+       </Button>
        <h1 className="text-3xl font-bold tracking-tight mb-6">Account Settings</h1>
 
        <Card className="glass-card">

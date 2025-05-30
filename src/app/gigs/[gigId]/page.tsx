@@ -231,13 +231,12 @@ export default function GigDetailPage() {
    }
 
    const isClientOwner = user && role === 'client' && user.uid === gig.clientId;
-   // Display company name if available and it's a client, otherwise fallback to clientUsername or 'Client'
    const clientDisplayName = clientProfileDetails?.companyName || clientProfileDetails?.username || gig.clientUsername || 'Client';
 
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6">
-       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-4">
+       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
        </Button>
 

@@ -116,7 +116,8 @@ export default function PublicProfilePage() {
               setIsLoadingClientGigs(true);
               // IMPORTANT: This query likely requires a composite index on 'gigs':
               // clientId (Ascending), status (Ascending), createdAt (Descending)
-              // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoMCghjbGllbnRJZBABGgoKBnN0YXR1cxABGg0KCWNyZWF0ZWRBdBACGgwKCF9fbmFtZV9fEAI
+              // Example Firestore index creation link (adjust project ID if needed):
+              // https://console.firebase.google.com/project/YOUR_PROJECT_ID/firestore/indexes/composite/build?collectionId=gigs&field[0].fieldPath=clientId&field[0].order=ASCENDING&field[1].fieldPath=status&field[1].order=ASCENDING&field[2].fieldPath=createdAt&field[2].order=DESCENDING
               const clientGigsQuery = query(
                 collection(db, 'gigs'),
                 where('clientId', '==', userId),
@@ -190,9 +191,12 @@ export default function PublicProfilePage() {
         setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
       }
       if (refreshUserProfile) await refreshUserProfile(); 
-    } catch (err: any) {
+    } catch (err: any)
+       {
       console.error("Error following/unfollowing user:", err);
-      toast({ title: "Error", description: `Could not complete action: ${err.message}`, variant: "destructive" });
+      // Note: Using Firestore Cloud Function for `followersCount` is recommended for production
+      // to ensure atomicity and prevent potential race conditions or direct client manipulation.
+      toast({ title: "Error", description: `Could not complete action: ${err.message}. For production, consider Cloud Functions for counter updates.`, variant: "destructive" });
     } finally {
       setIsFollowProcessing(false);
     }
