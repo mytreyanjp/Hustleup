@@ -9,12 +9,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Search, UserCircle, Star, Filter, X as XIcon } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Star, Filter as FilterIcon, X as XIcon } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from '@/components/ui/separator';
 
 interface Gig {
   id: string;
@@ -50,6 +52,7 @@ export default function BrowseGigsPage() {
 
   const [selectedSkillsFilter, setSelectedSkillsFilter] = useState<Skill[]>([]);
   const [selectedBudgetFilter, setSelectedBudgetFilter] = useState<string>("any");
+  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
 
   useEffect(() => {
     const fetchAndFilterGigs = async () => {
@@ -74,62 +77,65 @@ export default function BrowseGigsPage() {
         let allOpenGigs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          isFromFollowedClient: false,
+          isFromFollowedClient: false, // Default to false
         })) as Gig[];
 
         if (!authLoading && currentUser && role === 'student' && userProfile) {
           const followedClientIds = userProfile.following || [];
           const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
 
-          let gigsFromFollowedClients: Gig[] = [];
+          let followedGigsTemp: Gig[] = [];
           let otherGigsTemp: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
             if (gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid)) {
-              return; 
+              return; // Skip gigs already applied to
             }
             if (followedClientIds.includes(gig.clientId)) {
-              gigsFromFollowedClients.push({ ...gig, isFromFollowedClient: true });
+              followedGigsTemp.push({ ...gig, isFromFollowedClient: true });
             } else {
               otherGigsTemp.push(gig);
             }
           });
           
+          // Skill-based filtering for non-followed gigs
           let skillMatchedNonFollowedGigs: Gig[] = [];
           if (studentSkillsLower.length > 0) {
-            skillMatchedNonFollowedGigs = otherGigsTemp.filter(gig =>
+             skillMatchedNonFollowedGigs = otherGigsTemp.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
-                // Check for substring match
+                // Check for substring match (covers cases like "Video Editing" vs "Editing")
                 if (studentSkillsLower.some(studentSkillLower => studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower))) {
                   return true;
                 }
-                // Check for common significant word match
-                const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1));
+                // Check for common significant word match (covers cases like "Video Editing" vs "Video Production")
+                const reqSkillWords = new Set(reqSkillLower.split(/\s+/).filter(w => w.length > 1)); // Ignore single letter words
                 return studentSkillsLower.some(studentSkillLower => {
                   const studentSkillWords = new Set(studentSkillLower.split(/\s+/).filter(w => w.length > 1));
                   for (const sword of studentSkillWords) {
-                    if (reqSkillWords.has(sword)) {
-                      return true;
-                    }
+                    if (reqSkillWords.has(sword)) return true;
                   }
                   return false;
                 });
               })
             );
           } else {
-            skillMatchedNonFollowedGigs = otherGigsTemp;
+            skillMatchedNonFollowedGigs = otherGigsTemp; // If student has no skills, show all non-followed, unapplied gigs
           }
-          
+
+          // Combine followed gigs (skills not mandatory for followed clients before filtering)
+          // with skill-matched non-followed gigs
           let finalGigs = [
-            ...gigsFromFollowedClients, // Gigs from followed clients (skills not mandatory for followed clients *before* filtering)
+            ...followedGigsTemp, 
             ...skillMatchedNonFollowedGigs
           ];
           
+          // Remove duplicates by ID if any (e.g. if a followed gig also matched skills by chance)
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
           setGigs(finalGigs);
 
         } else {
+           // For guests or non-students, just filter out already applied gigs if user is logged in (though less likely scenario)
           setGigs(allOpenGigs.filter(gig => 
             !(currentUser && gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
           ));
@@ -143,17 +149,17 @@ export default function BrowseGigsPage() {
       }
     };
 
-    if (!authLoading) {
+    if (!authLoading) { // Only fetch once auth state is resolved
         fetchAndFilterGigs();
     } else {
-        setIsLoading(true); 
+        setIsLoading(true); // Ensure loading is true while auth is resolving
     }
-  }, [authLoading, currentUser, role, userProfile]);
+  }, [authLoading, currentUser, role, userProfile]); // Rerun if auth state or profile changes
 
   const filteredAndSortedGigs = useMemo(() => {
-    let processedGigs = [...gigs];
+    let processedGigs = [...gigs]; // Start with already contextually filtered gigs
 
-    // Apply skill filter
+    // Apply user-selected skill filter
     if (selectedSkillsFilter.length > 0) {
       const filterSkillsLower = selectedSkillsFilter.map(s => s.toLowerCase());
       processedGigs = processedGigs.filter(gig => 
@@ -161,9 +167,12 @@ export default function BrowseGigsPage() {
       );
     }
 
-    // Apply budget filter
+    // Apply user-selected budget filter
     if (selectedBudgetFilter !== "any") {
-      const [min, max] = selectedBudgetFilter.split('-').map(Number);
+      const [minStr, maxStr] = selectedBudgetFilter.split('-');
+      const min = parseInt(minStr, 10);
+      const max = maxStr ? parseInt(maxStr, 10) : undefined;
+      
       processedGigs = processedGigs.filter(gig => {
         if (max === undefined) { // For "> X" case (e.g., "50000-")
           return gig.budget >= min;
@@ -201,6 +210,7 @@ export default function BrowseGigsPage() {
   const handleClearFilters = () => {
     setSelectedSkillsFilter([]);
     setSelectedBudgetFilter("any");
+    setIsFilterPopoverOpen(false); // Close popover after clearing
   };
 
   const pageIsLoading = authLoading || isLoading;
@@ -229,50 +239,55 @@ export default function BrowseGigsPage() {
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       
-      <div className="container mx-auto px-4 py-8 relative z-10">
-        <h1 className="text-3xl font-bold tracking-tight text-center text-foreground pt-8">Explore Gigs</h1>
+      <div className="container mx-auto px-4 relative z-10 space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-center pt-8">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-center text-foreground">Explore Gigs</h1>
+            <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
+                <PopoverTrigger asChild>
+                    <Button variant="outline" className="mt-4 sm:mt-0">
+                        <FilterIcon className="mr-2 h-4 w-4" /> Filter Gigs
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-4" align="end">
+                    <div className="space-y-4">
+                        <div>
+                            <label htmlFor="skill-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
+                            <MultiSelectSkills
+                                options={PREDEFINED_SKILLS}
+                                selected={selectedSkillsFilter}
+                                onChange={setSelectedSkillsFilter}
+                                placeholder="Filter by skills..."
+                                className="w-full"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="budget-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Budget (INR)</label>
+                            <Select value={selectedBudgetFilter} onValueChange={setSelectedBudgetFilter}>
+                                <SelectTrigger id="budget-filter-gigs" className="w-full">
+                                <SelectValue placeholder="Select budget range" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                {budgetRanges.map(range => (
+                                    <SelectItem key={range.value} value={range.value}>
+                                    {range.label}
+                                    </SelectItem>
+                                ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Separator />
+                        <Button onClick={handleClearFilters} variant="ghost" className="w-full justify-start text-sm">
+                            <XIcon className="mr-2 h-4 w-4" /> Clear All Filters
+                        </Button>
+                    </div>
+                </PopoverContent>
+            </Popover>
+        </div>
         
-        {/* Filters Section */}
-        <Card className="my-6 p-4 glass-card">
-          <CardHeader className="p-2 pb-4">
-            <CardTitle className="text-lg flex items-center gap-2"><Filter className="h-5 w-5" /> Filter Gigs</CardTitle>
-          </CardHeader>
-          <CardContent className="p-2 space-y-4 md:space-y-0 md:flex md:flex-row md:gap-4 md:items-end">
-            <div className="flex-1 min-w-0">
-              <label htmlFor="skill-filter" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
-              <MultiSelectSkills
-                options={PREDEFINED_SKILLS}
-                selected={selectedSkillsFilter}
-                onChange={setSelectedSkillsFilter}
-                placeholder="Filter by skills..."
-                className="w-full"
-              />
-            </div>
-            <div className="flex-1 min-w-0 md:max-w-xs">
-              <label htmlFor="budget-filter" className="block text-sm font-medium text-muted-foreground mb-1">Budget (INR)</label>
-              <Select value={selectedBudgetFilter} onValueChange={setSelectedBudgetFilter}>
-                <SelectTrigger id="budget-filter" className="w-full">
-                  <SelectValue placeholder="Select budget range" />
-                </SelectTrigger>
-                <SelectContent>
-                  {budgetRanges.map(range => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={handleClearFilters} variant="outline" className="w-full md:w-auto">
-              <XIcon className="mr-2 h-4 w-4" /> Clear Filters
-            </Button>
-          </CardContent>
-        </Card>
-
         {filteredAndSortedGigs.length === 0 && !pageIsLoading ? (
           <Card className="glass-card text-center py-10 max-w-lg mx-auto mt-4">
               <CardHeader className="p-4 sm:p-6">
-                  <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <FilterIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <CardTitle>No Gigs Found</CardTitle>
               </CardHeader>
               <CardContent className="p-4 sm:p-6 pt-0">
@@ -282,7 +297,7 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3 px-0 pb-8"> {/* Removed px-4 here as container has it */}
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3 pb-8">
             {filteredAndSortedGigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader className="p-4 sm:p-6">
@@ -337,6 +352,4 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
-    
-
     

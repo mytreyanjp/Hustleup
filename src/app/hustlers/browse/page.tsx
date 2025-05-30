@@ -8,17 +8,20 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Users, Search, ArrowRight, Filter, X as XIcon } from 'lucide-react';
+import { Loader2, Users, Search, ArrowRight, Filter as FilterIcon, X as XIcon } from 'lucide-react';
 import Link from 'next/link';
 import type { UserProfile } from '@/context/firebase-context'; 
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from '@/components/ui/separator';
 
 export default function BrowseHustlersPage() {
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSkillsFilter, setSelectedSkillsFilter] = useState<Skill[]>([]);
+  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -33,6 +36,7 @@ export default function BrowseHustlersPage() {
         const usersRef = collection(db, 'users');
         // IMPORTANT: This query requires a composite index in Firestore:
         // Collection: 'users', Fields: 'role' (Ascending), 'username' (Ascending)
+        // Create it in your Firebase console if it's missing.
         const q = query(usersRef, where('role', '==', 'student'), orderBy('username', 'asc'));
         const querySnapshot = await getDocs(q);
 
@@ -70,6 +74,7 @@ export default function BrowseHustlersPage() {
 
   const handleClearFilters = () => {
     setSelectedSkillsFilter([]);
+    setIsFilterPopoverOpen(false); // Close popover after clearing
   };
 
   if (isLoading) {
@@ -89,34 +94,43 @@ export default function BrowseHustlersPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
-      <div className="text-center">
-        <Users className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-primary mb-2" />
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Browse Hustlers</h1>
-        <p className="text-muted-foreground text-sm sm:text-base">Discover talented students ready for your next project.</p>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-center text-center sm:text-left">
+        <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Browse Hustlers</h1>
+            <p className="text-muted-foreground text-sm sm:text-base">Discover talented students ready for your next project.</p>
+        </div>
+        <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" className="mt-4 sm:mt-0">
+                    <FilterIcon className="mr-2 h-4 w-4" /> Filter Hustlers
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-4" align="end">
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="skill-filter-hustlers" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
+                        <MultiSelectSkills
+                            options={PREDEFINED_SKILLS}
+                            selected={selectedSkillsFilter}
+                            onChange={setSelectedSkillsFilter}
+                            placeholder="Filter by skills..."
+                            className="w-full"
+                        />
+                    </div>
+                    {/* Placeholder for future Rating filter */}
+                    {/* <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Rating</label>
+                        <p className="text-xs text-muted-foreground italic">(Rating filter coming soon)</p>
+                    </div> */}
+                    <Separator />
+                    <Button onClick={handleClearFilters} variant="ghost" className="w-full justify-start text-sm">
+                        <XIcon className="mr-2 h-4 w-4" /> Clear All Filters
+                    </Button>
+                </div>
+            </PopoverContent>
+        </Popover>
       </div>
-
-      {/* Filters Section */}
-      <Card className="my-6 p-4 glass-card">
-        <CardHeader className="p-2 pb-4">
-          <CardTitle className="text-lg flex items-center gap-2"><Filter className="h-5 w-5" /> Filter Hustlers</CardTitle>
-        </CardHeader>
-        <CardContent className="p-2 space-y-4 md:space-y-0 md:flex md:flex-row md:gap-4 md:items-end">
-          <div className="flex-1 min-w-0">
-            <label htmlFor="skill-filter-hustlers" className="block text-sm font-medium text-muted-foreground mb-1">Skills</label>
-            <MultiSelectSkills
-              options={PREDEFINED_SKILLS}
-              selected={selectedSkillsFilter}
-              onChange={setSelectedSkillsFilter}
-              placeholder="Filter by skills..."
-              className="w-full"
-            />
-          </div>
-          <Button onClick={handleClearFilters} variant="outline" className="w-full md:w-auto">
-            <XIcon className="mr-2 h-4 w-4" /> Clear Filters
-          </Button>
-        </CardContent>
-      </Card>
 
       {filteredStudents.length === 0 ? (
         <Card className="glass-card text-center py-10">
@@ -133,7 +147,7 @@ export default function BrowseHustlersPage() {
           {filteredStudents.map((student) => (
             <Card key={student.uid} className="glass-card flex flex-col">
               <CardHeader className="items-center text-center p-4 sm:p-6">
-                <Avatar className="h-20 w-20 sm:h-24 sm:w-24 mb-3">
+                <Avatar className="h-20 w-20 sm:h-20 mb-3">
                   <AvatarImage src={student.profilePictureUrl} alt={student.username || 'Student'} />
                   <AvatarFallback>{getInitials(student.email, student.username)}</AvatarFallback>
                 </Avatar>
@@ -176,5 +190,3 @@ export default function BrowseHustlersPage() {
     </div>
   );
 }
-
-    
