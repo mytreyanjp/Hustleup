@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, Info } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Info, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -45,7 +45,7 @@ export default function NewGigPage() {
     defaultValues: {
       title: '',
       description: '',
-      budget: '' as unknown as number, // Keep for react-hook-form, Zod will coerce
+      budget: '' as unknown as number, 
       deadline: undefined,
       requiredSkills: [],
       numberOfReports: 0,
@@ -120,6 +120,9 @@ export default function NewGigPage() {
 
   return (
      <div className="max-w-3xl mx-auto py-8">
+       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-4">
+         <ArrowLeft className="mr-2 h-4 w-4" /> Back
+       </Button>
        <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-2xl">Post a New Gig</CardTitle>
@@ -279,3 +282,4 @@ export default function NewGigPage() {
     </div>
   );
 }
+

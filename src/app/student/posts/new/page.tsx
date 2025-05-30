@@ -78,7 +78,7 @@ export default function NewPostPage() {
       return;
     }
     if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Please check Firebase setup in your project and ensure Storage is enabled. If on Spark plan, ensure it allows Storage configuration or upgrade.", variant: "destructive", duration: 10000 });
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Please check Firebase setup in your project and ensure Storage is enabled. If on Spark plan, ensure it allows Storage configuration or upgrade.", variant: "destructive", duration: 15000 });
       console.error("Firebase Storage object is null or undefined. Check Firebase configuration and initialization.");
       setIsSubmittingPost(false);
       return;
@@ -147,7 +147,7 @@ export default function NewPostPage() {
                 default:
                    if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                        toastTitle = "Network Error During Upload";
-                       detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                       detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection, browser's Network tab for more details, and CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
                        duration = 20000; // Longer for network/CORS type issues
                    } else {
                        detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations. Server response (if any): ${error.serverResponse || 'N/A'}`; 
@@ -313,5 +313,4 @@ export default function NewPostPage() {
     </div>
   );
 }
-
     
