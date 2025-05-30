@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useFirebase } from '@/context/firebase-context';
+import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2 } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share, Info, Phone, Mail as MailIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -30,7 +30,6 @@ import {
 } from 'firebase/firestore';
 import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getChatId, cn } from '@/lib/utils';
-import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -40,12 +39,21 @@ import EmojiPicker, { EmojiClickData, Theme as EmojiTheme } from 'emoji-picker-r
 import { useTheme } from 'next-themes';
 import type { ChatMessage, ChatMetadata } from '@/types/chat';
 import { Progress } from '@/components/ui/progress';
-
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface PendingShareData {
   gigId: string;
   gigTitle: string;
 }
+
+interface GigForChatContext {
+    id: string;
+    title: string;
+    status: 'open' | 'in-progress' | 'completed' | 'closed';
+    selectedStudentId?: string | null;
+    clientId: string;
+}
+
 
 export default function ChatPage() {
   const { user, userProfile, loading: authLoading, totalUnreadChats } = useFirebase();
@@ -62,12 +70,13 @@ export default function ChatPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-
   const [chats, setChats] = useState<ChatMetadata[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [targetUserForNewChat, setTargetUserForNewChat] = useState<UserProfile | null>(null);
+  const [currentGigForChat, setCurrentGigForChat] = useState<GigForChatContext | null>(null);
+
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -102,6 +111,13 @@ export default function ChatPage() {
     try {
       const chatSnap = await getDoc(chatDocRef);
       if (chatSnap.exists()) {
+        const existingChatData = chatSnap.data() as ChatMetadata;
+        // If gigIdForContext is provided and different from existing, or if no gigId exists, update it.
+        if (gigIdForContext && existingChatData.gigId !== gigIdForContext) {
+            await updateDoc(chatDocRef, { gigId: gigIdForContext, updatedAt: serverTimestamp() });
+        } else if (gigIdForContext && !existingChatData.gigId) {
+             await updateDoc(chatDocRef, { gigId: gigIdForContext, updatedAt: serverTimestamp() });
+        }
         setSelectedChatId(chatId);
         return chatId;
       } else {
@@ -157,13 +173,12 @@ export default function ChatPage() {
 
     if (shareGigId && shareGigTitle) {
       setPendingShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
-      setMessage(''); // Clear text input when a share is pending
+      setMessage(''); 
       toast({
         title: "Gig Ready to Share",
         description: "Select a chat and send your message.",
       });
-      router.replace('/chat', { scroll: false }); // Clear share params from URL
-      // Don't return, allow chat selection/creation
+      router.replace('/chat', { scroll: false }); 
     } else if (preselectChatId) {
         setSelectedChatId(preselectChatId);
         if (searchParams.has('chatId') && typeof window !== 'undefined') {
@@ -204,7 +219,6 @@ export default function ChatPage() {
       return;
     }
     setIsLoadingChats(true);
-    // IMPORTANT: Composite index required: 'participants' (Array Contains), 'updatedAt' (Descending)
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -227,10 +241,10 @@ export default function ChatPage() {
     return () => unsubscribe();
   }, [user, toast]);
 
-
   useEffect(() => {
     if (!selectedChatId || !user || !db) {
       setMessages([]);
+      setCurrentGigForChat(null);
       return;
     }
     setIsLoadingMessages(true);
@@ -251,6 +265,27 @@ export default function ChatPage() {
       toast({ title: "Message Error", description: "Could not load messages for this chat.", variant: "destructive" });
       setIsLoadingMessages(false);
     });
+
+    const fetchGigContextForChat = async () => {
+        const chatDocRef = doc(db, 'chats', selectedChatId);
+        const chatSnap = await getDoc(chatDocRef);
+        if (chatSnap.exists()) {
+            const chatData = chatSnap.data() as ChatMetadata;
+            if (chatData.gigId) {
+                const gigDocRef = doc(db, 'gigs', chatData.gigId);
+                const gigSnap = await getDoc(gigDocRef);
+                if (gigSnap.exists()) {
+                    setCurrentGigForChat({ id: gigSnap.id, ...gigSnap.data() } as GigForChatContext);
+                } else {
+                    setCurrentGigForChat(null);
+                }
+            } else {
+                 setCurrentGigForChat(null);
+            }
+        }
+    };
+    fetchGigContextForChat();
+
 
     const markChatAsRead = async () => {
       const chatDocRef = doc(db, 'chats', selectedChatId);
@@ -314,8 +349,12 @@ export default function ChatPage() {
     setMessage(prevMessage => prevMessage + emojiData.emoji);
   };
 
-  const handleSendMessage = async () => {
-    if ((!message.trim() && !selectedFile && !pendingShareData) || !selectedChatId || !user || !userProfile || !db ) {
+  const handleSendMessage = async (
+    isRequestingDetails: boolean = false, 
+    isSharingDetails: boolean = false,
+    sharedDetails?: { email?: string, phone?: string }
+    ) => {
+    if ((!message.trim() && !selectedFile && !pendingShareData && !isRequestingDetails && !isSharingDetails) || !selectedChatId || !user || !userProfile || !db ) {
         toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
         return;
     }
@@ -409,11 +448,24 @@ export default function ChatPage() {
     
     let lastMessageText = '';
 
-    if (pendingShareData) {
+    if (isRequestingDetails) {
+        newMessageContent.isDetailShareRequest = true;
+        newMessageContent.text = `${userProfile.username} has requested your contact details for the gig: ${currentGigForChat?.title || 'this gig'}.`;
+        lastMessageText = `${userProfile.username} requested contact details.`;
+    } else if (isSharingDetails && sharedDetails) {
+        newMessageContent.isDetailsShared = true;
+        newMessageContent.sharedContactInfo = { 
+            email: sharedDetails.email, 
+            phone: sharedDetails.phone,
+            note: "Here are my contact details as requested:"
+        };
+        newMessageContent.text = message.trim() || "Here are my contact details:";
+        lastMessageText = "Shared contact details.";
+    } else if (pendingShareData) {
       newMessageContent.sharedGigId = pendingShareData.gigId;
       newMessageContent.sharedGigTitle = pendingShareData.gigTitle;
       lastMessageText = `[Gig Shared] ${pendingShareData.gigTitle}`;
-      if (message.trim()) { // If user also typed a message with the share
+      if (message.trim()) { 
         newMessageContent.text = message.trim();
         lastMessageText = `${message.trim()} (Shared: ${pendingShareData.gigTitle})`;
       }
@@ -425,9 +477,9 @@ export default function ChatPage() {
     if (mediaUrl) {
       newMessageContent.mediaUrl = mediaUrl;
       newMessageContent.mediaType = mediaType;
-      if (!lastMessageText) { // If only media, no text/share
+      if (!lastMessageText) { 
         lastMessageText = `Attachment: ${selectedFile?.name || 'file'}`;
-      } else { // If media + text/share
+      } else { 
         lastMessageText += ` (Attachment: ${selectedFile?.name || 'file'})`;
       }
     }
@@ -441,7 +493,7 @@ export default function ChatPage() {
       batchOp.set(doc(messagesColRef), newMessageContent);
 
       const chatUpdateData: Partial<ChatMetadata> & {updatedAt: any, lastMessageTimestamp: any} = {
-        lastMessage: lastMessageText.substring(0, 100), // Truncate last message preview
+        lastMessage: lastMessageText.substring(0, 100), 
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
@@ -463,7 +515,7 @@ export default function ChatPage() {
       await batchOp.commit();
       setMessage('');
       setSelectedFile(null);
-      setPendingShareData(null); // Clear pending share
+      setPendingShareData(null); 
       setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
@@ -487,6 +539,16 @@ export default function ChatPage() {
   const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user.uid);
   const otherUsername = otherUserId ? selectedChatDetails?.participantUsernames[otherUserId] : 'User';
   const otherUserProfilePicture = otherUserId ? selectedChatDetails?.participantProfilePictures?.[otherUserId] : undefined;
+
+  const canShareDetails = userProfile?.role === 'client' &&
+                          currentGigForChat?.status === 'in-progress' &&
+                          currentGigForChat?.selectedStudentId === otherUserId &&
+                          (!!userProfile?.personalEmail || !!userProfile?.personalPhone);
+
+  const canRequestDetails = userProfile?.role === 'student' &&
+                            currentGigForChat?.status === 'in-progress' &&
+                            currentGigForChat?.selectedStudentId === user.uid;
+
 
 
   return (
@@ -561,13 +623,45 @@ export default function ChatPage() {
                 </Avatar>
                 <div>
                     <CardTitle className="text-base">{otherUsername}</CardTitle>
-                    {selectedChatDetails.gigId && (
-                        <Link href={`/gigs/${selectedChatDetails.gigId}`} className="text-xs text-primary hover:underline">
-                            View Original Gig Context
+                    {currentGigForChat?.title && (
+                        <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline">
+                            Gig: {currentGigForChat.title}
                         </Link>
                     )}
                 </div>
               </div>
+               {/* Share/Request Details Buttons */}
+               <div className="flex gap-2">
+                {canShareDetails && userProfile && (
+                     <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm"><Share className="mr-2 h-4 w-4" /> Share Contact</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>Share Personal Contact Details?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                You are about to share the following details with {otherUsername}:
+                                {userProfile.personalEmail && <p className="mt-2">Email: {userProfile.personalEmail}</p>}
+                                {userProfile.personalPhone && <p>Phone: {userProfile.personalPhone}</p>}
+                                This cannot be undone.
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleSendMessage(false, true, {email: userProfile.personalEmail, phone: userProfile.personalPhone})}>
+                                Share Now
+                            </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                )}
+                {canRequestDetails && (
+                    <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)}>
+                        <Info className="mr-2 h-4 w-4" /> Request Contact
+                    </Button>
+                )}
+               </div>
             </CardHeader>
             <ScrollArea className="flex-grow p-0">
               <CardContent className="p-4 space-y-4">
@@ -584,6 +678,30 @@ export default function ChatPage() {
                           : 'bg-secondary dark:bg-muted'
                       }`}
                     >
+                       {msg.isDetailShareRequest && (
+                         <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
+                            <p className="font-semibold">{msg.text || "Contact details request"}</p>
+                         </div>
+                       )}
+                       {msg.isDetailsShared && msg.sharedContactInfo && (
+                        <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
+                            <p className="text-xs font-medium mb-1">{msg.sharedContactInfo.note || "Contact Information:"}</p>
+                            {msg.sharedContactInfo.email && (
+                                <div className="flex items-center gap-1.5 text-sm">
+                                   <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
+                                   <span>{msg.sharedContactInfo.email}</span>
+                                </div>
+                            )}
+                            {msg.sharedContactInfo.phone && (
+                                <div className="flex items-center gap-1.5 text-sm mt-0.5">
+                                   <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
+                                   <span>{msg.sharedContactInfo.phone}</span>
+                                </div>
+                            )}
+                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed">{msg.text}</p>}
+                        </div>
+                       )}
+
                       {msg.sharedGigId && msg.sharedGigTitle && (
                         <Link href={`/gigs/${msg.sharedGigId}`} target="_blank" rel="noopener noreferrer"
                               className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
@@ -596,7 +714,7 @@ export default function ChatPage() {
                           </p>
                         </Link>
                       )}
-                      {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
                       {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
                         <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
                           <img src={msg.mediaUrl} alt="Uploaded media" className="max-w-xs max-h-64 object-contain rounded-md mt-1 cursor-pointer hover:opacity-80" data-ai-hint="chat image" />
@@ -688,7 +806,7 @@ export default function ChatPage() {
                     <Paperclip className="h-5 w-5" />
                     <span className="sr-only">Attach file</span>
                  </Button>
-                <Button onClick={handleSendMessage} disabled={isSending || (!message.trim() && !selectedFile && !pendingShareData) || (uploadProgress !== null && uploadProgress < 100)} title={pendingShareData ? "Send Gig" : "Send message"}>
+                <Button onClick={() => handleSendMessage()} disabled={isSending || (!message.trim() && !selectedFile && !pendingShareData) || (uploadProgress !== null && uploadProgress < 100)} title={pendingShareData ? "Send Gig" : "Send message"}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="sr-only">{pendingShareData ? "Send Gig" : "Send"}</span>
                 </Button>

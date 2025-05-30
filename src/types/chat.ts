@@ -1,3 +1,4 @@
+
 // src/types/chat.ts
 import type { Timestamp } from 'firebase/firestore';
 
@@ -11,8 +12,14 @@ export interface ChatMessage {
   // Fields for shared gig
   sharedGigId?: string;
   sharedGigTitle?: string;
-  // Optional: sharedGigDescriptionSnippet?: string;
-  // Optional: sharedGigClientUsername?: string;
+  // Fields for sharing personal contact details
+  isDetailShareRequest?: boolean; // Student requests details
+  isDetailsShared?: boolean;      // Client shares details
+  sharedContactInfo?: {
+    email?: string;
+    phone?: string;
+    note?: string; // Optional note from client when sharing
+  };
 }
 
 export interface ChatMetadata {

@@ -27,6 +27,8 @@ export interface UserProfile extends DocumentData {
   companyName?: string;
   website?: string;
   companyDescription?: string;
+  personalEmail?: string; // For sharing in chat
+  personalPhone?: string; // For sharing in chat
 
   // Follower/Following system
   following?: string[]; // Array of UIDs this user is following
@@ -77,6 +79,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             totalRatings: docSnap.data().totalRatings || 0,
             following: docSnap.data().following || [],
             followersCount: docSnap.data().followersCount || 0,
+            personalEmail: docSnap.data().personalEmail || '',
+            personalPhone: docSnap.data().personalPhone || '',
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client') {
@@ -97,6 +101,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             totalRatings: 0,
             following: [],
             followersCount: 0,
+            personalEmail: '',
+            personalPhone: '',
           };
           setUserProfile(basicProfile);
           setRole(null);
@@ -112,6 +118,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           totalRatings: 0,
           following: [],
           followersCount: 0,
+          personalEmail: '',
+          personalPhone: '',
         });
         setRole(null);
       }
@@ -266,7 +274,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
                  <li><strong>Firebase Project Settings:</strong> Verify API key, Auth Domain, Project ID, etc., in your <code>.env.local</code> file match your Firebase project console.</li>
                  <li><strong>Firebase Services Enabled:</strong> Ensure Authentication, Firestore Database, and Storage are enabled in your Firebase project.</li>
                  <li><strong>Network Connectivity:</strong> Check your internet connection.</li>
-                 <li><strong>`storageBucket` URL:</strong> Ensure the `storageBucket` in <code>.env.local</code> is correct (e.g., `your-project-id.appspot.com` vs `your-project-id.firebasestorage.app`).</li>
+                 <li><strong><code>storageBucket</code> URL:</strong> Ensure the `storageBucket` in <code>.env.local</code> is correct (e.g., `your-project-id.appspot.com` vs `your-project-id.firebasestorage.app`).</li>
                </ol>
              </div>
            )}
