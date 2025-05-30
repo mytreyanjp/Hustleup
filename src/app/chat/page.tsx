@@ -148,6 +148,8 @@ export default function ChatPage() {
         }
         if (Object.keys(participantPictures).length > 0) {
           newChatData.participantProfilePictures = participantPictures;
+        } else {
+          newChatData.participantProfilePictures = {}; // Ensure the field exists
         }
 
         await setDoc(chatDocRef, newChatData);
@@ -178,7 +180,9 @@ export default function ChatPage() {
         title: "Gig Ready to Share",
         description: "Select a chat and send your message.",
       });
-      router.replace('/chat', { scroll: false }); 
+      if (typeof window !== 'undefined') {
+        router.replace('/chat', { scroll: false }); 
+      }
     } else if (preselectChatId) {
         setSelectedChatId(preselectChatId);
         if (searchParams.has('chatId') && typeof window !== 'undefined') {
@@ -321,10 +325,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-       router.push('/auth/login?redirect=/chat');
+       if (typeof window !== 'undefined') router.push('/auth/login?redirect=/chat');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
 
   const handleSelectChat = (chatId: string) => {
@@ -332,8 +335,6 @@ export default function ChatPage() {
     setSelectedFile(null);
     setUploadProgress(null);
     setShowEmojiPicker(false);
-    // If a share was pending, selecting a new chat should ideally confirm or clear it.
-    // For now, a pending share will persist until sent or cancelled.
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -612,8 +613,9 @@ export default function ChatPage() {
                     {otherParticipantId ? (
                        <Link href={`/profile/${otherParticipantId}`} passHref
                           onClick={(e) => e.stopPropagation()} // Prevent chat selection when clicking username
+                          className={`text-sm truncate hover:underline ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}
                        >
-                         <p className={`text-sm truncate hover:underline ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                         {chatPartnerUsername}
                        </Link>
                     ) : (
                        <p className={`text-sm truncate ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
@@ -634,7 +636,7 @@ export default function ChatPage() {
         "flex-grow glass-card flex flex-col h-full relative",
         !selectedChatId && 'hidden md:flex'
         )}>
-        {selectedChatId && selectedChatDetails ? (
+        {selectedChatId && selectedChatDetails && otherUserId ? (
           <>
             <CardHeader className="border-b flex flex-row items-center justify-between p-3">
               <div className="flex items-center gap-3">
@@ -646,12 +648,14 @@ export default function ChatPage() {
                     <AvatarFallback>{otherUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
                 <div>
+                  <Link href={`/profile/${otherUserId}`} className="hover:underline">
                     <CardTitle className="text-base">{otherUsername}</CardTitle>
-                    {currentGigForChat?.title && (
-                        <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline">
-                            Gig: {currentGigForChat.title}
-                        </Link>
-                    )}
+                  </Link>
+                  {currentGigForChat?.title && (
+                      <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline">
+                          Gig: {currentGigForChat.title}
+                      </Link>
+                  )}
                 </div>
               </div>
                {/* Share/Request Details Buttons */}
@@ -853,3 +857,4 @@ export default function ChatPage() {
     </div>
   );
 }
+
