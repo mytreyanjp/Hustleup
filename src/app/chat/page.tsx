@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share, Info, Phone, Mail as MailIcon } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon } from 'lucide-react'; // Renamed Share to ShareIcon
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -219,6 +219,9 @@ export default function ChatPage() {
       return;
     }
     setIsLoadingChats(true);
+    // Firestore query requires an index on 'chats' collection: participants (array-contains), updatedAt (descending)
+    // Create it via the link in the Firebase console error message if it's missing.
+    // Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQDAxwYXJ0aWNpcGFudHMYARoNCgl1cGRhdGVkQXQQAhocCghfX25hbWVfXxAC
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -317,10 +320,11 @@ export default function ChatPage() {
 
 
   useEffect(() => {
-    if (!authLoading && !user && typeof window !== 'undefined') { 
+    if (!authLoading && !user) {
        router.push('/auth/login?redirect=/chat');
     }
-  }, [user, authLoading, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading]);
 
 
   const handleSelectChat = (chatId: string) => {
@@ -388,6 +392,7 @@ export default function ChatPage() {
             (error: any) => {
               console.error("Firebase Storage Upload Error (chat):", error);
               console.error("Full Error Object:", JSON.stringify(error, null, 2));
+              console.error("Error serverResponse (if any):", error.serverResponse);
               
               let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
               let toastTitle = "Upload Failed";
@@ -405,7 +410,7 @@ export default function ChatPage() {
                 default:
                   if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                     toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Check internet connection and browser Network tab. Verify CORS configuration for your Firebase Storage bucket. Ensure Storage is enabled and rules set. Raw error: ${error.message || 'Unknown network error'}`;
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Check internet connection, browser Network tab (for specific request failures), and CORS configuration for your Firebase Storage bucket. Ensure Storage is enabled and rules set. Raw error: ${error.message || 'Unknown network error'}`;
                     duration = 20000; 
                   } else {
                     detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Check network, Firebase Storage rules, and project plan. Server response (if any): ${error.serverResponse || 'N/A'}`; 
@@ -531,10 +536,9 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // This is handled by the useEffect redirect
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
-
+  
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
   const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user.uid);
   const otherUsername = otherUserId ? selectedChatDetails?.participantUsernames[otherUserId] : 'User';
@@ -635,15 +639,15 @@ export default function ChatPage() {
                 {canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm"><Share className="mr-2 h-4 w-4" /> Share Contact</Button>
+                            <Button variant="outline" size="sm"><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader>
                             <AlertDialogTitle>Share Personal Contact Details?</AlertDialogTitle>
                             <AlertDialogDescription>
                                 You are about to share the following details with {otherUsername}:
-                                {userProfile.personalEmail && <p className="mt-2">Email: {userProfile.personalEmail}</p>}
-                                {userProfile.personalPhone && <p>Phone: {userProfile.personalPhone}</p>}
+                                {userProfile.personalEmail && <div className="mt-2">Email: {userProfile.personalEmail}</div>}
+                                {userProfile.personalPhone && <div>Phone: {userProfile.personalPhone}</div>}
                                 This cannot be undone.
                             </AlertDialogDescription>
                             </AlertDialogHeader>
@@ -714,7 +718,7 @@ export default function ChatPage() {
                           </p>
                         </Link>
                       )}
-                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
                       {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
                         <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
                           <img src={msg.mediaUrl} alt="Uploaded media" className="max-w-xs max-h-64 object-contain rounded-md mt-1 cursor-pointer hover:opacity-80" data-ai-hint="chat image" />
@@ -829,3 +833,5 @@ export default function ChatPage() {
     </div>
   );
 }
+
+    
