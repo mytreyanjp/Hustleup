@@ -409,7 +409,7 @@ export default function ChatPage() {
                 default:
                   if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                     toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection, browser's Network tab for more details, and CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
                     duration = 20000; 
                   } else {
                     detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations (e.g., Blaze plan if Spark plan's Rules tab is inaccessible). Server response (if any): ${error.serverResponse || 'N/A'}`; 
@@ -548,7 +548,7 @@ export default function ChatPage() {
   }
   
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
-  const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user.uid);
+  const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user?.uid);
   const otherUsername = otherUserId ? selectedChatDetails?.participantUsernames[otherUserId] : 'User';
   const otherUserProfilePicture = otherUserId ? selectedChatDetails?.participantProfilePictures?.[otherUserId] : undefined;
 
@@ -559,7 +559,7 @@ export default function ChatPage() {
 
   const canRequestDetails = userProfile?.role === 'student' &&
                             currentGigForChat?.status === 'in-progress' &&
-                            currentGigForChat?.selectedStudentId === user.uid;
+                            currentGigForChat?.selectedStudentId === user?.uid;
 
 
 
@@ -586,10 +586,10 @@ export default function ChatPage() {
               <p className="text-sm text-muted-foreground p-4 text-center">No active conversations. Start one!</p>
             )}
             {chats.map((chat) => {
-              const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
+              const otherParticipantId = chat.participants.find(pId => pId !== user?.uid);
               const chatPartnerUsername = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
               const partnerProfilePic = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
-              const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user.uid));
+              const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
 
               return (
                 <div
@@ -633,8 +633,8 @@ export default function ChatPage() {
         )}>
         {selectedChatId && selectedChatDetails && otherUserId && user ? (
           <>
-            <CardHeader className="border-b flex flex-row items-center justify-between p-3">
-              <div className="flex items-center gap-3">
+            <CardHeader className="border-b flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-2 sm:gap-0 flex-wrap">
+              <div className="flex items-center gap-3 flex-grow min-w-0"> {/* Ensure this part can shrink and text can truncate */}
                 <Button variant="ghost" size="icon" className="md:hidden h-8 w-8" onClick={() => setSelectedChatId(null)}>
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -644,19 +644,19 @@ export default function ChatPage() {
                       <AvatarFallback>{otherUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
                 </Link>
-                <div>
+                <div className="overflow-hidden"> {/* Added overflow-hidden here for truncation */}
                   <Link href={`/profile/${otherUserId}`} className="hover:underline">
-                    <CardTitle className="text-base">{otherUsername}</CardTitle>
+                    <CardTitle className="text-base truncate">{otherUsername}</CardTitle> {/* Added truncate */}
                   </Link>
                   {currentGigForChat?.title && (
-                      <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline">
+                      <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline truncate block"> {/* Added truncate and block */}
                           Gig: {currentGigForChat.title}
                       </Link>
                   )}
                 </div>
               </div>
                {/* Share/Request Details Buttons */}
-               <div className="flex gap-2">
+               <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0"> {/* Added flex-wrap and justify-end */}
                 {canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -674,7 +674,7 @@ export default function ChatPage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleSendMessage(false, true, {email: userProfile.personalEmail, phone: userProfile.personalPhone})}>
+                            <AlertDialogAction onClick={() => handleSendMessage(false, true, {email: userProfile.personalEmail || undefined, phone: userProfile.personalPhone || undefined})}>
                                 Share Now
                             </AlertDialogAction>
                             </AlertDialogFooter>
@@ -854,3 +854,4 @@ export default function ChatPage() {
     </div>
   );
 }
+
