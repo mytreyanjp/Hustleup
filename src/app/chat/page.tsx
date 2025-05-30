@@ -134,7 +134,7 @@ export default function ChatPage() {
           lastMessageReadBy: [user.uid],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          participantProfilePictures: {}, // Initialize as empty
+          participantProfilePictures: {}, 
         };
          if (gigIdForContext) {
             newChatData.gigId = gigIdForContext;
@@ -220,7 +220,7 @@ export default function ChatPage() {
     setIsLoadingChats(true);
     // Firestore query requires an index on 'chats' collection: participants (array-contains), updatedAt (descending)
     // Create it via the link in the Firebase console error message if it's missing.
-    // Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQDAxwYXJ0aWNpcGFudHMYARoNCgl1cGRhdGVkQXQQAhocCghfX25hbWVfXxAC
+    // Example Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQDAxwYXJ0aWNpcGFudHMYARoNCgl1cGRhdGVkQXQQAhocCghfX25hbWVfXxAC
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -319,7 +319,7 @@ export default function ChatPage() {
 
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authLoading && !user && typeof window !== 'undefined') {
        router.push('/auth/login?redirect=/chat');
     }
   }, [user, authLoading, router]);
@@ -543,8 +543,8 @@ export default function ChatPage() {
   }
 
   if (!user) {
-    // This will be handled by the useEffect which calls router.push
-    // return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
+    // Handled by useEffect redirection
+    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
@@ -705,25 +705,25 @@ export default function ChatPage() {
                     >
                        {msg.isDetailShareRequest && (
                          <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
-                            <p className="font-semibold">{msg.text || "Contact details request"}</p>
+                            <p className="font-semibold break-words">{msg.text || "Contact details request"}</p>
                          </div>
                        )}
                        {msg.isDetailsShared && msg.sharedContactInfo && (
                         <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
-                            <p className="text-xs font-medium mb-1">{msg.sharedContactInfo.note || "Contact Information:"}</p>
+                            <p className="text-xs font-medium mb-1 break-words">{msg.sharedContactInfo.note || "Contact Information:"}</p>
                             {msg.sharedContactInfo.email && (
                                 <div className="flex items-center gap-1.5 text-sm">
                                    <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
-                                   <span>{msg.sharedContactInfo.email}</span>
+                                   <span className="break-all">{msg.sharedContactInfo.email}</span>
                                 </div>
                             )}
                             {msg.sharedContactInfo.phone && (
                                 <div className="flex items-center gap-1.5 text-sm mt-0.5">
                                    <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
-                                   <span>{msg.sharedContactInfo.phone}</span>
+                                   <span className="break-all">{msg.sharedContactInfo.phone}</span>
                                 </div>
                             )}
-                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed">{msg.text}</p>}
+                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-words">{msg.text}</p>}
                         </div>
                        )}
 
@@ -739,7 +739,7 @@ export default function ChatPage() {
                           </p>
                         </Link>
                       )}
-                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>}
                       {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
                         <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
                           <img src={msg.mediaUrl} alt="Uploaded media" className="max-w-xs max-h-64 object-contain rounded-md mt-1 cursor-pointer hover:opacity-80" data-ai-hint="chat image" />
