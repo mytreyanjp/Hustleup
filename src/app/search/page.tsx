@@ -158,41 +158,41 @@ function SearchResultsPageContent() {
         {gigs.length === 0 ? (
           <p className="text-muted-foreground">No gigs found matching your search criteria.</p>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
             {gigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col">
-                <CardHeader>
+                <CardHeader className="p-4 sm:p-6">
                   <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
                   <div className="flex items-center gap-2 mt-1">
                     <Avatar className="h-6 w-6">
                       <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
                       <AvatarFallback>{getInitials(gig.clientDisplayName, undefined, gig.clientUsername)}</AvatarFallback>
                     </Avatar>
-                    <CardDescription className="text-sm text-muted-foreground">
+                    <CardDescription className="text-xs text-muted-foreground">
                       {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
                     </CardDescription>
                   </div>
                 </CardHeader>
-                <CardContent className="flex-grow space-y-2">
-                  <p className="text-sm line-clamp-3">{gig.description}</p>
+                <CardContent className="flex-grow space-y-2 p-4 sm:p-6 pt-0">
+                  <p className="text-sm line-clamp-2 sm:line-clamp-3">{gig.description}</p>
                   <div>
                     <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
                     <div className="flex flex-wrap gap-1">
-                      {gig.requiredSkills?.slice(0, 5).map((skill, index) => (
+                      {gig.requiredSkills?.slice(0, 3).map((skill, index) => (
                         <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
                       ))}
-                      {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}
+                      {gig.requiredSkills?.length > 3 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 3} more</Badge>}
                     </div>
                   </div>
-                  <div className="flex items-center text-sm text-muted-foreground">
+                  <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
                     <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
                   </div>
-                  <div className="flex items-center text-sm text-muted-foreground">
+                  <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
                     <CalendarDays className="mr-1 h-4 w-4" /> Deadline: {formatDeadline(gig.deadline)}
                   </div>
                 </CardContent>
-                <CardFooter>
-                  <Button asChild className="w-full">
+                <CardFooter className="p-4 sm:p-6 pt-0">
+                  <Button asChild className="w-full" size="sm">
                     <Link href={`/gigs/${gig.id}`}>View Details</Link>
                   </Button>
                 </CardFooter>
@@ -212,19 +212,19 @@ function SearchResultsPageContent() {
         {users.length === 0 ? (
           <p className="text-muted-foreground">No users found matching your search criteria.</p>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
             {users.map((userResult) => (
               <Card key={userResult.uid} className="glass-card">
-                <CardHeader className="items-center text-center">
-                  <Avatar className="h-20 w-20 mb-2">
+                <CardHeader className="items-center text-center p-4 sm:p-6">
+                  <Avatar className="h-20 w-20 sm:h-20 mb-2">
                     <AvatarImage src={userResult.profilePictureUrl} alt={userResult.username || 'User'} />
                     <AvatarFallback>{getInitials(userResult.companyName || userResult.username, userResult.email)}</AvatarFallback>
                   </Avatar>
-                  <CardTitle className="text-lg">{userResult.companyName || userResult.username || 'User'}</CardTitle>
-                  <CardDescription className="capitalize">{userResult.role}</CardDescription>
+                  <CardTitle className="text-lg line-clamp-1">{userResult.companyName || userResult.username || 'User'}</CardTitle>
+                  <CardDescription className="capitalize text-sm">{userResult.role}</CardDescription>
                 </CardHeader>
                 {userResult.role === 'student' && userResult.skills && userResult.skills.length > 0 && (
-                  <CardContent className="text-center">
+                  <CardContent className="text-center p-4 sm:p-6 pt-0">
                      <h4 className="text-xs font-semibold text-muted-foreground mb-1">Top Skills:</h4>
                     <div className="flex flex-wrap gap-1 justify-center">
                       {userResult.skills.slice(0, 3).map((skill: string, index: number) => (
@@ -235,12 +235,12 @@ function SearchResultsPageContent() {
                   </CardContent>
                 )}
                  {userResult.role === 'client' && userResult.companyDescription && (
-                    <CardContent className="text-center">
-                        <p className="text-xs text-muted-foreground line-clamp-2">{userResult.companyDescription}</p>
+                    <CardContent className="text-center p-4 sm:p-6 pt-0">
+                        <p className="text-xs text-muted-foreground line-clamp-2 sm:line-clamp-3">{userResult.companyDescription}</p>
                     </CardContent>
                 )}
-                <CardFooter>
-                   <Button asChild className="w-full" variant="outline">
+                <CardFooter className="p-4 sm:p-6 pt-0">
+                   <Button asChild className="w-full" size="sm" variant="outline">
                       <Link href={`/profile/${userResult.uid}`}>View Profile</Link>
                    </Button>
                 </CardFooter>

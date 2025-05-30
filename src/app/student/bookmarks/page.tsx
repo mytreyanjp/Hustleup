@@ -149,54 +149,54 @@ export default function StudentBookmarksPage() {
 
       {bookmarkedGigs.length === 0 ? (
         <Card className="glass-card text-center py-10">
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <BookmarkX className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
             <CardTitle>No Bookmarked Gigs</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6 pt-0">
             <p className="text-muted-foreground">You haven't bookmarked any gigs yet.</p>
             <p className="text-sm text-muted-foreground mt-1">Find gigs you're interested in and save them here!</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
           {bookmarkedGigs.map((gig) => (
             <Card key={gig.id} className="glass-card flex flex-col">
-              <CardHeader>
+              <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
                 <div className="flex items-center gap-2 mt-1">
                   <Avatar className="h-6 w-6">
                     <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
                     <AvatarFallback>{getClientInitials(gig.clientDisplayName, gig.clientUsername)}</AvatarFallback>
                   </Avatar>
-                  <CardDescription className="text-sm text-muted-foreground">
+                  <CardDescription className="text-xs text-muted-foreground">
                     {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
                   </CardDescription>
                 </div>
               </CardHeader>
-              <CardContent className="flex-grow">
-                <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
-                 <div className="mb-4">
+              <CardContent className="flex-grow p-4 sm:p-6 pt-0">
+                <p className="text-sm line-clamp-2 sm:line-clamp-3 mb-3 sm:mb-4">{gig.description}</p>
+                 <div className="mb-3 sm:mb-4">
                     <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
                     <div className="flex flex-wrap gap-1">
-                        {gig.requiredSkills?.slice(0, 5).map((skill, index) => (
+                        {gig.requiredSkills?.slice(0, 3).map((skill, index) => (
                             <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
                         ))}
-                        {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}
+                        {gig.requiredSkills?.length > 3 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 3} more</Badge>}
                     </div>
                  </div>
-                 <div className="flex items-center text-sm text-muted-foreground mb-1">
+                 <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                      <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
                  </div>
-                 <div className="flex items-center text-sm text-muted-foreground">
+                 <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
                      <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
                  </div>
                  {gig.status !== 'open' && (
                     <Badge variant="destructive" className="mt-2 text-xs">Gig is {gig.status}</Badge>
                  )}
               </CardContent>
-              <CardFooter className="flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <Button asChild className="w-full sm:w-auto flex-grow" disabled={gig.status !== 'open'}>
+              <CardFooter className="flex-col sm:flex-row items-stretch sm:items-center gap-2 p-4 sm:p-6 pt-0">
+                <Button asChild className="w-full sm:w-auto flex-grow" size="sm" disabled={gig.status !== 'open'}>
                   <Link href={`/gigs/${gig.id}`}>View & Apply</Link>
                 </Button>
                 <Button 

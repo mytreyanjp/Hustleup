@@ -275,14 +275,14 @@ export default function PublicProfilePage() {
                </Avatar>
                <div className="sm:flex-1 space-y-2 text-center sm:text-left">
                    <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
-                        <h1 className="text-2xl font-bold flex items-center gap-2">
+                        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
                             {displayName}
-                            {profile.role === 'student' && <GraduationCap className="h-6 w-6 text-primary" />}
-                            {profile.role === 'client' && <Building className="h-6 w-6 text-primary" />}
+                            {profile.role === 'student' && <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
+                            {profile.role === 'client' && <Building className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                         </h1>
                         {isOwnProfile ? (
                             <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
-                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> {/* TODO: Create /client/profile/edit */}
+                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> 
                                     Edit My Profile
                                 </Link>
                             </Button>
@@ -301,29 +301,28 @@ export default function PublicProfilePage() {
                         )}
                    </div>
                    
-                    <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground">
+                    <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground">
                         <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
-                            <Users className="h-4 w-4" />
+                            <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="font-semibold text-foreground">{profile.followersCount || 0}</span> Followers
                         </button>
                         <button onClick={handleOpenFollowingModal} className="flex items-center gap-1 hover:underline focus:outline-none">
-                           <Users className="h-4 w-4" />
+                           <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                            <span className="font-semibold text-foreground">{followingCount}</span> Following
                         </button>
                     </div>
 
-                   {/* Display Contact Person if company name is different from username */}
-                    {profile.role === 'client' && profile.companyName && profile.username && profile.companyName !== profile.username && (
-                        <p className="text-sm text-muted-foreground mt-1">Contact: {profile.username}</p>
+                   {profile.role === 'client' && profile.username && profile.companyName && profile.companyName !== profile.username && (
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">Contact: {profile.username}</p>
                     )}
 
                    {profile.role === 'student' && profile.bio && (
-                        <p className="text-sm text-foreground/90 mt-1">{profile.bio}</p>
+                        <p className="text-xs sm:text-sm text-foreground/90 mt-1 line-clamp-3">{profile.bio}</p>
                    )}
                    {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
                         <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
-                            <StarRating value={profile.averageRating} size={18} isEditable={false} />
-                            <span className="text-sm text-muted-foreground">
+                            <StarRating value={profile.averageRating} size={16} isEditable={false} />
+                            <span className="text-xs sm:text-sm text-muted-foreground">
                                 ({profile.averageRating.toFixed(1)} from {profile.totalRatings} rating{profile.totalRatings !== 1 ? 's' : ''})
                             </span>
                         </div>
@@ -335,33 +334,11 @@ export default function PublicProfilePage() {
         <Separator />
 
         {profile.role === 'client' && (
-            <CardContent className="p-4 md:p-6 space-y-4">
-                <h3 className="font-semibold text-lg text-foreground mb-2 flex items-center gap-2">
-                    <Building className="h-5 w-5 text-muted-foreground" /> Company Details
+            <CardContent className="p-4 md:p-6 space-y-3">
+                <h3 className="font-semibold text-md sm:text-lg text-foreground mb-2 flex items-center gap-2">
+                    <Building className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" /> Company Details
                 </h3>
                 
-                {profile.website ? (
-                  <div className="flex items-start gap-2 mb-2">
-                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
-                    <div>
-                        <p className="text-xs text-muted-foreground">Website</p>
-                        <a
-                        href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline break-all"
-                        >
-                        {profile.website}
-                        </a>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-                    <p className="text-sm text-muted-foreground">Website not provided.</p>
-                  </div>
-                )}
-
                 {profile.companyDescription ? (
                     <div className="flex items-start gap-2">
                         <Info className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
@@ -376,21 +353,42 @@ export default function PublicProfilePage() {
                         <p className="text-sm text-muted-foreground">Company description not provided.</p>
                     </div>
                 )}
+                {profile.website ? (
+                  <div className="flex items-start gap-2 mt-2">
+                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
+                    <div>
+                        <p className="text-xs text-muted-foreground">Website</p>
+                        <a
+                        href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline break-all"
+                        >
+                        {profile.website}
+                        </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground">Website not provided.</p>
+                  </div>
+                )}
             </CardContent>
         )}
 
 
         {profile.role === 'student' && (
           <>
-            <CardContent className="p-4 md:p-6 space-y-6">
+            <CardContent className="p-4 md:p-6 space-y-4">
                {profile.skills && profile.skills.length > 0 && (
                   <div>
-                     <h3 className="font-semibold mb-2 text-lg flex items-center gap-2">
-                        <Users className="h-5 w-5 text-muted-foreground" /> Skills
+                     <h3 className="font-semibold text-md sm:text-lg mb-2 flex items-center gap-2">
+                        <Users className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" /> Skills
                      </h3>
-                     <div className="flex flex-wrap gap-2">
+                     <div className="flex flex-wrap gap-1 sm:gap-2">
                        {profile.skills.map((skill, index) => (
-                         <Badge key={index} variant="secondary" className="text-sm px-3 py-1">{skill}</Badge>
+                         <Badge key={index} variant="secondary" className="text-xs sm:text-sm px-2 py-0.5 sm:px-3 sm:py-1">{skill}</Badge>
                        ))}
                      </div>
                   </div>
@@ -398,19 +396,19 @@ export default function PublicProfilePage() {
 
                 {profile.portfolioLinks && profile.portfolioLinks.length > 0 && (
                   <div>
-                     <h3 className="font-semibold mb-2 text-lg flex items-center gap-2">
-                        <LinkIcon className="h-5 w-5 text-muted-foreground" /> Portfolio & Links
+                     <h3 className="font-semibold text-md sm:text-lg mb-2 flex items-center gap-2">
+                        <LinkIcon className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" /> Portfolio & Links
                      </h3>
-                     <ul className="space-y-2">
+                     <ul className="space-y-1 sm:space-y-2">
                        {profile.portfolioLinks.map((link, index) => (
                          <li key={index}>
                            <a
                              href={link.startsWith('http') ? link : `https://${link}`}
                              target="_blank"
                              rel="noopener noreferrer"
-                             className="text-sm text-primary hover:underline flex items-center gap-1 break-all"
+                             className="text-xs sm:text-sm text-primary hover:underline flex items-center gap-1 break-all"
                            >
-                             <LinkIcon className="h-4 w-4 shrink-0" />
+                             <LinkIcon className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                              {link}
                            </a>
                          </li>
@@ -426,8 +424,8 @@ export default function PublicProfilePage() {
 
             <Separator />
             <div className="p-4 md:p-6">
-                <h3 className="font-semibold mb-4 text-lg flex items-center gap-2">
-                    <Grid3X3 className="h-5 w-5 text-muted-foreground" /> Posts
+                <h3 className="font-semibold mb-3 sm:mb-4 text-md sm:text-lg flex items-center gap-2">
+                    <Grid3X3 className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" /> Posts
                 </h3>
                 {isLoadingPosts ? (
                     <div className="flex justify-center items-center py-8">
@@ -450,7 +448,7 @@ export default function PublicProfilePage() {
                     </div>
                 ) : (
                     <div className="text-center text-muted-foreground py-8">
-                        <ImageIconLucide className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                        <ImageIconLucide className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 text-gray-400" />
                         <p className="text-sm">This student hasn't made any posts yet.</p>
                         {isOwnProfile && (
                             <Button asChild variant="link" className="mt-2">
@@ -467,33 +465,33 @@ export default function PublicProfilePage() {
             <>
                 <Separator />
                 <div className="p-4 md:p-6">
-                    <h3 className="font-semibold mb-4 text-lg flex items-center gap-2">
-                        <Briefcase className="h-5 w-5 text-muted-foreground" /> Open Gigs
+                    <h3 className="font-semibold mb-3 sm:mb-4 text-md sm:text-lg flex items-center gap-2">
+                        <Briefcase className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" /> Open Gigs
                     </h3>
                     {isLoadingClientGigs ? (
                         <div className="flex justify-center items-center py-8">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : clientOpenGigs.length > 0 ? (
-                        <div className="space-y-4">
+                        <div className="space-y-3 sm:space-y-4">
                             {clientOpenGigs.map(gig => (
                                 <Card key={gig.id} className="glass-card">
-                                    <CardHeader className="pb-3">
-                                        <CardTitle className="text-md">{gig.title}</CardTitle>
+                                    <CardHeader className="pb-3 p-3 sm:p-4">
+                                        <CardTitle className="text-sm sm:text-md">{gig.title}</CardTitle>
                                         <CardDescription className="text-xs">Posted {formatGigDate(gig.createdAt)}</CardDescription>
                                     </CardHeader>
-                                    <CardContent className="space-y-1 pb-3">
-                                        <p className="text-sm flex items-center gap-1">
-                                            <DollarSign className="h-4 w-4 text-muted-foreground" /> 
+                                    <CardContent className="space-y-1 pb-3 p-3 sm:p-4 pt-0">
+                                        <p className="text-xs sm:text-sm flex items-center gap-1">
+                                            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" /> 
                                             Budget: {gig.currency} {gig.budget.toFixed(2)}
                                         </p>
-                                        <p className="text-sm flex items-center gap-1">
-                                            <CalendarDays className="h-4 w-4 text-muted-foreground" /> 
+                                        <p className="text-xs sm:text-sm flex items-center gap-1">
+                                            <CalendarDays className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" /> 
                                             Deadline: {gig.deadline.toDate().toLocaleDateString()}
                                         </p>
                                     </CardContent>
-                                    <CardFooter>
-                                        <Button asChild size="sm" className="w-full">
+                                    <CardFooter className="p-3 sm:p-4 pt-0">
+                                        <Button asChild size="sm" className="w-full text-xs sm:text-sm">
                                             <Link href={`/gigs/${gig.id}`}>View & Apply</Link>
                                         </Button>
                                     </CardFooter>
@@ -502,7 +500,7 @@ export default function PublicProfilePage() {
                         </div>
                     ) : (
                         <div className="text-center text-muted-foreground py-8">
-                            <Briefcase className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                            <Briefcase className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-2 text-gray-400" />
                             <p className="text-sm">This client has no open gigs currently.</p>
                             {isOwnProfile && (
                                 <Button asChild variant="link" className="mt-2">
@@ -568,7 +566,6 @@ export default function PublicProfilePage() {
                       </Avatar>
                       <span className="text-sm font-medium">{user.companyName || user.username || 'User'}</span>
                     </Link>
-                    {/* Optionally add a follow/unfollow button here if the viewerUser can interact */}
                   </li>
                 ))}
               </ul>

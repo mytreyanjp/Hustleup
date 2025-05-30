@@ -268,14 +268,14 @@ export default function StudentWorksPage() {
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Your Works</h1>
-        <Button variant="outline" asChild><Link href="/gigs/browse">Find More Gigs</Link></Button>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Your Works</h1>
+        <Button variant="outline" asChild size="sm" className="sm:text-sm"><Link href="/gigs/browse">Find More Gigs</Link></Button>
       </div>
 
       {activeGigs.length === 0 ? (
         <Card className="glass-card text-center py-10">
-          <CardHeader> <Briefcase className="mx-auto h-12 w-12 text-muted-foreground mb-4" /> <CardTitle>No Active Works</CardTitle> </CardHeader>
-          <CardContent> <p className="text-muted-foreground mb-4">You don't have any gigs currently in progress.</p> <p className="text-sm text-muted-foreground">Once a client accepts your application, the gig will appear here.</p> </CardContent>
+          <CardHeader className="p-4 sm:p-6"> <Briefcase className="mx-auto h-12 w-12 text-muted-foreground mb-4" /> <CardTitle>No Active Works</CardTitle> </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0"> <p className="text-muted-foreground mb-4">You don't have any gigs currently in progress.</p> <p className="text-sm text-muted-foreground">Once a client accepts your application, the gig will appear here.</p> </CardContent>
         </Card>
       ) : (
         <div className="space-y-6">
@@ -284,15 +284,15 @@ export default function StudentWorksPage() {
 
             return (
             <Card key={gig.id} className="glass-card">
-              <CardHeader className="flex flex-row justify-between items-start">
+              <CardHeader className="flex flex-row justify-between items-start p-4 sm:p-6">
                 <div className="flex-grow">
                   <Link href={`/gigs/${gig.id}`} className="hover:underline">
-                      <CardTitle className="text-xl">{gig.title}</CardTitle>
+                      <CardTitle className="text-lg sm:text-xl">{gig.title}</CardTitle>
                   </Link>
-                  <CardDescription> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline">{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
+                  <CardDescription className="text-xs sm:text-sm"> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline">{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="capitalize">{gig.status}</Badge>
+                    <Badge variant="secondary" className="capitalize text-xs">{gig.status}</Badge>
                     <Button variant="ghost" size="icon" onClick={() => toggleGigCollapse(gig.id)} className="h-8 w-8">
                         {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
                         <span className="sr-only">{isCollapsed ? 'Expand' : 'Collapse'}</span>
@@ -302,16 +302,16 @@ export default function StudentWorksPage() {
               <div
                 className={cn(
                   "transition-all duration-500 ease-in-out overflow-hidden",
-                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100" // Adjust max-h if content can be very long
+                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100" 
                 )}
               >
-                <CardContent className="space-y-3 pt-3">
-                  <div className="flex items-center text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
-                  <div className="flex items-center text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
+                <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
+                  <div className="flex items-center text-xs sm:text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
+                  <div className="flex items-center text-xs sm:text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
                   
                   {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                     <div className="pt-2 border-t">
-                      <h4 className="font-semibold mt-2 mb-2 text-md">Progress Reports ({gig.progressReports?.filter(r => r.studentSubmission).length || 0} / {gig.numberOfReports})</h4>
+                      <h4 className="font-semibold mt-2 mb-2 text-sm sm:text-md">Progress Reports ({gig.progressReports?.filter(r => r.studentSubmission).length || 0} / {gig.numberOfReports})</h4>
                       <div className="space-y-3">
                         {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
                           const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
@@ -320,9 +320,9 @@ export default function StudentWorksPage() {
                           const isRejected = report?.clientStatus === 'rejected';
 
                           return (
-                            <Card key={reportNum} className="bg-background/50 p-3">
+                            <Card key={reportNum} className="bg-background/50 p-2 sm:p-3">
                               <div className="flex justify-between items-center mb-1">
-                                <h5 className="font-medium text-sm">Report #{reportNum}</h5>
+                                <h5 className="font-medium text-xs sm:text-sm">Report #{reportNum}</h5>
                                 <Badge variant={getReportStatusBadgeVariant(report?.clientStatus)} size="sm" className="capitalize text-xs">
                                   {report?.clientStatus ? report.clientStatus.replace('_', ' ') : 'Not Submitted'}
                                 </Badge>
@@ -359,7 +359,7 @@ export default function StudentWorksPage() {
                     </div>
                   )}
                 </CardContent>
-                <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch gap-2 border-t pt-4">
+                <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
                   <Button size="sm" asChild><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
                   <Button variant="outline" size="sm" asChild><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
                 </CardFooter>
@@ -402,4 +402,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-

@@ -51,6 +51,7 @@ export default function BrowseGigsPage() {
         const gigsCollectionRef = collection(db, 'gigs');
         // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
         // Create it in Firebase console if missing.
+        // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=Cktwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZ2lncy9pbmRleGVzL18QARoKCgZzdGF0dXMQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -67,13 +68,13 @@ export default function BrowseGigsPage() {
           const followedClientIds = userProfile.following || [];
           const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
 
-          const gigsFromFollowedClients: Gig[] = [];
+          let gigsFromFollowedClients: Gig[] = [];
           let otherGigsTemp: Gig[] = [];
 
           allOpenGigs.forEach(gig => {
             // Filter out gigs already applied to by the student
             if (gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid)) {
-              return; // Skip this gig
+              return; 
             }
             if (followedClientIds.includes(gig.clientId)) {
               gigsFromFollowedClients.push({ ...gig, isFromFollowedClient: true });
@@ -87,7 +88,7 @@ export default function BrowseGigsPage() {
             skillMatchedNonFollowedGigs = otherGigsTemp.filter(gig =>
               gig.requiredSkills.some(reqSkill => {
                 const reqSkillLower = reqSkill.toLowerCase();
-                // Check for substring match
+                 // Check for substring match (covers "JS" vs "JavaScript", "Edit" vs "Video Editing")
                 if (studentSkillsLower.some(studentSkillLower => studentSkillLower.includes(reqSkillLower) || reqSkillLower.includes(studentSkillLower))) {
                   return true;
                 }
@@ -110,10 +111,11 @@ export default function BrowseGigsPage() {
           }
           
           let finalGigs = [
-            ...gigsFromFollowedClients, 
-            ...skillMatchedNonFollowedGigs
+            ...gigsFromFollowedClients, // Gigs from followed clients (skills not mandatory)
+            ...skillMatchedNonFollowedGigs // Other gigs, matched by skills
           ];
           
+          // Remove duplicates that might have occurred if a followed client's gig also matched skills
           finalGigs = Array.from(new Set(finalGigs.map(g => g.id))).map(id => finalGigs.find(g => g.id === id)!);
 
           finalGigs.sort((a, b) => {
@@ -124,7 +126,7 @@ export default function BrowseGigsPage() {
           setGigs(finalGigs);
 
         } else {
-          setGigs(allOpenGigs.filter(gig => // Filter out applied gigs even for non-students/logged-out users (though they can't apply)
+          setGigs(allOpenGigs.filter(gig => 
             !(currentUser && gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
           ));
         }
@@ -202,11 +204,11 @@ export default function BrowseGigsPage() {
         
         {gigs.length === 0 && !pageIsLoading ? (
           <Card className="glass-card text-center py-10 max-w-lg mx-auto mt-4">
-              <CardHeader>
+              <CardHeader className="p-4 sm:p-6">
                   <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <CardTitle>No Gigs Found</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 sm:p-6 pt-0">
                   {currentUser && role === 'student' && (!userProfile?.skills || userProfile.skills.length === 0) ? (
                       <>
                           <p className="text-muted-foreground mb-4">
@@ -228,10 +230,10 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3 px-4 pb-8">
             {gigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
-                <CardHeader>
+                <CardHeader className="p-4 sm:p-6">
                   <div className="flex justify-between items-start">
                       <Link href={`/gigs/${gig.id}`} className="hover:underline flex-grow mr-2">
                         <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
@@ -247,31 +249,31 @@ export default function BrowseGigsPage() {
                       <AvatarImage src={gig.clientAvatarUrl} alt={gig.clientDisplayName || gig.clientUsername || 'Client'} />
                       <AvatarFallback>{getClientInitials(gig.clientDisplayName, gig.clientUsername)}</AvatarFallback>
                     </Avatar>
-                    <CardDescription className="text-sm text-muted-foreground">
+                    <CardDescription className="text-xs text-muted-foreground">
                       {gig.clientDisplayName || gig.clientUsername || 'Client'} &bull; {formatDateDistance(gig.createdAt)}
                     </CardDescription>
                   </div>
                 </CardHeader>
-                <CardContent className="flex-grow">
-                  <p className="text-sm line-clamp-3 mb-4">{gig.description}</p>
-                   <div className="mb-4">
+                <CardContent className="flex-grow p-4 sm:p-6 pt-0">
+                  <p className="text-sm line-clamp-2 sm:line-clamp-3 mb-3 sm:mb-4">{gig.description}</p>
+                   <div className="mb-3 sm:mb-4">
                       <h4 className="text-xs font-semibold text-muted-foreground mb-1">Required Skills:</h4>
                       <div className="flex flex-wrap gap-1">
-                          {gig.requiredSkills?.slice(0, 5).map((skill, index) => ( 
+                          {gig.requiredSkills?.slice(0, 3).map((skill, index) => ( 
                               <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
                           ))}
-                          {gig.requiredSkills?.length > 5 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 5} more</Badge>}
+                          {gig.requiredSkills?.length > 3 && <Badge variant="outline" className="text-xs">+{gig.requiredSkills.length - 3} more</Badge>}
                       </div>
                    </div>
-                   <div className="flex items-center text-sm text-muted-foreground mb-1">
+                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                        <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
                    </div>
-                   <div className="flex items-center text-sm text-muted-foreground">
+                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
                        <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
                    </div>
                 </CardContent>
-                <CardFooter>
-                  <Button asChild className="w-full">
+                <CardFooter className="p-4 sm:p-6 pt-0">
+                  <Button asChild className="w-full" size="sm">
                     <Link href={`/gigs/${gig.id}`}>View Details & Apply</Link>
                   </Button>
                 </CardFooter>
@@ -283,5 +285,4 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
-
     

@@ -24,8 +24,8 @@ interface ClientGig {
   currency: string;
   applicantCount: number;
   selectedStudentId?: string;
-  clientDisplayName?: string; // Added for consistency, though redundant here
-  clientAvatarUrl?: string;   // Added for consistency
+  clientDisplayName?: string; 
+  clientAvatarUrl?: string;   
 }
 
 export default function ClientGigsPage() {
@@ -143,32 +143,31 @@ export default function ClientGigsPage() {
 
   const GigCard = ({ gig }: { gig: ClientGig }) => (
     <Card key={gig.id} className="glass-card flex flex-col">
-      <CardHeader>
+      <CardHeader className="p-4 sm:p-6">
         <div className="flex justify-between items-start gap-2">
            <Link href={`/gigs/${gig.id}`} className="hover:underline flex-grow">
                <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
            </Link>
-           <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize shrink-0">
+           <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize shrink-0 text-xs">
                {gig.status}
            </Badge>
         </div>
-         {/* Since these are client's own gigs, client info is implicit. Show creation date. */}
-        <CardDescription>
+        <CardDescription className="text-xs">
           Created {formatDateDistance(gig.createdAt)}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow">
-         <div className="text-sm text-muted-foreground">
+      <CardContent className="flex-grow p-4 sm:p-6 pt-0">
+         <div className="text-xs sm:text-sm text-muted-foreground">
             Deadline: {formatDeadline(gig.deadline)}
          </div>
-         <div className="text-sm text-muted-foreground">
+         <div className="text-xs sm:text-sm text-muted-foreground">
             Budget: {gig.currency} {gig.budget.toFixed(2)}
          </div>
-         <div className="flex items-center text-sm text-muted-foreground mt-2">
+         <div className="flex items-center text-xs sm:text-sm text-muted-foreground mt-2">
             <Users className="mr-1 h-4 w-4" /> {gig.applicantCount} Applicant(s)
          </div>
       </CardContent>
-      <CardFooter className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 border-t pt-4">
+      <CardFooter className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
         {gig.status === 'open' && (
           <>
             <Button variant="outline" size="sm" asChild>
@@ -211,12 +210,12 @@ export default function ClientGigsPage() {
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           {icon}
-          <h2 className="text-2xl font-semibold tracking-tight">{title} ({gigs.length})</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">{title} ({gigs.length})</h2>
         </div>
         {gigs.length === 0 ? (
-          <p className="text-muted-foreground ml-8">No gigs in this category.</p>
+          <p className="text-muted-foreground ml-8 text-sm">No gigs in this category.</p>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
             {gigs.map((gig) => <GigCard gig={gig} key={gig.id} />)}
           </div>
         )}
@@ -228,8 +227,8 @@ export default function ClientGigsPage() {
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">My Gigs</h1>
-        <Button asChild>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">My Gigs</h1>
+        <Button asChild size="sm" className="sm:text-sm">
           <Link href="/client/gigs/new">
             <PlusCircle className="mr-2 h-4 w-4" /> Post a New Gig
           </Link>
@@ -238,11 +237,11 @@ export default function ClientGigsPage() {
 
       {allGigs.length === 0 && !isLoading ? (
         <Card className="glass-card text-center py-10">
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
               <CardTitle>No Gigs Found</CardTitle>
               <CardDescription>You haven't posted any gigs yet.</CardDescription>
           </CardHeader>
-           <CardContent>
+           <CardContent className="p-4 sm:p-6 pt-0">
              <Button asChild>
                 <Link href="/client/gigs/new">Post Your First Gig</Link>
              </Button>
@@ -250,12 +249,13 @@ export default function ClientGigsPage() {
         </Card>
       ) : (
         <div className="space-y-10">
-          {renderGigSection("In-Progress Gigs", categorizedGigs.inProgress, <Settings2 className="h-6 w-6 text-secondary-foreground" />)}
-          {renderGigSection("Open Gigs", categorizedGigs.open, <Users className="h-6 w-6 text-primary" />)}
-          {renderGigSection("Completed Gigs", categorizedGigs.completed, <CheckCircle className="h-6 w-6 text-green-500" />)}
-          {renderGigSection("Closed Gigs", categorizedGigs.closed, <XCircle className="h-6 w-6 text-destructive" />)}
+          {renderGigSection("In-Progress Gigs", categorizedGigs.inProgress, <Settings2 className="h-5 w-5 sm:h-6 sm:w-6 text-secondary-foreground" />)}
+          {renderGigSection("Open Gigs", categorizedGigs.open, <Users className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />)}
+          {renderGigSection("Completed Gigs", categorizedGigs.completed, <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-green-500" />)}
+          {renderGigSection("Closed Gigs", categorizedGigs.closed, <XCircle className="h-5 w-5 sm:h-6 sm:w-6 text-destructive" />)}
         </div>
       )}
     </div>
   );
 }
+

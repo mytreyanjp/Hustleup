@@ -257,10 +257,10 @@ export default function StudentProfilePage() {
         updatedAt: Timestamp.now(),
       };
       
-      if (userProfile?.profilePictureUrl) {
+      if (userProfile?.profilePictureUrl && !selectedImageFile) { 
         updateData.profilePictureUrl = userProfile.profilePictureUrl;
-      } else if (imagePreview && !selectedImageFile) { 
-         updateData.profilePictureUrl = imagePreview;
+      } else if (imagePreview && !selectedImageFile && (!userProfile || userProfile.profilePictureUrl !== imagePreview)) {
+         updateData.profilePictureUrl = imagePreview; 
       }
 
 
@@ -329,10 +329,10 @@ export default function StudentProfilePage() {
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
       <Card className="glass-card">
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <div className="relative group">
-              <Avatar className="h-24 w-24 sm:h-28 sm:w-28 text-3xl border-2 border-muted shadow-md">
+              <Avatar className="h-20 w-20 sm:h-28 sm:w-28 text-3xl border-2 border-muted shadow-md">
                 <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
               </Avatar>
@@ -351,8 +351,8 @@ export default function StudentProfilePage() {
             <input type="file" ref={fileInputRef} hidden accept="image/png, image/jpeg, image/webp, image/gif" onChange={handleImageFileChange} disabled={!isEditing || isUploading} />
             
             <div className='text-center sm:text-left flex-grow'>
-              <CardTitle className="text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
-              <CardDescription>{userProfile?.email || 'No email provided'}</CardDescription>
+              <CardTitle className="text-xl sm:text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">{userProfile?.email || 'No email provided'}</CardDescription>
               {isEditing && selectedImageFile && !isUploading && (
                 <Button onClick={handleImageUpload} size="sm" className="mt-2">
                   <UploadCloud className="mr-2 h-4 w-4" /> Upload New Picture
@@ -364,7 +364,7 @@ export default function StudentProfilePage() {
                   <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
                 </div>
               )}
-               <div className="flex items-center justify-center sm:justify-start gap-4 text-sm text-muted-foreground mt-3">
+               <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground mt-3">
                  <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                     <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers
                  </button>
@@ -374,14 +374,14 @@ export default function StudentProfilePage() {
                </div>
             </div>
             {!isEditing && (
-              <Button variant="outline" onClick={() => setIsEditing(true)} className="sm:ml-auto">
-                <Edit className="mr-2 h-4 w-4" /> Edit Profile
+              <Button variant="outline" onClick={() => setIsEditing(true)} className="sm:ml-auto text-xs sm:text-sm">
+                <Edit className="mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Edit Profile
               </Button>
             )}
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           {isEditing ? (
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -463,26 +463,26 @@ export default function StudentProfilePage() {
               </form>
             </Form>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {userProfile?.bio && (
                 <div>
-                  <h3 className="font-semibold text-lg mb-1">Bio</h3>
+                  <h3 className="font-semibold text-md sm:text-lg mb-1">Bio</h3>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{userProfile.bio}</p>
                 </div>
               )}
               {userProfile?.skills && userProfile.skills.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-lg mb-2">Skills</h3>
+                  <h3 className="font-semibold text-md sm:text-lg mb-2">Skills</h3>
                   <div className="flex flex-wrap gap-2">
                     {userProfile.skills.map((skill, index) => (
-                      <Badge key={index} variant="secondary">{skill}</Badge>
+                      <Badge key={index} variant="secondary" className="text-xs sm:text-sm">{skill}</Badge>
                     ))}
                   </div>
                 </div>
               )}
               {userProfile?.portfolioLinks && userProfile.portfolioLinks.filter(link => link.trim() !== '').length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-lg mb-2">Portfolio & Links</h3>
+                  <h3 className="font-semibold text-md sm:text-lg mb-2">Portfolio & Links</h3>
                   <ul className="space-y-1">
                     {userProfile.portfolioLinks.filter(link => link.trim() !== '').map((link, index) => (
                       <li key={index}>
@@ -502,85 +502,85 @@ export default function StudentProfilePage() {
         </CardContent>
       </Card>
 
-      <Separator className="my-8" />
+      <Separator className="my-6 sm:my-8" />
 
       <div className="space-y-6">
-        <h2 className="text-2xl font-semibold tracking-tight">Your Activity Overview</h2>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">Your Activity Overview</h2>
+        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
           <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">Available Gigs</CardTitle>
               <Search className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : availableGigsCount}
               </div>
               <p className="text-xs text-muted-foreground">Opportunities matching your skills.</p>
-              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/gigs/browse">Browse Gigs</Link></Button>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild><Link href="/gigs/browse">Browse Gigs</Link></Button>
             </CardContent>
           </Card>
           <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">Active Applications</CardTitle>
               <ApplicationsIcon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeApplicationsCount}
               </div>
               <p className="text-xs text-muted-foreground">Applications that are pending or accepted.</p>
-              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/applications">View Applications</Link></Button>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild><Link href="/student/applications">View Applications</Link></Button>
             </CardContent>
           </Card>
           <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">Bookmarked Gigs</CardTitle>
               <Bookmark className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : bookmarkedGigsCount}
               </div>
               <p className="text-xs text-muted-foreground">Gigs you've saved for later.</p>
-              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/bookmarks">View Bookmarks</Link></Button>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild><Link href="/student/bookmarks">View Bookmarks</Link></Button>
             </CardContent>
           </Card>
           <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">Current Works</CardTitle>
               <Briefcase className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : currentWorksCount}
               </div>
               <p className="text-xs text-muted-foreground">Gigs you are currently working on.</p>
-              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/works">Manage Works</Link></Button>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild><Link href="/student/works">Manage Works</Link></Button>
             </CardContent>
           </Card>
           <Card className="glass-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">Wallet Balance</CardTitle>
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">$0.00</div>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-xl sm:text-2xl font-bold">$0.00</div>
               <p className="text-xs text-muted-foreground">Total earnings from completed gigs.</p>
-              <Button variant="link" size="sm" className="p-0 h-auto mt-2" asChild><Link href="/student/wallet">View Wallet History</Link></Button>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild><Link href="/student/wallet">View Wallet History</Link></Button>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      <Separator className="my-8" />
+      <Separator className="my-6 sm:my-8" />
 
       <Card className="glass-card">
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <CardTitle>My Recent Posts</CardTitle>
           <CardDescription>A quick look at your latest content. <Link href="/student/posts/new" className="text-sm text-primary hover:underline">Create a new post</Link></CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6 pt-0">
           {/* Placeholder for recent posts preview - will need to fetch student's own posts here */}
           <p className="text-sm text-muted-foreground">Your posts will appear here.</p>
         </CardContent>
@@ -656,4 +656,3 @@ export default function StudentProfilePage() {
     </div>
   );
 }
-
