@@ -363,7 +363,8 @@ export default function ChatPage() {
         return;
     }
     if (!storage && selectedFile) {
-        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup. If on Spark plan, ensure it allows Storage configuration or upgrade.", variant: "destructive", duration: 10000 });
+        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup. If on Spark plan, ensure it allows Storage configuration or upgrade to Blaze plan if Rules tab is inaccessible.", variant: "destructive", duration: 15000 });
+        console.error("Firebase Storage object is null or undefined. Check Firebase configuration and initialization.");
         setIsSending(false); 
         return;
     }
@@ -400,24 +401,32 @@ export default function ChatPage() {
 
               switch (error.code) {
                 case 'storage/unauthorized': 
-                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. Also check login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
+                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. Also check login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
                   break;
-                case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
-                case 'storage/object-not-found': detailedErrorMessage = "Upload failed: File path may be incorrect or the object does not exist (check bucket/rules)."; break;
-                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Storage bucket not found. Verify Firebase config (storageBucket value)."; break;
-                case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase config."; break;
-                case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded."; break;
+                case 'storage/canceled': detailedErrorMessage = "Upload canceled by the user."; break;
+                case 'storage/object-not-found': detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself or incorrect rules."; break;
+                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config and that Storage is enabled in Firebase Console."; break;
+                case 'storage/project-not-found': detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings."; break;
+                case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space."; break;
+                case 'storage/retry-limit-exceeded': detailedErrorMessage = "Upload failed after multiple retries. Check network connection and Firebase Storage status."; break;
+                case 'storage/invalid-argument': detailedErrorMessage = "Upload failed: Invalid argument provided to storage operation. This might be an issue with the file path or metadata."; break;
                 default:
                   if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                     toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Check internet connection, browser Network tab (for specific request failures), and CORS configuration for your Firebase Storage bucket. Ensure Storage is enabled and rules set. Raw error: ${error.message || 'Unknown network error'}`;
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details on the specific request. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
                     duration = 20000; 
                   } else {
-                    detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Check network, Firebase Storage rules, and project plan. Server response (if any): ${error.serverResponse || 'N/A'}`; 
+                    detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations (e.g., Blaze plan if Spark plan's Rules tab is inaccessible). Server response (if any): ${error.serverResponse || 'N/A'}`; 
                   }
                   break;
               }
-              toast({ title: toastTitle, description: detailedErrorMessage, variant: "destructive", duration: duration });
+              toast({ 
+                  id: `chat-file-upload-failed-${error.code || 'unknown'}`,
+                  title: toastTitle, 
+                  description: detailedErrorMessage, 
+                  variant: "destructive", 
+                  duration: duration 
+              });
               reject(error);
             },
             async () => {
@@ -439,8 +448,8 @@ export default function ChatPage() {
         console.error("Outer catch for upload process (chat):", error);
         setIsSending(false);
         setUploadProgress(null);
-        if (!toast.isActive(`upload-error-${selectedChatId}`)) {
-            toast({ id: `upload-error-${selectedChatId}`, title: "Upload Process Failed", description: "An unexpected error occurred during file upload.", variant: "destructive" });
+        if (!toast.isActive(`upload-error-${selectedChatId}`)) { // Check if a more specific toast was already shown
+            toast({ id: `upload-error-${selectedChatId}`, title: "Upload Process Failed", description: "An unexpected error occurred during file upload. Check console for details.", variant: "destructive" });
         }
         return;
       }
@@ -509,10 +518,12 @@ export default function ChatPage() {
       if (userProfile.profilePictureUrl) { 
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
-        chatUpdateData.participantProfilePictures = {
-          ...existingPictures,
-          [user.uid]: userProfile.profilePictureUrl,
-        };
+        if (existingPictures[user.uid] !== userProfile.profilePictureUrl) {
+           chatUpdateData.participantProfilePictures = {
+             ...existingPictures,
+             [user.uid]: userProfile.profilePictureUrl,
+           };
+        }
       }
 
       batchOp.update(chatDocRef, chatUpdateData);
@@ -536,6 +547,7 @@ export default function ChatPage() {
   }
 
   if (!user) {
+    // This will be handled by the useEffect which calls router.push
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
@@ -597,7 +609,15 @@ export default function ChatPage() {
                     <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
                   <div className="flex-grow overflow-hidden">
-                    <p className={`text-sm truncate ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                    {otherParticipantId ? (
+                       <Link href={`/profile/${otherParticipantId}`} passHref
+                          onClick={(e) => e.stopPropagation()} // Prevent chat selection when clicking username
+                       >
+                         <p className={`text-sm truncate hover:underline ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                       </Link>
+                    ) : (
+                       <p className={`text-sm truncate ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                    )}
                     <p className={`text-xs truncate ${isUnread ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>{chat.lastMessage}</p>
                      <p className="text-xs text-muted-foreground/70">
                         {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
@@ -833,5 +853,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
-    
