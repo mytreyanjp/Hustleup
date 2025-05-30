@@ -97,9 +97,9 @@ export default function ClientDashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Client Dashboard</h1>
-         <Button asChild size="sm" className="sm:text-sm">
+         <Button asChild size="lg" className="sm:text-base">
             <Link href="/client/gigs/new">
-                <PlusCircle className="mr-2 h-4 w-4" /> Post a New Gig
+                <PlusCircle className="mr-2 h-5 w-5" /> Post a New Gig
             </Link>
          </Button>
       </div>
@@ -108,16 +108,16 @@ export default function ClientDashboardPage() {
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
             <CardTitle className="text-sm font-medium">Active Gigs</CardTitle>
-            <Briefcase className="h-4 w-4 text-muted-foreground" />
+            <Briefcase className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">
-                {activeGigsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : activeGigsCount}
+          <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
+            <div className="text-2xl sm:text-3xl font-bold">
+                {activeGigsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : activeGigsCount}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               Gigs that are open or in-progress.
             </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild>
                 <Link href="/client/gigs">View Gigs</Link>
              </Button>
           </CardContent>
@@ -126,16 +126,16 @@ export default function ClientDashboardPage() {
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
             <CardTitle className="text-sm font-medium">Pending Applicants</CardTitle>
-             <Users className="h-4 w-4 text-muted-foreground" />
+             <Users className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">
-                {pendingApplicantsCount === null ? <Loader2 className="h-6 w-6 animate-spin" /> : pendingApplicantsCount}
+          <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
+            <div className="text-2xl sm:text-3xl font-bold">
+                {pendingApplicantsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : pendingApplicantsCount}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               Students awaiting review for your open gigs.
             </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild>
                  <Link href="/client/applicants">View Applicants</Link>
              </Button>
           </CardContent>
@@ -144,15 +144,15 @@ export default function ClientDashboardPage() {
          <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
             <CardTitle className="text-sm font-medium">Payments Made</CardTitle>
-             <CreditCard className="h-4 w-4 text-muted-foreground" />
+             <CreditCard className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
             {/* TODO: Fetch actual payment data */}
-            <div className="text-xl sm:text-2xl font-bold">$0.00</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl sm:text-3xl font-bold">$0.00</div>
+            <p className="text-xs text-muted-foreground mt-1">
               Track your spending on completed gigs.
             </p>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-xs sm:text-sm" asChild>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild>
                  <Link href="/client/payments">View Payment History</Link>
              </Button>
           </CardContent>
