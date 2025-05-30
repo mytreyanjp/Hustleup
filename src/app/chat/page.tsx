@@ -550,7 +550,10 @@ export default function ChatPage() {
 
 
   if (!user) {
-    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
+    // This check ensures the user is not null, which would cause a redirect in the useEffect above.
+    // If router.push hasn't completed, this can be briefly shown.
+    // Or, if useEffect doesn't run immediately on server (it doesn't), then this is the SSR fallback before hydration.
+    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
   
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
@@ -676,7 +679,7 @@ export default function ChatPage() {
                             <AlertDialogDescription>
                                 You are about to share the following details with {otherUsername}:
                                 {userProfile.personalEmail && <div className="mt-2">Email: {userProfile.personalEmail}</div>}
-                                {userProfile.personalPhone && <div>Phone: {userProfile.personalPhone}</div>}
+                                {userProfile.personalPhone && <div className="mt-0.5">Phone: {userProfile.personalPhone}</div>}
                                 This cannot be undone.
                             </AlertDialogDescription>
                             </AlertDialogHeader>
@@ -704,8 +707,8 @@ export default function ChatPage() {
                     key={msg.id}
                     className={`flex ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div
-                      className={`p-3 rounded-lg max-w-[70%] shadow-sm ${
+                    <div // This is the chat bubble
+                      className={`p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 ${ 
                         msg.senderId === user?.uid
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-secondary dark:bg-muted'
