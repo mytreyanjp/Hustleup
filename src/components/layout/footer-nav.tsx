@@ -2,40 +2,40 @@
 "use client";
 
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import { Compass, Users, Briefcase, MessageSquare, User as UserIcon, Home } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Compass, Users, Briefcase, MessageSquare, User as UserIcon } from 'lucide-react';
 import { useFirebase } from '@/context/firebase-context';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
+// Removed Badge import as we'll use a simple span for consistency with Navbar
 
 interface NavItemProps {
   href: string;
   icon: React.ElementType;
-  label: string; 
+  label: string;
   isActive: boolean;
   unreadCount?: number;
 }
 
 const NavItem: React.FC<NavItemProps> = ({ href, icon: Icon, label, isActive, unreadCount }) => {
   return (
-    <Link 
-      href={href} 
+    <Link
+      href={href}
       className={cn(
-        "flex flex-col items-center justify-center flex-1 py-2 px-1 text-xs h-full", 
+        "flex items-center justify-center flex-1 py-2 px-1 h-full", // Removed flex-col
         isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
       )}
       aria-label={label}
       title={label}
     >
-      <div className="relative">
-        <Icon className="h-6 w-6" /> 
-        {unreadCount && unreadCount > 0 && (
-          <Badge 
-            variant="destructive" 
-            className="absolute -top-1.5 -right-2 text-[10px] h-[18px] w-[18px] p-0 flex items-center justify-center leading-none"
+      <div className="relative inline-flex items-center justify-center">
+        <Icon className="h-6 w-6" />
+        {/* Conditionally render the badge as a span if unreadCount > 0 */}
+        {typeof unreadCount === 'number' && unreadCount > 0 && (
+          <span
+            className="absolute -top-1.5 -right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-none text-destructive-foreground"
           >
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </Badge>
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
         )}
       </div>
     </Link>
@@ -46,19 +46,18 @@ export default function FooterNav() {
   const { user, role, totalUnreadChats } = useFirebase();
   const pathname = usePathname();
 
-  if (!user) { 
+  if (!user) {
     return null;
   }
 
   const getDashboardUrl = () => {
     if (role === 'student') return '/student/profile';
     if (role === 'client') return '/client/dashboard';
-    return '/'; 
+    return '/';
   };
 
   const navItemsBase = [
     { href: "/gigs/browse", icon: Compass, label: "Explore", show: true },
-    // Conditional items will be added below
     { href: "/chat", icon: MessageSquare, label: "Messages", show: !!user, unreadCount: totalUnreadChats },
     { href: getDashboardUrl(), icon: UserIcon, label: role === 'student' ? "Profile" : "Dashboard", show: !!user },
   ];
@@ -70,12 +69,11 @@ export default function FooterNav() {
     specificNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works", show: true });
   }
 
-  // Insert role-specific items into a consistent position, e.g., after "Explore"
   const navItems = [
     navItemsBase[0],
     ...specificNavItems,
     ...navItemsBase.slice(1)
-  ].filter(Boolean) as unknown as NavItemProps[];
+  ].filter(Boolean) as NavItemProps[];
 
 
   return (
