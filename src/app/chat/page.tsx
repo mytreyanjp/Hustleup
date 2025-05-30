@@ -134,22 +134,17 @@ export default function ChatPage() {
           lastMessageReadBy: [user.uid],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          participantProfilePictures: {}, // Initialize as empty
         };
          if (gigIdForContext) {
             newChatData.gigId = gigIdForContext;
         }
 
-        const participantPictures: { [key: string]: string } = {};
         if (userProfile.profilePictureUrl) {
-          participantPictures[user.uid] = userProfile.profilePictureUrl;
+          newChatData.participantProfilePictures![user.uid] = userProfile.profilePictureUrl;
         }
         if (targetProfilePictureUrl) { 
-          participantPictures[targetUserId] = targetProfilePictureUrl;
-        }
-        if (Object.keys(participantPictures).length > 0) {
-          newChatData.participantProfilePictures = participantPictures;
-        } else {
-          newChatData.participantProfilePictures = {}; // Ensure the field exists
+          newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
         }
 
         await setDoc(chatDocRef, newChatData);
@@ -325,7 +320,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-       if (typeof window !== 'undefined') router.push('/auth/login?redirect=/chat');
+       router.push('/auth/login?redirect=/chat');
     }
   }, [user, authLoading, router]);
 
@@ -414,7 +409,7 @@ export default function ChatPage() {
                 default:
                   if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
                     toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details on the specific request. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
+                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection and browser's Network tab for more details. Also, verify CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
                     duration = 20000; 
                   } else {
                     detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations (e.g., Blaze plan if Spark plan's Rules tab is inaccessible). Server response (if any): ${error.serverResponse || 'N/A'}`; 
@@ -549,7 +544,7 @@ export default function ChatPage() {
 
   if (!user) {
     // This will be handled by the useEffect which calls router.push
-    return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
+    // return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Redirecting to login...</p></div>;
   }
   
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
@@ -612,7 +607,7 @@ export default function ChatPage() {
                   <div className="flex-grow overflow-hidden">
                     {otherParticipantId ? (
                        <Link href={`/profile/${otherParticipantId}`} passHref
-                          onClick={(e) => e.stopPropagation()} // Prevent chat selection when clicking username
+                          onClick={(e) => e.stopPropagation()} 
                           className={`text-sm truncate hover:underline ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}
                        >
                          {chatPartnerUsername}
@@ -636,17 +631,19 @@ export default function ChatPage() {
         "flex-grow glass-card flex flex-col h-full relative",
         !selectedChatId && 'hidden md:flex'
         )}>
-        {selectedChatId && selectedChatDetails && otherUserId ? (
+        {selectedChatId && selectedChatDetails && otherUserId && user ? (
           <>
             <CardHeader className="border-b flex flex-row items-center justify-between p-3">
               <div className="flex items-center gap-3">
                 <Button variant="ghost" size="icon" className="md:hidden h-8 w-8" onClick={() => setSelectedChatId(null)}>
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <Avatar className="h-10 w-10">
-                    <AvatarImage src={otherUserProfilePicture} alt={otherUsername} />
-                    <AvatarFallback>{otherUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
-                </Avatar>
+                <Link href={`/profile/${otherUserId}`} passHref>
+                  <Avatar className="h-10 w-10 cursor-pointer">
+                      <AvatarImage src={otherUserProfilePicture} alt={otherUsername} />
+                      <AvatarFallback>{otherUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                  </Avatar>
+                </Link>
                 <div>
                   <Link href={`/profile/${otherUserId}`} className="hover:underline">
                     <CardTitle className="text-base">{otherUsername}</CardTitle>
@@ -857,4 +854,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
