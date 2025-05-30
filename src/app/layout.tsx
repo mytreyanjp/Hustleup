@@ -1,25 +1,24 @@
-"use client"; // Make RootLayout a client component
 
-import type { Metadata } from 'next'; // Metadata can still be exported from client component
+"use client"; 
+
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from "@/components/ui/toaster"
-import { FirebaseProvider, useFirebase } from '@/context/firebase-context'; // Import useFirebase
+import { FirebaseProvider, useFirebase } from '@/context/firebase-context'; 
 import Navbar from '@/components/layout/navbar';
+import FooterNav from '@/components/layout/footer-nav'; // Import FooterNav
 
 const inter = Inter({
   variable: '--font-inter',
   subsets: ['latin'],
 });
 
-// Removed static metadata export as it's not allowed in client components.
-// If metadata is needed, it should be handled differently, e.g.
-// in a parent server component or via dynamic metadata generation if applicable.
 
 function AppBody({ children }: { children: React.ReactNode }) {
-  const { role } = useFirebase(); // Get role here
+  const { role } = useFirebase(); 
 
   let roleThemeClass = '';
   if (role === 'client') {
@@ -31,10 +30,11 @@ function AppBody({ children }: { children: React.ReactNode }) {
   return (
     <div className={cn("relative flex min-h-screen flex-col", roleThemeClass)}>
       <Navbar />
-      <main className="flex-1 container mx-auto px-4 py-8">
+      {/* Add bottom padding on mobile to account for the fixed footer */}
+      <main className="flex-1 container mx-auto px-4 py-8 md:pb-8 pb-20"> {/* pb-20 for footer space on mobile */}
         {children}
       </main>
-      {/* Add Footer later if needed */}
+      <FooterNav /> {/* Render FooterNav */}
     </div>
   );
 }
@@ -59,7 +59,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <FirebaseProvider>
-            <AppBody>{children}</AppBody> {/* Use AppBody to access context */}
+            <AppBody>{children}</AppBody> 
             <Toaster />
           </FirebaseProvider>
         </ThemeProvider>

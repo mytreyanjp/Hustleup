@@ -50,11 +50,12 @@ export default function Navbar() {
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
+      // Query for open gigs, ordered by creation date, limit to 5 for suggestions
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
         orderBy('createdAt', 'desc'),
-        limit(10)
+        limit(5) // Fetch a few for initial suggestions
       );
       const querySnapshot = await getDocs(q);
       const fetchedGigs = querySnapshot.docs.map(doc => ({
@@ -77,12 +78,11 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    if (isSuggestionsOpen && searchTerm.trim() !== '' && !isLoadingSuggestions) {
-      // Client-side filtering happens in filteredSuggestions
-    } else if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
+    // Simplified logic: fetch initial suggestions if popover opens and no suggestions exist
+    if (isSuggestionsOpen && suggestions.length === 0 && !isLoadingSuggestions) {
       fetchInitialSuggestions();
     }
-  }, [isSuggestionsOpen, searchTerm, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions]);
+  }, [isSuggestionsOpen, suggestions.length, isLoadingSuggestions, fetchInitialSuggestions]);
 
 
   const handleSignOut = async () => {
@@ -113,16 +113,18 @@ export default function Navbar() {
     }
   };
 
-  const filteredSuggestions = searchTerm.trim() === '' ? suggestions.slice(0,5) : suggestions.filter(suggestion =>
-    suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
-  ).slice(0,5);
+  const filteredSuggestions = searchTerm.trim() === '' 
+    ? suggestions // Show initial fetched suggestions if search is empty
+    : suggestions.filter(suggestion =>
+        suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
+      ).slice(0,5); // Limit to 5 filtered suggestions
 
   const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : '/';
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center pl-4">
+      <div className="container flex h-16 items-center pl-4"> {/* Added pl-4 for left margin */}
         <div className="mr-4 flex items-center space-x-2 cursor-default">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -130,6 +132,7 @@ export default function Navbar() {
           <span className="font-bold hidden sm:inline-block">HustleUp</span>
         </div>
 
+        {/* Main navigation links - hidden on mobile, shown on md and up */}
         <nav className="flex-1 items-center space-x-2 sm:space-x-4 hidden md:flex">
           <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
             <SearchIcon className={cn("mr-1 h-4 w-4", isClient ? "sm:inline-block" : "hidden")} />
@@ -343,42 +346,7 @@ export default function Navbar() {
                         </DropdownMenuItem>
                       </>
                     )}
-                    <div className="md:hidden">
-                      <DropdownMenuSeparator className="md:hidden" />
-                      <DropdownMenuItem asChild className="md:hidden">
-                         <Link href="/gigs/browse">
-                           {isClient && role === 'student' ? <Compass className="mr-2 h-4 w-4" /> : <SearchIcon className="mr-2 h-4 w-4" />}
-                           {isClient && role === 'student' ? 'Explore' : 'Gigs'}
-                         </Link>
-                      </DropdownMenuItem>
-                      {isClient && role === 'client' && (
-                          <DropdownMenuItem asChild className="md:hidden">
-                              <Link href="/hustlers/browse">
-                                  <HustlersIcon className="mr-2 h-4 w-4" /> Hustlers
-                              </Link>
-                          </DropdownMenuItem>
-                      )}
-                       {isClient && role === 'student' && (
-                          <DropdownMenuItem asChild className="md:hidden">
-                              <Link href="/student/works">
-                                  <Briefcase className="mr-2 h-4 w-4" /> Your Works
-                              </Link>
-                          </DropdownMenuItem>
-                      )}
-                      {isClient && user && (
-                          <DropdownMenuItem asChild className="md:hidden">
-                              <Link href="/chat" className="relative">
-                                  <MessageSquare className="mr-2 h-4 w-4" />
-                                  <span>Messages</span>
-                                  {totalUnreadChats > 0 && (
-                                      <span className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">
-                                          {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
-                                      </span>
-                                  )}
-                              </Link>
-                          </DropdownMenuItem>
-                      )}
-                    </div>
+                    {/* Mobile specific dropdown items will be handled by FooterNav */}
                     <DropdownMenuItem asChild>
                       <Link href="/settings">
                         <Settings className="mr-2 h-4 w-4" />
@@ -413,6 +381,7 @@ export default function Navbar() {
               </>
             )
           ) : (
+            // Placeholder for SSR to avoid layout shifts when not client-side rendered yet
             <div style={{ width: '7rem' }} />
           )}
         </div>
