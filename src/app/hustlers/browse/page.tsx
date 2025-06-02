@@ -146,12 +146,8 @@ export default function BrowseHustlersPage() {
                   <AvatarImage src={student.profilePictureUrl} alt={student.username || 'Student'} />
                   <AvatarFallback>{getInitials(student.email, student.username)}</AvatarFallback>
                 </Avatar>
-                <CardTitle className="text-md sm:text-lg line-clamp-1 break-words">{student.username || 'Student User'}</CardTitle>
-                {student.bio && (
-                  <CardDescription className="text-xs sm:text-sm line-clamp-2 break-words">
-                    {student.bio}
-                  </CardDescription>
-                )}
+                <CardTitle className="text-base sm:text-lg truncate break-words w-full">{student.companyName || student.username || 'User'}</CardTitle>
+                <CardDescription className="capitalize text-xs sm:text-sm truncate break-words w-full">{student.role}</CardDescription>
               </CardHeader>
               <CardContent className="flex-grow p-4 sm:p-6 pt-0">
                 {student.skills && student.skills.length > 0 && (
@@ -170,11 +166,16 @@ export default function BrowseHustlersPage() {
                 {!student.skills || student.skills.length === 0 && !student.bio && (
                     <p className="text-xs text-muted-foreground text-center">Profile details not yet available.</p>
                 )}
+                 {student.bio && (!student.skills || student.skills.length === 0) && (
+                     <p className="text-xs text-muted-foreground text-center line-clamp-2 break-words">
+                         {student.bio}
+                     </p>
+                 )}
               </CardContent>
               <CardFooter className="p-4 sm:p-6 pt-0">
                 <Button asChild className="w-full" size="sm">
                   <Link href={`/profile/${student.uid}`}>
-                    View Profile <ArrowRight className="ml-2 h-4 w-4" />
+                    View Profile <ArrowRight className="ml-1 sm:ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               </CardFooter>
