@@ -31,7 +31,7 @@ import {
 // import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { getChatId, cn } from '@/lib/utils';
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format, isToday, isYesterday, startOfDay } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
@@ -552,6 +552,96 @@ export default function ChatPage() {
     });
   }, [chats, chatSearchTerm, user]);
 
+  const processedMessagesWithDates = useMemo(() => {
+    const elements: React.ReactNode[] = [];
+    let lastMessageDateString: string | null = null;
+
+    messages.forEach((msg) => {
+      if (msg.timestamp && typeof msg.timestamp.toDate === 'function') {
+        const messageDate = msg.timestamp.toDate();
+        const currentDateString = format(startOfDay(messageDate), 'yyyy-MM-dd');
+
+        if (currentDateString !== lastMessageDateString) {
+          let dateLabel = '';
+          if (isToday(messageDate)) {
+            dateLabel = 'Today';
+          } else if (isYesterday(messageDate)) {
+            dateLabel = 'Yesterday';
+          } else {
+            dateLabel = format(messageDate, 'MMMM d, yyyy');
+          }
+          
+          elements.push(
+            <div key={`date-${currentDateString}`} className="flex justify-center my-2 sticky top-2 z-[1]">
+              <Badge variant="secondary" className="text-xs px-2 py-1 shadow-md">{dateLabel}</Badge>
+            </div>
+          );
+          lastMessageDateString = currentDateString;
+        }
+      }
+
+      elements.push(
+        <div
+          key={msg.id}
+          className={`flex mb-1 ${msg.senderId === user?.uid ? 'justify-end' : msg.senderId === 'system' ? 'justify-center' : 'justify-start'}`}
+        >
+          <div 
+            className={cn(
+              "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
+               msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 
+               msg.senderId === 'system' ? 'bg-muted/70 text-muted-foreground text-xs italic' : 'bg-secondary dark:bg-muted'
+            )}
+          >
+             {msg.messageType?.startsWith('system_') && <p className="text-center">{msg.text}</p>}
+             {!msg.messageType?.startsWith('system_') && msg.isDetailShareRequest && (
+               <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
+                  <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
+               </div>
+             )}
+             {!msg.messageType?.startsWith('system_') && msg.isDetailsShared && msg.sharedContactInfo && (
+              <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
+                  <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
+                  {msg.sharedContactInfo.email && (
+                      <div className="flex items-center gap-1.5 text-sm">
+                         <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
+                         <span className="break-all">{msg.sharedContactInfo.email}</span>
+                      </div>
+                  )}
+                  {msg.sharedContactInfo.phone && (
+                      <div className="flex items-center gap-1.5 text-sm mt-0.5">
+                         <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
+                         <span className="break-all">{msg.sharedContactInfo.phone}</span>
+                      </div>
+                  )}
+                   {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
+              </div>
+             )}
+            {!msg.messageType?.startsWith('system_') && msg.sharedGigId && msg.sharedGigTitle && (
+              <Link href={`/gigs/${msg.sharedGigId}`} target="_blank" rel="noopener noreferrer"
+                    className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Link2 className={`h-4 w-4 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
+                  <h4 className={`font-semibold text-sm break-all ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
+                </div>
+                <p className={`text-xs ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground underline' : 'text-primary hover:underline'}`}>
+                  View Gig Details
+                </p>
+                 {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
+              </Link>
+            )}
+            {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
+            {msg.senderId !== 'system' && (
+               <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
+                  {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+               </p>
+            )}
+          </div>
+        </div>
+      );
+    });
+    return elements;
+  }, [messages, user]);
+
 
   if (authLoading && typeof window !== 'undefined') {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -579,8 +669,6 @@ export default function ChatPage() {
   const isChatPendingRequest = selectedChatDetails?.chatStatus === 'pending_request';
   const isChatRejected = selectedChatDetails?.chatStatus === 'rejected';
   const showRequestActionButtons = isChatPendingRequest && !isCurrentUserInitiator;
-  // Input is disabled if chat is pending and current user is initiator AND has already sent first message,
-  // OR if chat is pending and current user is receiver, OR if chat is rejected.
   const isInputDisabled =
     (isChatPendingRequest && isCurrentUserInitiator && messages.length > 0) ||
     (isChatPendingRequest && !isCurrentUserInitiator) ||
@@ -758,68 +846,9 @@ export default function ChatPage() {
                </div>
             </CardHeader>
             <ScrollArea className="flex-grow p-0">
-              <CardContent className="p-4 space-y-4">
+               <CardContent className="p-4 space-y-1"> {/* Adjusted space-y */}
                 {isLoadingMessages && <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>}
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.senderId === user?.uid ? 'justify-end' : msg.senderId === 'system' ? 'justify-center' : 'justify-start'}`}
-                  >
-                    <div 
-                      className={cn(
-                        "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
-                         msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 
-                         msg.senderId === 'system' ? 'bg-muted/70 text-muted-foreground text-xs italic' : 'bg-secondary dark:bg-muted'
-                      )}
-                    >
-                       {msg.messageType?.startsWith('system_') && <p className="text-center">{msg.text}</p>}
-
-                       {!msg.messageType?.startsWith('system_') && msg.isDetailShareRequest && (
-                         <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
-                            <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
-                         </div>
-                       )}
-                       {!msg.messageType?.startsWith('system_') && msg.isDetailsShared && msg.sharedContactInfo && (
-                        <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
-                            <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
-                            {msg.sharedContactInfo.email && (
-                                <div className="flex items-center gap-1.5 text-sm">
-                                   <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                                   <span className="break-all">{msg.sharedContactInfo.email}</span>
-                                </div>
-                            )}
-                            {msg.sharedContactInfo.phone && (
-                                <div className="flex items-center gap-1.5 text-sm mt-0.5">
-                                   <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                                   <span className="break-all">{msg.sharedContactInfo.phone}</span>
-                                </div>
-                            )}
-                             {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
-                        </div>
-                       )}
-
-                      {!msg.messageType?.startsWith('system_') && msg.sharedGigId && msg.sharedGigTitle && (
-                        <Link href={`/gigs/${msg.sharedGigId}`} target="_blank" rel="noopener noreferrer"
-                              className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Link2 className={`h-4 w-4 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                            <h4 className={`font-semibold text-sm break-all ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
-                          </div>
-                          <p className={`text-xs ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground underline' : 'text-primary hover:underline'}`}>
-                            View Gig Details
-                          </p>
-                           {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
-                        </Link>
-                      )}
-                      {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
-                      {msg.senderId !== 'system' && (
-                         <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
-                            {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
-                         </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                {processedMessagesWithDates}
                 <div ref={messagesEndRef} />
                 {!isLoadingMessages && messages.length === 0 && (
                     <p className="text-center text-muted-foreground pt-10">
