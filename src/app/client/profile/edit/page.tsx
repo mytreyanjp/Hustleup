@@ -1,14 +1,13 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,8 +17,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, UploadCloud, Edit, User, Briefcase, Building, Globe, Info, Mail, Phone, ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-// import { Progress } from '@/components/ui/progress'; // Media upload disabled
-import NextImage from 'next/image'; // Renamed to avoid conflict
+import NextImage from 'next/image';
 import { cn } from '@/lib/utils';
 
 const clientProfileEditSchema = z.object({
@@ -34,12 +32,21 @@ const clientProfileEditSchema = z.object({
 type ClientProfileEditFormValues = z.infer<typeof clientProfileEditSchema>;
 
 const PREDEFINED_AVATARS = [
-  { url: 'https://picsum.photos/seed/clientavatar1/200/200', hint: 'professional headshot' },
-  { url: 'https://picsum.photos/seed/clientavatar2/200/200', hint: 'company logo placeholder' },
-  { url: 'https://picsum.photos/seed/clientavatar3/200/200', hint: 'abstract design' },
-  { url: 'https://picsum.photos/seed/clientavatar4/200/200', hint: 'office building' },
-  { url: 'https://picsum.photos/seed/clientavatar5/200/200', hint: 'modern workspace' },
-  { url: 'https://picsum.photos/seed/clientavatar6/200/200', hint: 'team picture' },
+  { url: 'https://picsum.photos/seed/avatar01/200/200', hint: 'abstract design' },
+  { url: 'https://picsum.photos/seed/avatar02/200/200', hint: 'nature landscape' },
+  { url: 'https://picsum.photos/seed/avatar03/200/200', hint: 'geometric pattern' },
+  { url: 'https://picsum.photos/seed/avatar04/200/200', hint: 'city skyline' },
+  { url: 'https://picsum.photos/seed/avatar05/200/200', hint: 'animal silhouette' },
+  { url: 'https://picsum.photos/seed/avatar06/200/200', hint: 'minimalist art' },
+  { url: 'https://picsum.photos/seed/avatar07/200/200', hint: 'tech background' },
+  { url: 'https://picsum.photos/seed/avatar08/200/200', hint: 'food photo' },
+  { url: 'https://picsum.photos/seed/avatar09/200/200', hint: 'space nebula' },
+  { url: 'https://picsum.photos/seed/avatar10/200/200', hint: 'ocean waves' },
+  { url: 'https://picsum.photos/seed/avatar11/200/200', hint: 'mountain range' },
+  { url: 'https://picsum.photos/seed/avatar12/200/200', hint: 'vintage car' },
+  { url: 'https://picsum.photos/seed/avatar13/200/200', hint: 'music instrument' },
+  { url: 'https://picsum.photos/seed/avatar14/200/200', hint: 'sports action' },
+  { url: 'https://picsum.photos/seed/avatar15/200/200', hint: 'book stack' },
 ];
 
 export default function EditClientProfilePage() {
@@ -51,6 +58,7 @@ export default function EditClientProfilePage() {
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedPredefinedAvatar, setSelectedPredefinedAvatar] = useState<string | null>(null);
+  const [showAvatarGrid, setShowAvatarGrid] = useState(false);
 
   const form = useForm<ClientProfileEditFormValues>({
     resolver: zodResolver(clientProfileEditSchema),
@@ -95,7 +103,7 @@ export default function EditClientProfilePage() {
     if (!authLoading) {
       if (!user || role !== 'client') {
         router.push('/auth/login?redirect=/client/profile/edit');
-      } else { // Changed: use populateFormAndPreview here
+      } else { 
         populateFormAndPreview(userProfile);
         setIsFormReady(true);
       }
@@ -139,6 +147,7 @@ export default function EditClientProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
+    setShowAvatarGrid(false); // Close grid after selection
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
@@ -170,35 +179,47 @@ export default function EditClientProfilePage() {
                 <AvatarImage src={imagePreview || undefined} alt={userProfile?.companyName || userProfile?.username || 'Client'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username, userProfile?.companyName)}</AvatarFallback>
               </Avatar>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full bg-background shadow-md hover:bg-accent"
+                onClick={() => setShowAvatarGrid(prev => !prev)}
+                aria-label="Choose avatar"
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
             </div>
-             {/* Predefined Avatar Selection */}
-            <div className="w-full">
-              <p className="text-sm font-medium text-center mb-2">Or choose an avatar</p>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {PREDEFINED_AVATARS.map((avatar) => (
-                  <button
-                    type="button"
-                    key={avatar.url}
-                    onClick={() => handleSelectPredefinedAvatar(avatar.url)}
-                    className={cn(
-                      "rounded-full overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-                      imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
-                    )}
-                    title={`Select avatar: ${avatar.hint}`}
-                  >
-                    <NextImage
-                      src={avatar.url}
-                      alt={avatar.hint}
-                      width={60}
-                      height={60}
-                      className="rounded-full object-cover aspect-square"
-                      data-ai-hint={avatar.hint}
-                    />
-                  </button>
-                ))}
+
+            {showAvatarGrid && (
+              <div className="w-full pt-4 border-t mt-4">
+                <p className="text-sm font-medium text-center mb-3">Choose an avatar</p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {PREDEFINED_AVATARS.map((avatar) => (
+                    <button
+                      type="button"
+                      key={avatar.url}
+                      onClick={() => handleSelectPredefinedAvatar(avatar.url)}
+                      className={cn(
+                        "rounded-lg overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 aspect-square",
+                        imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                      )}
+                      title={`Select avatar: ${avatar.hint}`}
+                    >
+                      <NextImage
+                        src={avatar.url}
+                        alt={avatar.hint}
+                        width={80}
+                        height={80}
+                        className="object-cover w-full h-full"
+                        data-ai-hint={avatar.hint}
+                      />
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2 text-center">File uploads are currently disabled.</p>
-            </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-2 text-center">File uploads are currently disabled.</p>
           </div>
 
           <Form {...form}>
@@ -303,3 +324,5 @@ export default function EditClientProfilePage() {
     </div>
   );
 }
+
+    

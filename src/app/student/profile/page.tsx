@@ -8,7 +8,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,9 +19,8 @@ import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as Applicatio
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
-// import { Progress } from '@/components/ui/progress'; // Media upload disabled
 import type { UserProfile } from '@/context/firebase-context';
-import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
+import NextImage from 'next/image';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -54,12 +52,21 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 const PREDEFINED_AVATARS = [
-  { url: 'https://picsum.photos/seed/hustleavatar1/200/200', hint: 'abstract avatar' },
-  { url: 'https://picsum.photos/seed/hustleavatar2/200/200', hint: 'profile illustration' },
-  { url: 'https://picsum.photos/seed/hustleavatar3/200/200', hint: 'geometric pattern' },
-  { url: 'https://picsum.photos/seed/hustleavatar4/200/200', hint: 'nature silhouette' },
-  { url: 'https://picsum.photos/seed/hustleavatar5/200/200', hint: 'gradient background' },
-  { url: 'https://picsum.photos/seed/hustleavatar6/200/200', hint: 'minimalist icon' },
+  { url: 'https://picsum.photos/seed/avatar01/200/200', hint: 'abstract design' },
+  { url: 'https://picsum.photos/seed/avatar02/200/200', hint: 'nature landscape' },
+  { url: 'https://picsum.photos/seed/avatar03/200/200', hint: 'geometric pattern' },
+  { url: 'https://picsum.photos/seed/avatar04/200/200', hint: 'city skyline' },
+  { url: 'https://picsum.photos/seed/avatar05/200/200', hint: 'animal silhouette' },
+  { url: 'https://picsum.photos/seed/avatar06/200/200', hint: 'minimalist art' },
+  { url: 'https://picsum.photos/seed/avatar07/200/200', hint: 'tech background' },
+  { url: 'https://picsum.photos/seed/avatar08/200/200', hint: 'food photo' },
+  { url: 'https://picsum.photos/seed/avatar09/200/200', hint: 'space nebula' },
+  { url: 'https://picsum.photos/seed/avatar10/200/200', hint: 'ocean waves' },
+  { url: 'https://picsum.photos/seed/avatar11/200/200', hint: 'mountain range' },
+  { url: 'https://picsum.photos/seed/avatar12/200/200', hint: 'vintage car' },
+  { url: 'https://picsum.photos/seed/avatar13/200/200', hint: 'music instrument' },
+  { url: 'https://picsum.photos/seed/avatar14/200/200', hint: 'sports action' },
+  { url: 'https://picsum.photos/seed/avatar15/200/200', hint: 'book stack' },
 ];
 
 export default function StudentProfilePage() {
@@ -72,6 +79,7 @@ export default function StudentProfilePage() {
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedPredefinedAvatar, setSelectedPredefinedAvatar] = useState<string | null>(null);
+  const [showAvatarGrid, setShowAvatarGrid] = useState(false);
 
   const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
   const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
@@ -109,7 +117,8 @@ export default function StudentProfilePage() {
         portfolioLinks: profile.portfolioLinks?.map(link => ({ value: link })) || [],
       });
       setImagePreview(profile.profilePictureUrl || null);
-      setSelectedPredefinedAvatar(null); // Reset on form population
+      setSelectedPredefinedAvatar(null);
+      setShowAvatarGrid(false); // Ensure grid is hidden when form populates
     } else if (user) {
       form.reset({
         username: user.email?.split('@')[0] || '',
@@ -119,6 +128,7 @@ export default function StudentProfilePage() {
       });
       setImagePreview(null);
       setSelectedPredefinedAvatar(null);
+      setShowAvatarGrid(false);
     }
   }, [form, user]);
 
@@ -202,7 +212,7 @@ export default function StudentProfilePage() {
 
 
   const onSubmit = async (data: ProfileFormValues) => {
-    if (!user || !db) return; // Added db check
+    if (!user || !db) return;
     setIsSubmitting(true);
     try {
       const userDocRef = doc(db, 'users', user.uid);
@@ -224,6 +234,7 @@ export default function StudentProfilePage() {
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
       setIsEditing(false);
+      setShowAvatarGrid(false); // Hide grid after saving
     } catch (error: any) {
       console.error('Profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -235,6 +246,7 @@ export default function StudentProfilePage() {
   const handleCancelEdit = () => {
     populateFormAndPreview(userProfile);
     setIsEditing(false);
+    setShowAvatarGrid(false); // Hide grid on cancel
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null) => {
@@ -246,6 +258,7 @@ export default function StudentProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
+    setShowAvatarGrid(false); // Close grid after selection
   };
 
   const handleOpenFollowingModal = async () => {
@@ -295,9 +308,21 @@ export default function StudentProfilePage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
             <div className="relative group shrink-0">
               <Avatar className="h-24 w-24 sm:h-32 sm:w-32 text-4xl border-2 border-muted shadow-md">
-                <AvatarImage src={imagePreview || undefined} alt={userProfile?.username || 'User'} />
+                <AvatarImage src={imagePreview || userProfile?.profilePictureUrl || undefined} alt={userProfile?.username || 'User'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
               </Avatar>
+              {isEditing && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full bg-background shadow-md hover:bg-accent"
+                  onClick={() => setShowAvatarGrid(prev => !prev)}
+                  aria-label="Choose avatar"
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+              )}
             </div>
             <div className='text-center sm:text-left flex-grow space-y-1'>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -326,34 +351,35 @@ export default function StudentProfilePage() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 
-                {/* Predefined Avatar Selection */}
-                <FormItem>
-                  <FormLabel>Choose an Avatar</FormLabel>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-2">
-                    {PREDEFINED_AVATARS.map((avatar) => (
-                      <button
-                        type="button"
-                        key={avatar.url}
-                        onClick={() => handleSelectPredefinedAvatar(avatar.url)}
-                        className={cn(
-                          "rounded-full overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-                          imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
-                        )}
-                        title={`Select avatar: ${avatar.hint}`}
-                      >
-                        <NextImage
-                          src={avatar.url}
-                          alt={avatar.hint}
-                          width={80}
-                          height={80}
-                          className="rounded-full object-cover aspect-square"
-                          data-ai-hint={avatar.hint}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                  <FormDescription>Or keep your current picture. File uploads are disabled.</FormDescription>
-                </FormItem>
+                {showAvatarGrid && (
+                  <FormItem>
+                    <FormLabel>Choose an Avatar</FormLabel>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-2">
+                      {PREDEFINED_AVATARS.map((avatar) => (
+                        <button
+                          type="button"
+                          key={avatar.url}
+                          onClick={() => handleSelectPredefinedAvatar(avatar.url)}
+                          className={cn(
+                            "rounded-lg overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 aspect-square",
+                            imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                          )}
+                          title={`Select avatar: ${avatar.hint}`}
+                        >
+                          <NextImage
+                            src={avatar.url}
+                            alt={avatar.hint}
+                            width={80}
+                            height={80}
+                            className="object-cover w-full h-full"
+                            data-ai-hint={avatar.hint}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                     <FormDescription className="mt-1">Or keep your current picture. File uploads are disabled.</FormDescription>
+                  </FormItem>
+                )}
 
                 <FormField
                   control={form.control} name="username"
@@ -626,3 +652,5 @@ export default function StudentProfilePage() {
     </div>
   );
 }
+
+    
