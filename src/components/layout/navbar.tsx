@@ -294,7 +294,7 @@ export default function Navbar() {
               SearchBarComponent
             )}
 
-            <ModeToggle />
+            {!isMobile && <ModeToggle />} {/* Hide standalone ModeToggle on mobile */}
 
             {isClient ? (
               loading ? ( <Skeleton className="h-8 w-8 rounded-full" /> ) :
