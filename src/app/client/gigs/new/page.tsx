@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
@@ -18,10 +18,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, Info, ArrowLeft } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Info, ArrowLeft, PlusCircle, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
+import type { ProgressReport } from '@/app/student/works/page'; // Assuming ProgressReport type is shareable
 
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
@@ -30,6 +31,39 @@ const gigSchema = z.object({
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
+  reportDeadlines: z.array(z.date().nullable()).optional(),
+}).superRefine((data, ctx) => {
+    if (data.numberOfReports > 0 && data.reportDeadlines && data.reportDeadlines.length !== data.numberOfReports) {
+      // This is a bit complex to enforce strictly with useFieldArray's dynamic nature if not all fields are touched.
+      // The useEffect logic below aims to keep them in sync.
+      // We might add a UI hint or rely on the useEffect.
+    }
+    if (data.numberOfReports === 0 && data.reportDeadlines && data.reportDeadlines.length > 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['reportDeadlines'],
+            message: 'Report deadlines should not be set if number of reports is zero.',
+        });
+    }
+    // Further validation: each report deadline should be before or on the main gig deadline
+    if (data.reportDeadlines && data.deadline) {
+        data.reportDeadlines.forEach((rd, index) => {
+            if (rd && rd > data.deadline) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [`reportDeadlines.${index}`],
+                    message: `Report deadline ${index + 1} cannot be after the main gig deadline.`,
+                });
+            }
+            if (rd && index > 0 && data.reportDeadlines![index-1] && rd < data.reportDeadlines![index-1]!) {
+                 ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [`reportDeadlines.${index}`],
+                    message: `Report deadline ${index + 1} cannot be before report deadline ${index}.`,
+                });
+            }
+        });
+    }
 });
 
 type GigFormValues = z.infer<typeof gigSchema>;
@@ -49,8 +83,33 @@ export default function NewGigPage() {
       deadline: undefined,
       requiredSkills: [],
       numberOfReports: 0,
+      reportDeadlines: [],
     },
+    mode: 'onChange', // Useful for immediate feedback on reportDeadlines
   });
+
+  const { control, watch, setValue } = form;
+  const numberOfReportsValue = watch("numberOfReports", 0);
+  const { fields: reportDeadlineFields, append: appendReportDeadline, remove: removeReportDeadline } = useFieldArray({
+    control,
+    name: "reportDeadlines"
+  });
+
+  useEffect(() => {
+    const currentDeadlinesCount = reportDeadlineFields.length;
+    const targetCount = numberOfReportsValue || 0;
+
+    if (targetCount > currentDeadlinesCount) {
+      for (let i = currentDeadlinesCount; i < targetCount; i++) {
+        appendReportDeadline(null);
+      }
+    } else if (targetCount < currentDeadlinesCount) {
+      for (let i = currentDeadlinesCount - 1; i >= targetCount; i--) {
+        removeReportDeadline(i);
+      }
+    }
+  }, [numberOfReportsValue, reportDeadlineFields.length, appendReportDeadline, removeReportDeadline]);
+
 
   useEffect(() => {
     if (!authLoading) {
@@ -69,19 +128,37 @@ export default function NewGigPage() {
     setIsSubmitting(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
-      await addDoc(gigsCollectionRef, {
+      
+      const progressReportsData: Omit<ProgressReport, 'studentSubmission' | 'clientStatus' | 'clientFeedback' | 'reviewedAt'>[] = [];
+      if (data.numberOfReports && data.numberOfReports > 0 && data.reportDeadlines) {
+        for (let i = 0; i < data.numberOfReports; i++) {
+          progressReportsData.push({
+            reportNumber: i + 1,
+            deadline: data.reportDeadlines[i] ? Timestamp.fromDate(data.reportDeadlines[i]!) : null,
+            // studentSubmission, clientStatus etc. will be null/undefined initially
+          });
+        }
+      }
+
+      const gigDataToSave = {
         clientId: user.uid,
         clientUsername: userProfile.username || user.email?.split('@')[0] || 'Unknown Client',
         clientDisplayName: userProfile.companyName || userProfile.username || user.email?.split('@')[0] || 'Client',
         clientAvatarUrl: userProfile.profilePictureUrl || '',
-        ...data,
+        title: data.title,
+        description: data.description,
+        budget: data.budget,
+        deadline: Timestamp.fromDate(data.deadline),
+        requiredSkills: data.requiredSkills,
         numberOfReports: data.numberOfReports || 0,
-        progressReports: [], 
+        progressReports: progressReportsData, // Save the structured progress reports
         currency: "INR", 
         status: 'open',
         createdAt: serverTimestamp(),
         applicants: [],
-      });
+      };
+      
+      await addDoc(gigsCollectionRef, gigDataToSave);
 
       toast({
         title: 'Gig Posted Successfully!',
@@ -181,7 +258,7 @@ export default function NewGigPage() {
                     name="deadline"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>Deadline</FormLabel>
+                        <FormLabel>Overall Gig Deadline</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -248,7 +325,7 @@ export default function NewGigPage() {
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
                       <Info className="h-4 w-4 text-muted-foreground" />
-                      Number of Progress Reports (Optional)
+                      Number of Progress Reports (0-10)
                     </FormLabel>
                     <FormControl>
                       <Input 
@@ -256,20 +333,76 @@ export default function NewGigPage() {
                         placeholder="e.g., 3 (0 for no reports)" 
                         {...field} 
                         value={field.value ?? 0} 
-                        onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)}
+                        onChange={e => {
+                            const val = parseInt(e.target.value, 10);
+                            field.onChange(isNaN(val) ? 0 : Math.max(0, Math.min(10, val)));
+                        }}
                         min="0" 
                         max="10"
                       />
                     </FormControl>
                     <FormDescription>
-                      Specify how many progress reports the student should submit (0-10).
-                      Each report approval marks a phase of completion.
+                      Specify how many progress reports the student should submit.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
+            
+            {numberOfReportsValue > 0 && (
+                <Card className="pt-4 border-dashed">
+                    <CardHeader className="p-2 pt-0">
+                        <CardTitle className="text-lg">Set Progress Report Deadlines</CardTitle>
+                        <CardDescription className="text-xs">Optional: Set a deadline for each progress report. Deadlines must be on or before the overall gig deadline.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4 p-2">
+                        {reportDeadlineFields.map((item, index) => (
+                            <FormField
+                                key={item.id}
+                                control={control}
+                                name={`reportDeadlines.${index}`}
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col">
+                                        <FormLabel>Deadline for Report #{index + 1}</FormLabel>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <FormControl>
+                                                    <Button
+                                                        variant={"outline"}
+                                                        className={cn(
+                                                            "w-full pl-3 text-left font-normal",
+                                                            !field.value && "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        {field.value ? format(field.value, "PPP") : <span>Pick a date (Optional)</span>}
+                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                    </Button>
+                                                </FormControl>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0" align="start">
+                                                <Calendar
+                                                    mode="single"
+                                                    selected={field.value}
+                                                    onSelect={(date) => {
+                                                        field.onChange(date || null); // Ensure null if cleared
+                                                        form.trigger(`reportDeadlines.${index}`); // Trigger validation for this field
+                                                        form.trigger('deadline'); // And potentially overall deadline
+                                                    }}
+                                                    disabled={(date) =>
+                                                        date < new Date(new Date().setHours(0, 0, 0, 0)) || (form.getValues('deadline') ? date > form.getValues('deadline') : false)
+                                                    }
+                                                    initialFocus
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
 
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -282,4 +415,3 @@ export default function NewGigPage() {
     </div>
   );
 }
-

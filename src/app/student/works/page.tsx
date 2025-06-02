@@ -27,10 +27,11 @@ interface StudentSubmission {
   submittedAt: Timestamp;
 }
 
-interface ProgressReport {
+export interface ProgressReport { // Exported for use in other files
   reportNumber: number;
-  studentSubmission?: StudentSubmission;
-  clientStatus?: 'pending_review' | 'approved' | 'rejected';
+  deadline?: Timestamp | null;
+  studentSubmission?: StudentSubmission | null;
+  clientStatus?: 'pending_review' | 'approved' | 'rejected' | null;
   clientFeedback?: string | null; 
   reviewedAt?: Timestamp | null;   
 }
@@ -42,7 +43,7 @@ interface WorkGig {
   clientId: string;
   clientUsername?: string;
   clientCompanyName?: string;
-  deadline: Timestamp;
+  deadline: Timestamp; // Overall gig deadline
   budget: number;
   currency: string;
   numberOfReports?: number;
@@ -68,22 +69,11 @@ export default function StudentWorksPage() {
   const [reportUploadProgress, setReportUploadProgress] = useState<number | null>(null);
   const reportFileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!authLoading && (!user || role !== 'student')) {
-      router.push('/auth/login?redirect=/student/works');
-    } else if (user && role === 'student') {
-      fetchActiveGigs();
-    }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, role, router]);
-
-  const fetchActiveGigs = async () => {
+  const fetchActiveGigs = useCallback(async () => {
     if (!user || !db) return;
     setIsLoading(true); setError(null);
     try {
       const gigsRef = collection(db, "gigs");
-      // IMPORTANT: This query requires a composite index on 'gigs' collection:
-      // selectedStudentId (Ascending), status (Ascending), createdAt (Descending)
       const q = query( gigsRef, where("selectedStudentId", "==", user.uid), where("status", "==", "in-progress"), orderBy("createdAt", "desc") );
       const querySnapshot = await getDocs(q);
       const fetchedGigsPromises = querySnapshot.docs.map(async (gigDoc) => {
@@ -101,20 +91,46 @@ export default function StudentWorksPage() {
             }
           } catch (clientProfileError) { console.error("Error fetching client profile:", clientProfileError); }
         }
+        
+        // Ensure progressReports are initialized correctly
+        const numReports = gigData.numberOfReports || 0;
+        const completeProgressReports: ProgressReport[] = [];
+        if (numReports > 0) {
+            for (let i = 0; i < numReports; i++) {
+                const existingReport = (gigData.progressReports as ProgressReport[])?.find(pr => pr.reportNumber === i + 1);
+                completeProgressReports.push({
+                    reportNumber: i + 1,
+                    deadline: existingReport?.deadline || null,
+                    studentSubmission: existingReport?.studentSubmission || null,
+                    clientStatus: existingReport?.clientStatus || null,
+                    clientFeedback: existingReport?.clientFeedback || null,
+                    reviewedAt: existingReport?.reviewedAt || null,
+                });
+            }
+        }
+
         return {
           id: gigDoc.id, title: gigData.title || "Untitled Gig", clientId: gigData.clientId, clientUsername, clientCompanyName,
           deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
-          numberOfReports: gigData.numberOfReports || 0, status: gigData.status,
-          progressReports: gigData.progressReports || [],
+          numberOfReports: numReports, status: gigData.status,
+          progressReports: completeProgressReports,
         } as WorkGig;
       });
       const resolvedGigs = await Promise.all(fetchedGigsPromises);
       setActiveGigs(resolvedGigs);
-      // Collapse all gigs by default
       setCollapsedGigs(new Set(resolvedGigs.map(gig => gig.id)));
     } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
     } finally { setIsLoading(false); }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (!authLoading && (!user || role !== 'student')) {
+      router.push('/auth/login?redirect=/student/works');
+    } else if (user && role === 'student') {
+      fetchActiveGigs();
+    }
+  }, [user, authLoading, role, router, fetchActiveGigs]);
+
 
   const toggleGigCollapse = (gigId: string) => {
     setCollapsedGigs(prev => {
@@ -194,7 +210,7 @@ export default function StudentWorksPage() {
       } catch (uploadError) {
         setIsSubmittingReport(false);
         setReportUploadProgress(null);
-        return; // Exit if file upload fails
+        return; 
       }
     }
 
@@ -203,7 +219,7 @@ export default function StudentWorksPage() {
       const gigSnap = await getDoc(gigDocRef);
       if (!gigSnap.exists()) throw new Error("Gig not found");
 
-      const currentGigData = gigSnap.data();
+      const currentGigData = gigSnap.data() as WorkGig; // Use WorkGig here
       let progressReports: ProgressReport[] = currentGigData.progressReports || [];
       
       const reportIndex = progressReports.findIndex(r => r.reportNumber === currentReportNumber);
@@ -216,29 +232,30 @@ export default function StudentWorksPage() {
 
       if (reportIndex > -1) {
         progressReports[reportIndex] = {
-          ...progressReports[reportIndex],
+          ...progressReports[reportIndex], // Preserve deadline and other fields
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null, 
           reviewedAt: null,   
         };
       } else {
+        // This case should ideally not happen if reports are pre-initialized
         progressReports.push({
           reportNumber: currentReportNumber as number,
+          deadline: null, // If not pre-initialized, deadline might be missing
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null, 
           reviewedAt: null,  
         });
       }
-      // Sort by reportNumber to maintain order
       progressReports.sort((a, b) => a.reportNumber - b.reportNumber);
 
       await updateDoc(gigDocRef, { progressReports });
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
-      setCurrentSubmittingGigId(null); // Close dialog
-      fetchActiveGigs(); // Refresh gig list
+      setCurrentSubmittingGigId(null); 
+      fetchActiveGigs(); 
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -248,17 +265,23 @@ export default function StudentWorksPage() {
     }
   };
 
-  const formatDeadlineDate = (timestamp: Timestamp | undefined): string => {
+  const formatDeadlineDate = (timestamp: Timestamp | undefined | null): string => {
     if (!timestamp) return 'N/A';
     try { return format(timestamp.toDate(), "MMM d, yyyy"); } catch (e) { return 'Invalid Date'; }
   };
+  
+  const formatSpecificDate = (timestamp: Timestamp | undefined | null): string => {
+     if (!timestamp) return 'Not set';
+     try { return format(timestamp.toDate(), "PPp"); } // e.g. Jan 1st, 2023, 2:30 PM
+     catch (e) { return 'Invalid date'; }
+   };
 
   const getReportStatusBadgeVariant = (status?: ProgressReport['clientStatus']): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
       case 'approved': return 'default';
       case 'rejected': return 'destructive';
       case 'pending_review': return 'secondary';
-      default: return 'outline'; // For "Not Submitted Yet"
+      default: return 'outline'; 
     }
   };
 
@@ -307,27 +330,27 @@ export default function StudentWorksPage() {
               >
                 <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
                   <div className="flex items-center text-xs sm:text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
-                  <div className="flex items-center text-xs sm:text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
+                  <div className="flex items-center text-xs sm:text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Gig Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
                   
                   {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                     <div className="pt-2 border-t">
                       <h4 className="font-semibold mt-2 mb-2 text-sm sm:text-md">Progress Reports ({gig.progressReports?.filter(r => r.studentSubmission).length || 0} / {gig.numberOfReports})</h4>
                       <div className="space-y-3">
-                        {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
-                          const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
-                          const previousReport = gig.progressReports?.find(r => r.reportNumber === reportNum - 1);
-                          const canSubmitThisReport = reportNum === 1 || (previousReport?.clientStatus === 'approved');
-                          const isRejected = report?.clientStatus === 'rejected';
+                        {gig.progressReports?.map(report => {
+                          const previousReport = gig.progressReports?.find(r => r.reportNumber === report.reportNumber - 1);
+                          const canSubmitThisReport = report.reportNumber === 1 || (previousReport?.clientStatus === 'approved');
+                          const isRejected = report.clientStatus === 'rejected';
 
                           return (
-                            <Card key={reportNum} className="bg-background/50 p-2 sm:p-3">
+                            <Card key={report.reportNumber} className="bg-background/50 p-2 sm:p-3">
                               <div className="flex justify-between items-center mb-1">
-                                <h5 className="font-medium text-xs sm:text-sm">Report #{reportNum}</h5>
-                                <Badge variant={getReportStatusBadgeVariant(report?.clientStatus)} size="sm" className="capitalize text-xs">
-                                  {report?.clientStatus ? report.clientStatus.replace('_', ' ') : 'Not Submitted'}
+                                <h5 className="font-medium text-xs sm:text-sm">Report #{report.reportNumber}</h5>
+                                <Badge variant={getReportStatusBadgeVariant(report.clientStatus)} size="sm" className="capitalize text-xs">
+                                  {report.clientStatus ? report.clientStatus.replace('_', ' ') : 'Awaiting Submission'}
                                 </Badge>
                               </div>
-                              {report?.studentSubmission && (
+                               {report.deadline && <p className="text-xs text-muted-foreground mb-1"><CalendarDays className="inline h-3 w-3 mr-0.5" />Report Deadline: {formatSpecificDate(report.deadline)}</p>}
+                              {report.studentSubmission ? (
                                 <div className="text-xs space-y-1">
                                   <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
                                   {report.studentSubmission.fileUrl && (
@@ -337,19 +360,22 @@ export default function StudentWorksPage() {
                                   )}
                                   <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
                                 </div>
+                              ): (
+                                <p className="text-xs text-muted-foreground italic">Not submitted yet.</p>
                               )}
-                              {report?.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
+
+                              {report.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
                                 <div className="mt-1 pt-1 border-t border-dashed text-xs">
                                   <p><span className="font-medium">Client Feedback:</span> {report.clientFeedback}</p>
                                   <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
                                 </div>
                               )}
-                              {(!report?.studentSubmission || isRejected) && canSubmitThisReport && (
-                                  <Button size="xs" variant="outline" className="mt-2" onClick={() => handleOpenSubmitReportDialog(gig.id, reportNum)}>
-                                      <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{reportNum}
+                              {(!report.studentSubmission || isRejected) && canSubmitThisReport && (
+                                  <Button size="xs" variant="outline" className="mt-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)}>
+                                      <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{report.reportNumber}
                                   </Button>
                               )}
-                              {!canSubmitThisReport && !report?.studentSubmission && reportNum > (gig.progressReports?.filter(r => r.studentSubmission).length || 0) && (
+                               {!canSubmitThisReport && !report.studentSubmission && report.reportNumber > (gig.progressReports?.filter(r => r.studentSubmission).length || 0) && (
                                   <p className="text-xs text-muted-foreground italic mt-1">Previous report needs approval before submitting this one.</p>
                               )}
                             </Card>

@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X } from 'lucide-react';
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -41,10 +41,11 @@ interface StudentSubmission {
 
 interface ProgressReport {
   reportNumber: number;
-  studentSubmission?: StudentSubmission;
-  clientStatus?: 'pending_review' | 'approved' | 'rejected';
-  clientFeedback?: string;
-  reviewedAt?: Timestamp;
+  deadline?: Timestamp | null;
+  studentSubmission?: StudentSubmission | null;
+  clientStatus?: 'pending_review' | 'approved' | 'rejected' | null;
+  clientFeedback?: string | null;
+  reviewedAt?: Timestamp | null;
 }
 
 interface Gig {
@@ -179,7 +180,23 @@ export default function ManageGigPage() {
                     setError("You are not authorized to manage this gig."); setGig(null);
                 } else {
                     if (!fetchedGig.currency) fetchedGig.currency = "INR";
+                    // Ensure progressReports have all fields, even if null from DB
+                    const numReports = fetchedGig.numberOfReports || 0;
+                    const completeProgressReports: ProgressReport[] = [];
+                    for (let i = 0; i < numReports; i++) {
+                        const existingReport = fetchedGig.progressReports?.find(pr => pr.reportNumber === i + 1);
+                        completeProgressReports.push({
+                            reportNumber: i + 1,
+                            deadline: existingReport?.deadline || null,
+                            studentSubmission: existingReport?.studentSubmission || null,
+                            clientStatus: existingReport?.clientStatus || null,
+                            clientFeedback: existingReport?.clientFeedback || null,
+                            reviewedAt: existingReport?.reviewedAt || null,
+                        });
+                    }
+                    fetchedGig.progressReports = completeProgressReports;
                     setGig(fetchedGig);
+
                     if (fetchedGig.status === 'completed' && fetchedGig.selectedStudentId) {
                         const reviewsQuery = query( collection(db, 'reviews'), where('gigId', '==', gigId), where('clientId', '==', user.uid), where('studentId', '==', fetchedGig.selectedStudentId) );
                         const reviewsSnapshot = await getDocs(reviewsQuery);
@@ -217,7 +234,6 @@ export default function ManageGigPage() {
       };
       const participantProfilePictures: {[key: string]: string} = {};
       if(userProfile.profilePictureUrl) participantProfilePictures[user.uid] = userProfile.profilePictureUrl;
-      // We don't have applicant's profile picture here, so it will be added if they chat back
 
       if (!chatSnap.exists()) {
         const newChatData: any = { 
@@ -261,22 +277,63 @@ export default function ManageGigPage() {
        try {
            const gigDocRef = doc(db, 'gigs', gig.id);
            const updatedApplicants = gig.applicants?.map(app => app.studentId === studentId ? { ...app, status: newStatus } : app ) || [];
+           
            let gigUpdateData: any = { applicants: updatedApplicants };
            if (newStatus === 'accepted') { 
              gigUpdateData.status = 'in-progress'; 
              gigUpdateData.selectedStudentId = studentId; 
-             if (gig.numberOfReports && gig.numberOfReports > 0 && (!gig.progressReports || gig.progressReports.length === 0)) {
-                 gigUpdateData.progressReports = [];
+             // If progressReports were pre-initialized with deadlines, they are already there.
+             // If not, and numberOfReports > 0, ensure the array exists.
+             if (gig.numberOfReports && gig.numberOfReports > 0 && (!gig.progressReports || gig.progressReports.length !== gig.numberOfReports)) {
+                 // This re-initializes if necessary, potentially wiping student submissions if this logic is flawed for re-acceptance
+                 // The fetchGigAndReviewStatus tries to preserve this. A more robust merge might be needed for complex state changes.
+                 const currentProgressReports = gig.progressReports || [];
+                 const newProgressReportsArray : Partial<ProgressReport>[] = [];
+                 for (let i = 0; i < gig.numberOfReports; i++) {
+                     const existingReport = currentProgressReports.find(r => r.reportNumber === i + 1);
+                     newProgressReportsArray.push({
+                         reportNumber: i + 1,
+                         deadline: existingReport?.deadline || null, // Preserve existing deadline if any
+                         studentSubmission: existingReport?.studentSubmission || null,
+                         clientStatus: existingReport?.clientStatus || null,
+                         clientFeedback: existingReport?.clientFeedback || null,
+                         reviewedAt: existingReport?.reviewedAt || null,
+                     });
+                 }
+                 gigUpdateData.progressReports = newProgressReportsArray;
              }
            }
            await updateDoc(gigDocRef, gigUpdateData);
-           setGig(prev => prev ? { 
-             ...prev, 
-             status: newStatus === 'accepted' ? 'in-progress' : prev.status, 
-             selectedStudentId: newStatus === 'accepted' ? studentId : prev.selectedStudentId, 
-             applicants: updatedApplicants,
-             progressReports: newStatus === 'accepted' && gig.numberOfReports && gig.numberOfReports > 0 && (!prev.progressReports || prev.progressReports.length === 0) ? [] : prev.progressReports,
-            } : null);
+
+            // Optimistically update local state
+           setGig(prev => {
+                if (!prev) return null;
+                const updatedGig = {
+                    ...prev,
+                    status: newStatus === 'accepted' ? 'in-progress' : prev.status,
+                    selectedStudentId: newStatus === 'accepted' ? studentId : prev.selectedStudentId,
+                    applicants: updatedApplicants,
+                };
+                if (newStatus === 'accepted' && updatedGig.numberOfReports && updatedGig.numberOfReports > 0 && (!updatedGig.progressReports || updatedGig.progressReports.length !== updatedGig.numberOfReports)) {
+                    const currentProgressReports = updatedGig.progressReports || [];
+                    const newProgressReportsArray : ProgressReport[] = [];
+                     for (let i = 0; i < updatedGig.numberOfReports; i++) {
+                        const existingReport = currentProgressReports.find(r => r.reportNumber === i + 1);
+                        newProgressReportsArray.push({
+                            reportNumber: i + 1,
+                            deadline: existingReport?.deadline || null,
+                            studentSubmission: existingReport?.studentSubmission || null,
+                            clientStatus: existingReport?.clientStatus || null,
+                            clientFeedback: existingReport?.clientFeedback || null,
+                            reviewedAt: existingReport?.reviewedAt || null,
+                        });
+                    }
+                    updatedGig.progressReports = newProgressReportsArray;
+                }
+                return updatedGig;
+            });
+
+
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
            await sendApplicationStatusNotification(applicant, gig, newStatus);
        } catch (err: any) { console.error("Error updating applicant status:", err); toast({ title: "Update Failed", description: `Could not update status: ${err.message}`, variant: "destructive" });
@@ -312,7 +369,7 @@ export default function ManageGigPage() {
         toast({title: "Feedback Required", description: "Please provide feedback when rejecting a report.", variant: "destructive"});
         return;
     }
-    setIsLoading(true);
+    setIsLoading(true); // Using general isLoading as this is a quick operation
     try {
       const gigDocRef = doc(db, 'gigs', gig.id);
       const currentGigSnap = await getDoc(gigDocRef);
@@ -324,7 +381,7 @@ export default function ManageGigPage() {
           return {
             ...report,
             clientStatus: newStatus,
-            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''),
+            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''), // Ensure feedback is string or null
             reviewedAt: Timestamp.now(),
           };
         }
@@ -345,10 +402,17 @@ export default function ManageGigPage() {
   };
 
 
-   const formatDate = (timestamp: Timestamp | undefined): string => {
+   const formatDate = (timestamp: Timestamp | undefined | null): string => {
      if (!timestamp) return 'N/A';
      try { return formatDistanceToNow(timestamp.toDate(), { addSuffix: true }); } catch (e) { return 'Invalid date'; }
    };
+   
+   const formatSpecificDate = (timestamp: Timestamp | undefined | null): string => {
+     if (!timestamp) return 'Not set';
+     try { return format(timestamp.toDate(), "PPp"); } // e.g. Jan 1st, 2023, 2:30 PM
+     catch (e) { return 'Invalid date'; }
+   };
+
 
     const getStatusBadgeVariant = (status: ApplicantInfo['status'] | Gig['status'] | ProgressReport['clientStatus']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
@@ -356,7 +420,7 @@ export default function ManageGigPage() {
            case 'rejected': case 'closed': return 'destructive';
            case 'pending': case 'in-progress': case 'pending_review': return 'secondary';
            case 'completed': return 'outline';
-           default: return 'secondary';
+           default: return 'secondary'; // For null or undefined clientStatus
        }
    };
 
@@ -365,6 +429,10 @@ export default function ManageGigPage() {
   if (!gig) return <div className="text-center py-10 text-muted-foreground">Gig details could not be loaded.</div>;
 
   const selectedStudent = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
+  const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0 
+    ? (gig.progressReports?.filter(r => r.clientStatus === 'approved').length === gig.numberOfReports)
+    : true; // If no reports required, considered "approved" for payment purposes
+
 
   return (
      <div className="max-w-4xl mx-auto py-8 space-y-6">
@@ -393,75 +461,73 @@ export default function ManageGigPage() {
                 <div className="mt-4 p-3 border rounded-md">
                     <h4 className="font-semibold mb-3 text-lg">Progress Reports</h4>
                     <div className="space-y-4">
-                        {Array.from({ length: gig.numberOfReports }, (_, i) => i + 1).map(reportNum => {
-                            const report = gig.progressReports?.find(r => r.reportNumber === reportNum);
-                            return (
-                                <Card key={reportNum} className="bg-muted/30">
-                                    <CardHeader className="pb-3">
-                                        <CardTitle className="text-md flex justify-between items-center">
-                                            Report #{reportNum}
-                                            {report?.clientStatus && <Badge variant={getStatusBadgeVariant(report.clientStatus)} className="capitalize text-xs">{report.clientStatus.replace('_', ' ')}</Badge>}
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {!report?.studentSubmission ? (
-                                            <p className="text-sm text-muted-foreground italic">Not yet submitted by student.</p>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                <p className="text-sm"><span className="font-medium">Student Submission:</span> {report.studentSubmission.text}</p>
-                                                {report.studentSubmission.fileUrl && (
-                                                    <Button variant="link" size="sm" asChild className="p-0 h-auto">
-                                                        <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
-                                                            <FileText className="mr-1 h-4 w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
-                                                        </a>
-                                                    </Button>
-                                                )}
-                                                <p className="text-xs text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
+                        {gig.progressReports?.map(report => (
+                            <Card key={report.reportNumber} className="bg-muted/30">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-md flex justify-between items-center">
+                                        Report #{report.reportNumber}
+                                        <Badge variant={getStatusBadgeVariant(report.clientStatus)} className="capitalize text-xs">{report.clientStatus ? report.clientStatus.replace('_', ' ') : 'Awaiting Submission'}</Badge>
+                                    </CardTitle>
+                                    {report.deadline && <p className="text-xs text-muted-foreground"><CalendarDays className="inline h-3 w-3 mr-1" />Deadline: {formatSpecificDate(report.deadline)}</p>}
+                                </CardHeader>
+                                <CardContent>
+                                    {!report.studentSubmission ? (
+                                        <p className="text-sm text-muted-foreground italic">Not yet submitted by student.</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <p className="text-sm"><span className="font-medium">Student Submission:</span> {report.studentSubmission.text}</p>
+                                            {report.studentSubmission.fileUrl && (
+                                                <Button variant="link" size="sm" asChild className="p-0 h-auto">
+                                                    <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
+                                                        <FileText className="mr-1 h-4 w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
+                                                    </a>
+                                                </Button>
+                                            )}
+                                            <p className="text-xs text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
 
-                                                {report.clientStatus === 'pending_review' && (
-                                                    <div className="pt-2 border-t mt-2">
-                                                        <Textarea
-                                                            placeholder="Provide feedback (optional for approval, required for rejection)..."
-                                                            defaultValue={report.clientFeedback || ""}
-                                                            onChange={(e) => setClientFeedbackText(e.target.value)}
-                                                            className="mb-2 text-sm"
-                                                            rows={2}
-                                                        />
-                                                        <div className="flex gap-2">
-                                                            <Button size="xs" variant="default" onClick={() => handleReportReview(reportNum, 'approved')} disabled={isLoading}>
-                                                                <Check className="mr-1 h-3 w-3" /> Approve
-                                                            </Button>
-                                                            <Button size="xs" variant="destructive" onClick={() => handleReportReview(reportNum, 'rejected')} disabled={isLoading}>
-                                                                <X className="mr-1 h-3 w-3" /> Reject
-                                                            </Button>
-                                                        </div>
+                                            {report.clientStatus === 'pending_review' && (
+                                                <div className="pt-2 border-t mt-2">
+                                                    <Textarea
+                                                        placeholder="Provide feedback (optional for approval, required for rejection)..."
+                                                        defaultValue={report.clientFeedback || ""}
+                                                        onChange={(e) => setClientFeedbackText(e.target.value)}
+                                                        className="mb-2 text-sm"
+                                                        rows={2}
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <Button size="xs" variant="default" onClick={() => handleReportReview(report.reportNumber, 'approved')} disabled={isLoading}>
+                                                            <Check className="mr-1 h-3 w-3" /> Approve
+                                                        </Button>
+                                                        <Button size="xs" variant="destructive" onClick={() => handleReportReview(report.reportNumber, 'rejected')} disabled={isLoading}>
+                                                            <X className="mr-1 h-3 w-3" /> Reject
+                                                        </Button>
                                                     </div>
-                                                )}
-                                                {report.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
-                                                    <div className="mt-2 pt-2 border-t border-dashed">
-                                                       <p className="text-sm"><span className="font-medium">Your Feedback:</span> {report.clientFeedback}</p>
-                                                       <p className="text-xs text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            );
-                        })}
+                                                </div>
+                                            )}
+                                            {report.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
+                                                <div className="mt-2 pt-2 border-t border-dashed">
+                                                   <p className="text-sm"><span className="font-medium">Your Feedback:</span> {report.clientFeedback}</p>
+                                                   <p className="text-xs text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        ))}
                     </div>
                 </div>
               )}
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
                 <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Ready to pay **INR {gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}? </p>
-                <Button size="lg" onClick={() => initiatePayment(selectedStudent)} disabled={!isRazorpayLoaded || isLoading || payingStudent?.studentId === selectedStudent.studentId || (gig.numberOfReports && gig.numberOfReports > 0 && !gig.progressReports?.every(r => r.clientStatus === 'approved' && r.reportNumber <= (gig.numberOfReports || 0) ))} className="w-full sm:w-auto">
+                <Button size="lg" onClick={() => initiatePayment(selectedStudent)} disabled={!isRazorpayLoaded || isLoading || payingStudent?.studentId === selectedStudent.studentId || !allReportsApproved} className="w-full sm:w-auto">
                    {(isLoading && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
                    Pay INR {gig.budget.toFixed(2)}
                  </Button>
             </CardFooter>
-             {gig.numberOfReports && gig.numberOfReports > 0 && !gig.progressReports?.every(r => r.clientStatus === 'approved' && r.reportNumber <= (gig.numberOfReports || 0)) && (
-                <p className="text-xs text-destructive text-center w-full mt-2 p-3">Payment button is disabled until all {gig.numberOfReports} required reports are approved.</p>
+             {!allReportsApproved && gig.numberOfReports && gig.numberOfReports > 0 && (
+                <p className="text-xs text-destructive text-center w-full p-3 border-t">Payment button is disabled until all {gig.numberOfReports} required reports are approved.</p>
              )}
          </Card>
        )}

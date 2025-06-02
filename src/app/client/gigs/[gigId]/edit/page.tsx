@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
@@ -18,10 +18,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, ArrowLeft, Info } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, ArrowLeft, Info, PlusCircle, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
+import type { ProgressReport } from '@/app/student/works/page'; // Assuming ProgressReport type is shareable
+
 
 // Schema for gig form validation
 const gigSchema = z.object({
@@ -31,14 +33,51 @@ const gigSchema = z.object({
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
+  reportDeadlines: z.array(z.date().nullable()).optional(),
+}).superRefine((data, ctx) => {
+    if (data.numberOfReports > 0 && data.reportDeadlines && data.reportDeadlines.length !== data.numberOfReports) {
+      // This can be complex with dynamic arrays. UI should manage the number of fields.
+    }
+    if (data.numberOfReports === 0 && data.reportDeadlines && data.reportDeadlines.length > 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['reportDeadlines'],
+            message: 'Report deadlines should not be set if number of reports is zero.',
+        });
+    }
+     if (data.reportDeadlines && data.deadline) {
+        data.reportDeadlines.forEach((rd, index) => {
+            if (rd && rd > data.deadline) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [`reportDeadlines.${index}`],
+                    message: `Report deadline ${index + 1} cannot be after the main gig deadline.`,
+                });
+            }
+            if (rd && index > 0 && data.reportDeadlines![index-1] && rd < data.reportDeadlines![index-1]!) {
+                 ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [`reportDeadlines.${index}`],
+                    message: `Report deadline ${index + 1} cannot be before report deadline ${index}.`,
+                });
+            }
+        });
+    }
 });
 
 type GigFormValues = z.infer<typeof gigSchema>;
 
-interface GigDataForForm extends GigFormValues { // Renamed to avoid conflict with potential global Gig type
+interface FetchedGigData { // For data fetched from Firestore
   id: string;
   clientId: string;
   currency: string;
+  title: string;
+  description: string;
+  budget: number;
+  deadline: Timestamp;
+  requiredSkills: string[];
+  numberOfReports?: number;
+  progressReports?: Partial<ProgressReport>[]; // Firestore progress reports
 }
 
 export default function EditGigPage() {
@@ -57,12 +96,35 @@ export default function EditGigPage() {
     defaultValues: {
       title: '',
       description: '',
-      budget: undefined, // Handled by coerce and validation
+      budget: undefined,
       deadline: undefined,
       requiredSkills: [],
       numberOfReports: 0,
+      reportDeadlines: [],
     },
+    mode: 'onChange',
   });
+
+  const { control, watch, setValue, reset } = form;
+  const numberOfReportsValue = watch("numberOfReports", 0);
+  const { fields: reportDeadlineFields, append: appendReportDeadline, remove: removeReportDeadline, replace: replaceReportDeadlines } = useFieldArray({
+    control,
+    name: "reportDeadlines"
+  });
+
+   useEffect(() => {
+    const currentDeadlinesCount = reportDeadlineFields.length;
+    const targetCount = numberOfReportsValue || 0;
+
+    if (targetCount > currentDeadlinesCount) {
+      const newDeadlines = Array(targetCount - currentDeadlinesCount).fill(null);
+      appendReportDeadline(newDeadlines);
+    } else if (targetCount < currentDeadlinesCount) {
+      const newDeadlines = reportDeadlineFields.slice(0, targetCount);
+      replaceReportDeadlines(newDeadlines);
+    }
+  }, [numberOfReportsValue, reportDeadlineFields, appendReportDeadline, replaceReportDeadlines]);
+
 
   const fetchAndSetGigData = useCallback(async () => {
     if (!user || !gigId) return;
@@ -74,7 +136,7 @@ export default function EditGigPage() {
       const docSnap = await getDoc(gigDocRef);
 
       if (docSnap.exists()) {
-        const gigData = { id: docSnap.id, ...docSnap.data() } as GigDataForForm;
+        const gigData = { id: docSnap.id, ...docSnap.data() } as FetchedGigData;
 
         if (gigData.clientId !== user.uid) {
           setError("You are not authorized to edit this gig.");
@@ -83,14 +145,25 @@ export default function EditGigPage() {
           return;
         }
 
-        form.reset({
+        const initialReportDeadlines: (Date | null)[] = [];
+        const numReports = gigData.numberOfReports || 0;
+        if (numReports > 0) {
+            for (let i = 0; i < numReports; i++) {
+                const report = gigData.progressReports?.find(pr => pr.reportNumber === i + 1);
+                initialReportDeadlines.push(report?.deadline ? (report.deadline as unknown as Timestamp).toDate() : null);
+            }
+        }
+        
+        reset({ // Use reset to correctly populate all fields including field arrays
           title: gigData.title,
           description: gigData.description,
           budget: gigData.budget,
           deadline: (gigData.deadline as unknown as Timestamp)?.toDate ? (gigData.deadline as unknown as Timestamp).toDate() : new Date(),
           requiredSkills: gigData.requiredSkills || [],
-          numberOfReports: gigData.numberOfReports || 0,
+          numberOfReports: numReports,
+          reportDeadlines: initialReportDeadlines,
         });
+
       } else {
         setError("Gig not found.");
         toast({ title: "Error", description: "The requested gig could not be found.", variant: "destructive" });
@@ -103,7 +176,7 @@ export default function EditGigPage() {
     } finally {
       setIsLoadingGig(false);
     }
-  }, [user, gigId, form, router, toast]);
+  }, [user, gigId, reset, router, toast]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -125,25 +198,35 @@ export default function EditGigPage() {
     setIsSubmitting(true);
     try {
       const gigDocRef = doc(db, 'gigs', gigId);
+      const existingGigSnap = await getDoc(gigDocRef);
+      if (!existingGigSnap.exists()) throw new Error("Gig not found for update.");
+      const existingGigData = existingGigSnap.data() as FetchedGigData;
 
-      // Explicitly construct the object for Firestore update
-      // This ensures only fields defined in GigFormValues (and thus validated by Zod)
-      // are included. Zod defaults and required fields should prevent undefined values.
-      const updateData: {
-        title: string;
-        description: string;
-        budget: number;
-        deadline: Date; // Firestore handles Date objects
-        requiredSkills: string[];
-        numberOfReports: number;
-        updatedAt: any; // For serverTimestamp
-      } = {
+      const newProgressReports: Partial<ProgressReport>[] = [];
+      if (data.numberOfReports && data.numberOfReports > 0 && data.reportDeadlines) {
+          for (let i = 0; i < data.numberOfReports; i++) {
+              // Try to preserve existing submission/review data if report number still exists
+              const existingReport = existingGigData.progressReports?.find(pr => pr.reportNumber === i + 1);
+              newProgressReports.push({
+                  reportNumber: i + 1,
+                  deadline: data.reportDeadlines[i] ? Timestamp.fromDate(data.reportDeadlines[i]!) : null,
+                  studentSubmission: existingReport?.studentSubmission || null,
+                  clientStatus: existingReport?.clientStatus || null,
+                  clientFeedback: existingReport?.clientFeedback || null,
+                  reviewedAt: existingReport?.reviewedAt || null,
+              });
+          }
+      }
+
+
+      const updateData: Partial<FetchedGigData> & { updatedAt: any, progressReports: Partial<ProgressReport>[] } = {
         title: data.title,
         description: data.description,
         budget: data.budget,
-        deadline: data.deadline,
+        deadline: Timestamp.fromDate(data.deadline),
         requiredSkills: data.requiredSkills,
-        numberOfReports: data.numberOfReports, // This is ensured to be a number by Zod (default 0 if optional)
+        numberOfReports: data.numberOfReports || 0,
+        progressReports: newProgressReports,
         updatedAt: serverTimestamp(),
       };
       
@@ -157,7 +240,6 @@ export default function EditGigPage() {
 
     } catch (error: any) {
       console.error('Error updating gig:', error);
-      console.error('Data attempted to save during update:', data); // Log the data for debugging
       toast({
         title: 'Failed to Update Gig',
         description: `An error occurred: ${error.message}`,
@@ -239,7 +321,6 @@ export default function EditGigPage() {
                     <FormItem>
                       <FormLabel>Budget (INR)</FormLabel>
                       <FormControl>
-                        {/* Ensure value is controlled and defaults to empty string if field.value is null/undefined to avoid uncontrolled to controlled error */}
                         <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || undefined)} min="1" step="any" />
                       </FormControl>
                       <FormDescription>Enter the total amount in INR.</FormDescription>
@@ -253,7 +334,7 @@ export default function EditGigPage() {
                   name="deadline"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>Deadline</FormLabel>
+                      <FormLabel>Overall Gig Deadline</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -318,26 +399,85 @@ export default function EditGigPage() {
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
                        <Info className="h-4 w-4 text-muted-foreground" />
-                       Number of Progress Reports
+                       Number of Progress Reports (0-10)
                     </FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         placeholder="e.g., 3 (0 for no reports)"
                         {...field}
-                        value={field.value ?? 0} // Ensure controlled, default to 0 if undefined
-                        onChange={e => field.onChange(parseInt(e.target.value, 10) || 0)}
+                        value={field.value ?? 0} 
+                         onChange={e => {
+                            const val = parseInt(e.target.value, 10);
+                            field.onChange(isNaN(val) ? 0 : Math.max(0, Math.min(10, val)));
+                        }}
                         min="0"
                         max="10"
                       />
                     </FormControl>
                     <FormDescription>
-                      How many progress reports should the student submit (0-10)?
+                      How many progress reports should the student submit?
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              
+            {numberOfReportsValue > 0 && (
+                <Card className="pt-4 border-dashed">
+                    <CardHeader className="p-2 pt-0">
+                        <CardTitle className="text-lg">Set Progress Report Deadlines</CardTitle>
+                        <CardDescription className="text-xs">Optional: Set a deadline for each progress report. Deadlines must be on or before the overall gig deadline.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4 p-2">
+                        {reportDeadlineFields.map((item, index) => (
+                            <FormField
+                                key={item.id}
+                                control={control}
+                                name={`reportDeadlines.${index}`}
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col">
+                                        <FormLabel>Deadline for Report #{index + 1}</FormLabel>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <FormControl>
+                                                    <Button
+                                                        variant={"outline"}
+                                                        className={cn(
+                                                            "w-full pl-3 text-left font-normal",
+                                                            !field.value && "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        {field.value ? format(field.value, "PPP") : <span>Pick a date (Optional)</span>}
+                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                    </Button>
+                                                </FormControl>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0" align="start">
+                                                <Calendar
+                                                    mode="single"
+                                                    selected={field.value}
+                                                     onSelect={(date) => {
+                                                        field.onChange(date || null);
+                                                        form.trigger(`reportDeadlines.${index}`);
+                                                        form.trigger('deadline');
+                                                    }}
+                                                    disabled={(date) =>
+                                                        date < new Date(new Date().setHours(0, 0, 0, 0)) || (form.getValues('deadline') ? date > form.getValues('deadline') : false)
+                                                    }
+                                                    initialFocus
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
+
 
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingGig}>
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
