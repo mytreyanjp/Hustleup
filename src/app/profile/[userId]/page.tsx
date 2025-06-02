@@ -98,8 +98,6 @@ export default function PublicProfilePage() {
               setIsLoadingPosts(true);
               // IMPORTANT: This query requires a composite index in Firestore.
               // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
-              // Create it via the link in the Firebase console error message if it's missing.
-              // Link: https://console.firebase.google.com/v1/r/project/hustleup-ntp15/firestore/indexes?create_composite=ClRwcm9qZWN0cy9odXN0bGV1cC1udHAxNS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvc3R1ZGVudF9wb3N0cy9pbmRleGVzL18QARoNCglzdHVkZW50SWQQARoNCgljcmVhdGVkQXQQAhoMCghfX25hbWVfXxAC
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -116,8 +114,6 @@ export default function PublicProfilePage() {
               setIsLoadingClientGigs(true);
               // IMPORTANT: This query likely requires a composite index on 'gigs':
               // clientId (Ascending), status (Ascending), createdAt (Descending)
-              // Example Firestore index creation link (adjust project ID if needed):
-              // https://console.firebase.google.com/project/YOUR_PROJECT_ID/firestore/indexes/composite/build?collectionId=gigs&field[0].fieldPath=clientId&field[0].order=ASCENDING&field[1].fieldPath=status&field[1].order=ASCENDING&field[2].fieldPath=createdAt&field[2].order=DESCENDING
               const clientGigsQuery = query(
                 collection(db, 'gigs'),
                 where('clientId', '==', userId),
@@ -190,12 +186,10 @@ export default function PublicProfilePage() {
         setIsFollowingThisUser(true);
         setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
       }
-      if (refreshUserProfile) await refreshUserProfile(); 
+      if (refreshUserProfile) await refreshUserProfile();
     } catch (err: any)
        {
       console.error("Error following/unfollowing user:", err);
-      // Note: Using Firestore Cloud Function for `followersCount` is recommended for production
-      // to ensure atomicity and prevent potential race conditions or direct client manipulation.
       toast({ title: "Error", description: `Could not complete action: ${err.message}. For production, consider Cloud Functions for counter updates.`, variant: "destructive" });
     } finally {
       setIsFollowProcessing(false);
@@ -206,6 +200,10 @@ export default function PublicProfilePage() {
     if (!profile || !profile.following || profile.following.length === 0) {
         setModalUserList([]);
         setShowFollowingModal(true);
+        return;
+    }
+    if (!db) {
+        toast({ title: "Database Error", description: "Could not load following list.", variant: "destructive" });
         return;
     }
     setIsLoadingModalList(true);
@@ -226,10 +224,35 @@ export default function PublicProfilePage() {
     }
   };
 
-  const handleOpenFollowersModal = () => {
-    setModalUserList([]); // Reset any previous list
+  const handleOpenFollowersModal = async () => {
+    if (!profile || !db) {
+        toast({ title: "Error", description: "Profile data not available.", variant: "destructive" });
+        return;
+    }
+    if (profile.followersCount === 0) {
+        setModalUserList([]);
+        setShowFollowersModal(true);
+        return;
+    }
+
+    setIsLoadingModalList(true);
     setShowFollowersModal(true);
-    setIsLoadingModalList(false); // No loading for this as it's a placeholder or simple message
+    try {
+        // IMPORTANT: This query requires a composite index in Firestore for the 'users' collection
+        // on the 'following' field (for array-contains operations).
+        // If missing, Firestore will log an error in the browser console with a link to create it.
+        const followersQuery = query(collection(db, 'users'), where('following', 'array-contains', profile.uid));
+        const followersSnapshots = await getDocs(followersQuery);
+        const fetchedProfiles = followersSnapshots.docs
+            .map(snap => ({ uid: snap.id, ...snap.data() } as UserProfile));
+        setModalUserList(fetchedProfiles);
+    } catch (error: any) {
+        console.error("Error fetching followers list:", error);
+        toast({ title: "Error", description: `Could not load followers list: ${error.message}. Check for Firestore index requirements.`, variant: "destructive" });
+        setModalUserList([]);
+    } finally {
+        setIsLoadingModalList(false);
+    }
   };
 
 
@@ -260,7 +283,7 @@ export default function PublicProfilePage() {
   const displayName = profile.role === 'client'
     ? (profile.companyName || profile.username || 'Client Profile')
     : (profile.username || 'Student Profile');
-  
+
   const followingCount = profile.following?.length || 0;
 
 
@@ -286,7 +309,7 @@ export default function PublicProfilePage() {
                         </h1>
                         {isOwnProfile ? (
                             <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
-                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}> 
+                                <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}>
                                     Edit My Profile
                                 </Link>
                             </Button>
@@ -304,7 +327,7 @@ export default function PublicProfilePage() {
                             </div>
                         )}
                    </div>
-                   
+
                     <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground">
                         <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -342,7 +365,7 @@ export default function PublicProfilePage() {
                 <h3 className="font-semibold text-md sm:text-lg text-foreground mb-2 flex items-center gap-2">
                     <Building className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" /> Company Details
                 </h3>
-                
+
                 {profile.companyDescription ? (
                     <div className="flex items-start gap-2">
                         <Info className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
@@ -486,11 +509,11 @@ export default function PublicProfilePage() {
                                     </CardHeader>
                                     <CardContent className="space-y-1 pb-3 p-3 sm:p-4 pt-0">
                                         <p className="text-xs sm:text-sm flex items-center gap-1">
-                                            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" /> 
+                                            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                                             Budget: {gig.currency} {gig.budget.toFixed(2)}
                                         </p>
                                         <p className="text-xs sm:text-sm flex items-center gap-1">
-                                            <CalendarDays className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" /> 
+                                            <CalendarDays className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                                             Deadline: {gig.deadline.toDate().toLocaleDateString()}
                                         </p>
                                     </CardContent>
@@ -527,16 +550,29 @@ export default function PublicProfilePage() {
               Users who follow {displayName}.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-          {profile && profile.followersCount === 0 ? (
-                <p className="text-sm text-muted-foreground text-center">This user has no followers yet.</p>
+          <ScrollArea className="max-h-[300px] py-4">
+            {isLoadingModalList ? (
+              <div className="flex justify-center items-center h-20">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : modalUserList.length > 0 ? (
+              <ul className="space-y-3">
+                {modalUserList.map(userItem => (
+                  <li key={userItem.uid} className="flex items-center justify-between">
+                    <Link href={`/profile/${userItem.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowersModal(false)}>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} />
+                        <AvatarFallback>{getInitials(userItem.email, userItem.username, userItem.companyName)}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{userItem.companyName || userItem.username || 'User'}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             ) : (
-                <p className="text-sm text-muted-foreground">
-                    Fetching a complete list of followers requires a more advanced backend setup for optimal performance.
-                    This feature will be enhanced in a future update.
-                </p>
+              <p className="text-sm text-muted-foreground text-center">This user has no followers yet.</p>
             )}
-          </div>
+          </ScrollArea>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="secondary">Close</Button>
@@ -561,14 +597,14 @@ export default function PublicProfilePage() {
               </div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
-                {modalUserList.map(user => (
-                  <li key={user.uid} className="flex items-center justify-between">
-                    <Link href={`/profile/${user.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
+                {modalUserList.map(userItem => (
+                  <li key={userItem.uid} className="flex items-center justify-between">
+                    <Link href={`/profile/${userItem.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={user.profilePictureUrl} alt={user.username} />
-                        <AvatarFallback>{getInitials(user.email, user.username, user.companyName)}</AvatarFallback>
+                        <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} />
+                        <AvatarFallback>{getInitials(userItem.email, userItem.username, userItem.companyName)}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium">{user.companyName || user.username || 'User'}</span>
+                      <span className="text-sm font-medium">{userItem.companyName || userItem.username || 'User'}</span>
                     </Link>
                   </li>
                 ))}
