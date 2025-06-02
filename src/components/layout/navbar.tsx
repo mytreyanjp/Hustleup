@@ -234,16 +234,13 @@ export default function Navbar() {
       </Popover>
   );
   
-  // Determine if the left navigation (Logo + Desktop Links) should be shown
-  const showLeftNav = !(isMobile && (isMobileSearchVisible || isLoginPage));
-
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
         
-        {showLeftNav ? (
+        {!(isMobile && isMobileSearchVisible) && (
           <div className="flex items-center">
-            <Link href="/" className="mr-4 flex items-center space-x-2 cursor-default">
+            <Link href="/" className="mr-2 sm:mr-4 flex items-center space-x-2 cursor-default">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
               </svg>
@@ -277,9 +274,9 @@ export default function Navbar() {
               )}
             </nav>
           </div>
-        ) : (
-          <div /> // Empty div to maintain justify-between for the right side when LeftNav is hidden
         )}
+        {/* Spacer div if logo is hidden on mobile search view to maintain justify-between for right side */}
+        {(isMobile && isMobileSearchVisible) && <div />}
 
 
         <div className="flex items-center space-x-1 sm:space-x-2">
@@ -292,7 +289,7 @@ export default function Navbar() {
                   <Link href="/gigs/browse" className="text-muted-foreground hover:text-primary p-1.5" aria-label="Explore Gigs">
                     <Compass className="h-5 w-5" />
                   </Link>
-                  <ModeToggle />
+                  {/* Theme toggle is in user menu, no need for a separate one here if user is logged in */}
                 </>
               ) : isMobileSearchVisible ? (
                 // Mobile + Search Active (not login page): Show Back button + Search Bar
@@ -308,11 +305,10 @@ export default function Navbar() {
                   <Button variant="ghost" size="icon" onClick={handleShowMobileSearch} aria-label="Open search" className="h-8 w-8">
                     <SearchIcon className="h-5 w-5" />
                   </Button>
-                  {/* ModeToggle is hidden by default on mobile unless on login page due to space; theme available in user menu */}
                 </>
               )}
 
-              {/* User/Auth Buttons for Mobile: Only shown if NOT (search active AND not login page) */}
+              {/* User/Auth Buttons for Mobile: Only shown if NOT search active OR if on login page */}
               { (!isMobileSearchVisible || isLoginPage) && (
                 isClient ? (
                   loading ? (<Skeleton className="h-8 w-8 rounded-full" />) :
@@ -385,10 +381,15 @@ export default function Navbar() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
-                    // Not logged in (e.g. on login page): show Login/Signup buttons
+                    // Not logged in: show Login/Signup buttons and Theme toggle if on login page
                     <>
-                      <Button variant="ghost" asChild size="sm" className="text-xs px-2"><Link href="/auth/login">Log In</Link></Button>
-                      <Button asChild size="sm" className="text-xs px-2"><Link href="/auth/signup">Sign Up</Link></Button>
+                      {isLoginPage && <ModeToggle />}
+                      {!isLoginPage && (
+                        <>
+                           <Button variant="ghost" asChild size="sm" className="text-xs px-2"><Link href="/auth/login">Log In</Link></Button>
+                           <Button asChild size="sm" className="text-xs px-2"><Link href="/auth/signup">Sign Up</Link></Button>
+                        </>
+                      )}
                     </>
                   )
                 ) : (<Skeleton className="h-8 w-8 rounded-full" />)
@@ -447,25 +448,25 @@ export default function Navbar() {
                       <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={(e) => { e.preventDefault(); setThemeOptionsVisible(!themeOptionsVisible); }}
-                        className="justify-between"
-                      >
-                        <div className="flex items-center">
-                          {theme === 'light' && <Sun className="mr-2 h-4 w-4" />}
-                          {theme === 'dark' && <Moon className="mr-2 h-4 w-4" />}
-                          {theme === 'system' && <Laptop className="mr-2 h-4 w-4" />}
-                          <span>Theme</span>
-                        </div>
-                        {themeOptionsVisible ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
-                      </DropdownMenuItem>
-                      {themeOptionsVisible && (
-                        <>
-                          <DropdownMenuItem onClick={() => { setTheme("light"); setThemeOptionsVisible(false); }} className="pl-8"> <Sun className="mr-2 h-4 w-4" /> Light </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setTheme("dark"); setThemeOptionsVisible(false); }} className="pl-8"> <Moon className="mr-2 h-4 w-4" /> Dark </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setTheme("system"); setThemeOptionsVisible(false); }} className="pl-8"> <Laptop className="mr-2 h-4 w-4" /> System </DropdownMenuItem>
-                        </>
-                      )}
+                       <DropdownMenuItem
+                          onClick={(e) => { e.preventDefault(); setThemeOptionsVisible(!themeOptionsVisible); }}
+                          className="justify-between"
+                        >
+                          <div className="flex items-center">
+                            {theme === 'light' && <Sun className="mr-2 h-4 w-4" />}
+                            {theme === 'dark' && <Moon className="mr-2 h-4 w-4" />}
+                            {theme === 'system' && <Laptop className="mr-2 h-4 w-4" />}
+                            <span>Theme</span>
+                          </div>
+                          {themeOptionsVisible ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
+                        </DropdownMenuItem>
+                        {themeOptionsVisible && (
+                          <>
+                            <DropdownMenuItem onClick={() => { setTheme("light"); setThemeOptionsVisible(false); }} className="pl-8"> <Sun className="mr-2 h-4 w-4" /> Light </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setTheme("dark"); setThemeOptionsVisible(false); }} className="pl-8"> <Moon className="mr-2 h-4 w-4" /> Dark </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setTheme("system"); setThemeOptionsVisible(false); }} className="pl-8"> <Laptop className="mr-2 h-4 w-4" /> System </DropdownMenuItem>
+                          </>
+                        )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /><span>Log out</span></DropdownMenuItem>
                     </DropdownMenuContent>
