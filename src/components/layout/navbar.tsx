@@ -12,12 +12,16 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
 import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon, User as UserIcon, Edit3 } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon, User as UserIcon, Edit3, Sun, Moon, Laptop } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -25,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { collection, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
 import type { Skill } from '@/lib/constants';
+import { useTheme } from 'next-themes';
 
 interface SuggestedGig {
   id: string;
@@ -36,6 +41,7 @@ interface SuggestedGig {
 export default function Navbar() {
   const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
   const router = useRouter();
+  const { setTheme } = useTheme();
   const [isClient, setIsClient] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -50,8 +56,6 @@ export default function Navbar() {
     setIsLoadingSuggestions(true);
     try {
       const gigsCollectionRef = collection(db, 'gigs');
-      // Query for open gigs, ordered by creation date, limit to 5 for suggestions
-      // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
       const q = query(
         gigsCollectionRef,
         where('status', '==', 'open'),
@@ -109,12 +113,11 @@ export default function Navbar() {
     if (searchTerm.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchTerm.trim())}`);
       setIsSuggestionsOpen(false);
-      // setSearchTerm(''); // Keep search term if user wants to refine from search page
     }
   };
 
   const filteredSuggestions = searchTerm.trim() === '' && suggestions.length > 0
-    ? suggestions // Show initial fetched suggestions if search is empty and suggestions exist
+    ? suggestions
     : suggestions.filter(suggestion =>
         suggestion.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
@@ -259,7 +262,9 @@ export default function Navbar() {
               )}
             </Popover>
           )}
-          <ModeToggle />
+          <div className="hidden md:flex items-center">
+            <ModeToggle />
+          </div>
           {isClient ? (
             loading ? (
               <div className="flex items-center space-x-2">
@@ -349,6 +354,32 @@ export default function Navbar() {
                         </DropdownMenuItem>
                       </>
                     )}
+                    <DropdownMenuSeparator className="md:hidden" />
+                    <div className="md:hidden">
+                        <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                                <Sun className="mr-2 h-4 w-4" />
+                                <span>Theme</span>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuPortal>
+                                <DropdownMenuSubContent>
+                                <DropdownMenuItem onClick={() => setTheme("light")}>
+                                    <Sun className="mr-2 h-4 w-4" />
+                                    Light
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                                    <Moon className="mr-2 h-4 w-4" />
+                                    Dark
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setTheme("system")}>
+                                    <Laptop className="mr-2 h-4 w-4" />
+                                    System
+                                </DropdownMenuItem>
+                                </DropdownMenuSubContent>
+                            </DropdownMenuPortal>
+                        </DropdownMenuSub>
+                    </div>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/settings">
                         <Settings className="mr-2 h-4 w-4" />
@@ -383,7 +414,7 @@ export default function Navbar() {
               </>
             )
           ) : (
-            <div style={{ width: '7rem' }} />
+            <div style={{ width: '7rem' }} /> // Placeholder for non-client side render to avoid layout shift
           )}
         </div>
       </div>
