@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion, increment } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
@@ -60,6 +60,7 @@ interface Gig {
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: ApplicantInfo[];
+  applicationRequests?: { studentId: string; studentUsername: string; requestedAt: Timestamp; status: 'pending' | 'approved_to_apply' | 'denied_to_apply' }[];
   selectedStudentId?: string | null;
   currency: "INR";
   numberOfReports?: number;
@@ -92,6 +93,7 @@ export default function ManageGigPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingApplicantId, setUpdatingApplicantId] = useState<string | null>(null);
   const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null);
+  const [updatingRequestStudentId, setUpdatingRequestStudentId] = useState<string | null>(null);
 
   const [rating, setRating] = useState(0);
   const [reviewComment, setReviewComment] = useState("");
@@ -128,8 +130,11 @@ export default function ManageGigPage() {
 
          toast({
              title: "Payment Successful!",
-             description: `Payment of INR ${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded.`,
+             description: `Payment of INR ${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded. You can now review the student.`,
          });
+         // Trigger fetching review status again as the gig is now completed
+         fetchGigAndReviewStatus();
+
 
      } catch (err) {
          console.error("Error recording transaction or updating gig status:", err);
@@ -220,17 +225,20 @@ export default function ManageGigPage() {
   }, [authLoading, user, role, router, fetchGigAndReviewStatus]);
 
 
-  const sendApplicationStatusNotification = async ( applicant: ApplicantInfo, gigData: Gig, status: 'accepted' | 'rejected' ) => {
+  const sendApplicationStatusNotification = async ( studentUsername: string, studentId: string, gigTitle: string, status: 'accepted' | 'rejected' | 'request approved' | 'request denied' ) => {
     if (!user || !userProfile || !db) return;
-    const chatId = getChatId(user.uid, applicant.studentId);
+    const chatId = getChatId(user.uid, studentId);
     const chatDocRef = doc(db, 'chats', chatId);
-    const messageText = `Your application for the gig "${gigData.title}" has been ${status}.`;
+    let messageText = `Your application for the gig "${gigTitle}" has been ${status}.`;
+    if (status === 'request approved') messageText = `Your request to apply for the gig "${gigTitle}" has been approved! You can now submit your full application.`;
+    if (status === 'request denied') messageText = `Your request to apply for the gig "${gigTitle}" has been denied.`;
+    
     try {
       const batch = writeBatch(db);
       const chatSnap = await getDoc(chatDocRef);
       const participantUsernames: {[key: string]: string} = { 
         [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Client', 
-        [applicant.studentId]: applicant.studentUsername, 
+        [studentId]: studentUsername, 
       };
       const participantProfilePictures: {[key: string]: string} = {};
       if(userProfile.profilePictureUrl) participantProfilePictures[user.uid] = userProfile.profilePictureUrl;
@@ -238,10 +246,11 @@ export default function ManageGigPage() {
       if (!chatSnap.exists()) {
         const newChatData: any = { 
           id: chatId, 
-          participants: [user.uid, applicant.studentId], 
+          participants: [user.uid, studentId], 
           participantUsernames,
           ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
-          gigId: gigData.id, 
+          gigId: gigId, 
+          chatStatus: 'accepted', // Auto-accept chat when client initiates for application update
           createdAt: serverTimestamp(), 
           updatedAt: serverTimestamp(),
           lastMessage: messageText,
@@ -259,13 +268,37 @@ export default function ManageGigPage() {
             lastMessageReadBy: [user.uid],
             participantUsernames, 
             ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
+            chatStatus: 'accepted', // Ensure chat becomes active
+            gigId: gigId, // Ensure gigId is associated
          });
       }
       const newMessageRef = doc(collection(db, 'chats', chatId, 'messages'));
       batch.set(newMessageRef, { senderId: user.uid, text: messageText, timestamp: serverTimestamp(), });
       await batch.commit();
-      toast({ title: 'Notification Sent', description: `The student ${applicant.studentUsername} has been notified via chat.` });
+      toast({ title: 'Notification Sent', description: `The student ${studentUsername} has been notified via chat.` });
     } catch (chatError) { console.error('Error sending chat notification:', chatError); toast({ title: 'Notification Error', description: 'Could not send chat notification to the student.', variant: 'destructive' }); }
+  };
+
+  const updateApplicationRequestStatus = async (studentId: string, newStatus: 'approved_to_apply' | 'denied_to_apply') => {
+    if (!gig || !db) return;
+    const request = gig.applicationRequests?.find(req => req.studentId === studentId);
+    if (!request) { toast({ title: "Error", description: "Application request not found.", variant: "destructive" }); return; }
+    setUpdatingRequestStudentId(studentId);
+    try {
+        const gigDocRef = doc(db, 'gigs', gig.id);
+        const updatedRequests = gig.applicationRequests?.map(req =>
+            req.studentId === studentId ? { ...req, status: newStatus } : req
+        ) || [];
+        await updateDoc(gigDocRef, { applicationRequests: updatedRequests });
+        setGig(prev => prev ? { ...prev, applicationRequests: updatedRequests } : null);
+        toast({ title: `Request ${newStatus === 'approved_to_apply' ? 'Approved' : 'Denied'}`, description: `Student can ${newStatus === 'approved_to_apply' ? 'now apply' : 'no longer apply'}.` });
+        await sendApplicationStatusNotification(request.studentUsername, request.studentId, gig.title, newStatus === 'approved_to_apply' ? 'request approved' : 'request denied');
+    } catch (err: any) {
+        console.error("Error updating application request status:", err);
+        toast({ title: "Update Failed", description: `Could not update request status: ${err.message}`, variant: "destructive" });
+    } finally {
+        setUpdatingRequestStudentId(null);
+    }
   };
 
 
@@ -282,18 +315,14 @@ export default function ManageGigPage() {
            if (newStatus === 'accepted') { 
              gigUpdateData.status = 'in-progress'; 
              gigUpdateData.selectedStudentId = studentId; 
-             // If progressReports were pre-initialized with deadlines, they are already there.
-             // If not, and numberOfReports > 0, ensure the array exists.
              if (gig.numberOfReports && gig.numberOfReports > 0 && (!gig.progressReports || gig.progressReports.length !== gig.numberOfReports)) {
-                 // This re-initializes if necessary, potentially wiping student submissions if this logic is flawed for re-acceptance
-                 // The fetchGigAndReviewStatus tries to preserve this. A more robust merge might be needed for complex state changes.
                  const currentProgressReports = gig.progressReports || [];
                  const newProgressReportsArray : Partial<ProgressReport>[] = [];
                  for (let i = 0; i < gig.numberOfReports; i++) {
                      const existingReport = currentProgressReports.find(r => r.reportNumber === i + 1);
                      newProgressReportsArray.push({
                          reportNumber: i + 1,
-                         deadline: existingReport?.deadline || null, // Preserve existing deadline if any
+                         deadline: existingReport?.deadline || null, 
                          studentSubmission: existingReport?.studentSubmission || null,
                          clientStatus: existingReport?.clientStatus || null,
                          clientFeedback: existingReport?.clientFeedback || null,
@@ -305,7 +334,6 @@ export default function ManageGigPage() {
            }
            await updateDoc(gigDocRef, gigUpdateData);
 
-            // Optimistically update local state
            setGig(prev => {
                 if (!prev) return null;
                 const updatedGig = {
@@ -335,7 +363,7 @@ export default function ManageGigPage() {
 
 
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
-           await sendApplicationStatusNotification(applicant, gig, newStatus);
+           await sendApplicationStatusNotification(applicant.studentUsername, applicant.studentId, gig.title, newStatus);
        } catch (err: any) { console.error("Error updating applicant status:", err); toast({ title: "Update Failed", description: `Could not update status: ${err.message}`, variant: "destructive" });
        } finally { setUpdatingApplicantId(null); }
    };
@@ -369,7 +397,7 @@ export default function ManageGigPage() {
         toast({title: "Feedback Required", description: "Please provide feedback when rejecting a report.", variant: "destructive"});
         return;
     }
-    setIsLoading(true); // Using general isLoading as this is a quick operation
+    setIsLoading(true); 
     try {
       const gigDocRef = doc(db, 'gigs', gig.id);
       const currentGigSnap = await getDoc(gigDocRef);
@@ -381,7 +409,7 @@ export default function ManageGigPage() {
           return {
             ...report,
             clientStatus: newStatus,
-            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''), // Ensure feedback is string or null
+            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''), 
             reviewedAt: Timestamp.now(),
           };
         }
@@ -409,18 +437,18 @@ export default function ManageGigPage() {
    
    const formatSpecificDate = (timestamp: Timestamp | undefined | null): string => {
      if (!timestamp) return 'Not set';
-     try { return format(timestamp.toDate(), "PPp"); } // e.g. Jan 1st, 2023, 2:30 PM
+     try { return format(timestamp.toDate(), "PPp"); } 
      catch (e) { return 'Invalid date'; }
    };
 
 
-    const getStatusBadgeVariant = (status: ApplicantInfo['status'] | Gig['status'] | ProgressReport['clientStatus']): "default" | "secondary" | "destructive" | "outline" => {
+    const getStatusBadgeVariant = (status: ApplicantInfo['status'] | Gig['status'] | ProgressReport['clientStatus'] | Gig['applicationRequests'] extends (infer R)[] ? R['status'] : never): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
-           case 'accepted': case 'open': case 'approved': return 'default';
-           case 'rejected': case 'closed': return 'destructive';
+           case 'accepted': case 'open': case 'approved': case 'approved_to_apply': return 'default';
+           case 'rejected': case 'closed': case 'denied_to_apply': return 'destructive';
            case 'pending': case 'in-progress': case 'pending_review': return 'secondary';
            case 'completed': return 'outline';
-           default: return 'secondary'; // For null or undefined clientStatus
+           default: return 'secondary'; 
        }
    };
 
@@ -431,7 +459,7 @@ export default function ManageGigPage() {
   const selectedStudent = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
   const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0 
     ? (gig.progressReports?.filter(r => r.clientStatus === 'approved').length === gig.numberOfReports)
-    : true; // If no reports required, considered "approved" for payment purposes
+    : true; 
 
 
   return (
@@ -443,8 +471,51 @@ export default function ManageGigPage() {
            <CardDescription>Manage applications, progress reports, and payment for this gig.</CardDescription>
            <div className="flex items-center gap-2 pt-2"> <span className="text-sm text-muted-foreground">Status:</span> <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge> </div>
            {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && ( <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground"> <Layers className="h-4 w-4" /> <span>Requires {gig.numberOfReports} progress report(s).</span> </div> )}
+           {gig.status === 'open' && (
+             <Button variant="outline" size="sm" asChild className="mt-2 w-fit">
+               <Link href={`/client/gigs/${gig.id}/edit`}><Edit3 className="mr-2 h-4 w-4" /> Edit Gig Details</Link>
+             </Button>
+           )}
          </CardHeader>
        </Card>
+
+        {/* Application Requests Section */}
+        {gig.status === 'open' && gig.applicationRequests && gig.applicationRequests.length > 0 && (
+            <Card className="glass-card">
+                <CardHeader>
+                    <CardTitle>Application Requests ({gig.applicationRequests.filter(req => req.status === 'pending').length} pending)</CardTitle>
+                    <CardDescription>Review students who want to apply for this gig.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    {gig.applicationRequests.map(request => (
+                        <div key={request.studentId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3">
+                            <div className="flex items-start gap-3 flex-grow">
+                                <UserCircle className="h-8 w-8 text-muted-foreground mt-1 shrink-0" />
+                                <div>
+                                    <p className="font-semibold">{request.studentUsername}</p>
+                                    <p className="text-xs text-muted-foreground mb-1">Requested {formatDate(request.requestedAt)}</p>
+                                    <Badge variant={getStatusBadgeVariant(request.status)} className="capitalize text-xs">{request.status.replace('_', ' ')}</Badge>
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
+                                <Button size="sm" variant="outline" asChild><Link href={`/profile/${request.studentId}`} target="_blank">View Profile</Link></Button>
+                                {request.status === 'pending' && (
+                                    <>
+                                        <Button size="sm" variant="default" onClick={() => updateApplicationRequestStatus(request.studentId, 'approved_to_apply')} disabled={updatingRequestStudentId === request.studentId}>
+                                            {updatingRequestStudentId === request.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-1 h-4 w-4" />} Approve Request
+                                        </Button>
+                                        <Button size="sm" variant="destructive" onClick={() => updateApplicationRequestStatus(request.studentId, 'denied_to_apply')} disabled={updatingRequestStudentId === request.studentId}>
+                                            {updatingRequestStudentId === request.studentId ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <XCircle className="mr-1 h-4 w-4" />} Deny Request
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </CardContent>
+            </Card>
+        )}
+
 
        {gig.status === 'in-progress' && selectedStudent && (
          <Card className="glass-card border-green-500 dark:border-green-400">
@@ -567,12 +638,12 @@ export default function ManageGigPage() {
         {gig.status === 'open' && (
          <Card className="glass-card">
             <CardHeader>
-              <CardTitle>Applicants</CardTitle>
-              <CardDescription>Review students who have applied for this gig.</CardDescription>
+              <CardTitle>Applicants ({gig.applicants?.filter(app => app.status === 'pending').length || 0} pending)</CardTitle>
+              <CardDescription>Review students who have submitted full applications for this gig.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                {(!gig.applicants || gig.applicants.length === 0) ? (
-                <p className="text-sm text-muted-foreground">No applications received yet.</p>
+                <p className="text-sm text-muted-foreground">No full applications received yet.</p>
                ) : (
                  gig.applicants.map(applicant => (
                     <div key={applicant.studentId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md gap-3">
@@ -610,3 +681,4 @@ export default function ManageGigPage() {
      </div>
    );
 }
+

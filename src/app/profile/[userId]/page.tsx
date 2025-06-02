@@ -96,8 +96,6 @@ export default function PublicProfilePage() {
 
            if (fetchedProfile.role === 'student') {
               setIsLoadingPosts(true);
-              // IMPORTANT: This query requires a composite index in Firestore.
-              // Collection: student_posts, Fields: studentId (Ascending), createdAt (Descending)
               const postsQuery = query(
                 collection(db, 'student_posts'),
                 where('studentId', '==', userId),
@@ -112,8 +110,6 @@ export default function PublicProfilePage() {
               setIsLoadingPosts(false);
            } else if (fetchedProfile.role === 'client') {
               setIsLoadingClientGigs(true);
-              // IMPORTANT: This query likely requires a composite index on 'gigs':
-              // clientId (Ascending), status (Ascending), createdAt (Descending)
               const clientGigsQuery = query(
                 collection(db, 'gigs'),
                 where('clientId', '==', userId),
@@ -173,13 +169,13 @@ export default function PublicProfilePage() {
     const targetUserDocRef = doc(db, 'users', profile.uid);
 
     try {
-      if (isFollowingThisUser) { // Unfollow action
+      if (isFollowingThisUser) { 
         await updateDoc(viewerUserDocRef, { following: arrayRemove(profile.uid) });
         await updateDoc(targetUserDocRef, { followersCount: increment(-1) });
         toast({ title: "Unfollowed", description: `You are no longer following ${profile.companyName || profile.username || 'this user'}.` });
         setIsFollowingThisUser(false);
         setProfile(prev => prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : null);
-      } else { // Follow action
+      } else { 
         await updateDoc(viewerUserDocRef, { following: arrayUnion(profile.uid) });
         await updateDoc(targetUserDocRef, { followersCount: increment(1) });
         toast({ title: "Followed!", description: `You are now following ${profile.companyName || profile.username || 'this user'}.` });
@@ -238,9 +234,6 @@ export default function PublicProfilePage() {
     setIsLoadingModalList(true);
     setShowFollowersModal(true);
     try {
-        // IMPORTANT: This query requires a composite index in Firestore for the 'users' collection
-        // on the 'following' field (for array-contains operations).
-        // If missing, Firestore will log an error in the browser console with a link to create it.
         const followersQuery = query(collection(db, 'users'), where('following', 'array-contains', profile.uid));
         const followersSnapshots = await getDocs(followersQuery);
         const fetchedProfiles = followersSnapshots.docs
@@ -346,12 +339,16 @@ export default function PublicProfilePage() {
                    {profile.role === 'student' && profile.bio && (
                         <p className="text-xs sm:text-sm text-foreground/90 mt-1 line-clamp-3">{profile.bio}</p>
                    )}
-                   {profile.role === 'student' && profile.averageRating !== undefined && profile.averageRating > 0 && profile.totalRatings !== undefined && profile.totalRatings > 0 && (
+                   {profile.role === 'student' && profile.averageRating !== undefined && profile.totalRatings !== undefined && (
                         <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
                             <StarRating value={profile.averageRating} size={16} isEditable={false} />
-                            <span className="text-xs sm:text-sm text-muted-foreground">
-                                ({profile.averageRating.toFixed(1)} from {profile.totalRatings} rating{profile.totalRatings !== 1 ? 's' : ''})
-                            </span>
+                            {profile.totalRatings > 0 ? (
+                                <span className="text-xs sm:text-sm text-muted-foreground">
+                                    ({profile.averageRating.toFixed(1)} from {profile.totalRatings} rating{profile.totalRatings !== 1 ? 's' : ''})
+                                </span>
+                            ) : (
+                                <span className="text-xs sm:text-sm text-muted-foreground">No ratings yet</span>
+                            )}
                         </div>
                     )}
                </div>
