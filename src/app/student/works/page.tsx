@@ -6,7 +6,7 @@ import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
+// import { Progress } from '@/components/ui/progress'; // Media upload disabled
 import { cn } from '@/lib/utils';
 
 interface StudentSubmission {
@@ -32,8 +32,8 @@ export interface ProgressReport { // Exported for use in other files
   deadline?: Timestamp | null;
   studentSubmission?: StudentSubmission | null;
   clientStatus?: 'pending_review' | 'approved' | 'rejected' | null;
-  clientFeedback?: string | null; 
-  reviewedAt?: Timestamp | null;   
+  clientFeedback?: string | null;
+  reviewedAt?: Timestamp | null;
 }
 
 
@@ -65,9 +65,9 @@ export default function StudentWorksPage() {
   const [currentSubmittingGigId, setCurrentSubmittingGigId] = useState<string | null>(null);
   const [currentReportNumber, setCurrentReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
-  const [reportFile, setReportFile] = useState<File | null>(null);
-  const [reportUploadProgress, setReportUploadProgress] = useState<number | null>(null);
-  const reportFileInputRef = useRef<HTMLInputElement>(null);
+  // const [reportFile, setReportFile] = useState<File | null>(null); // Media upload disabled
+  // const [reportUploadProgress, setReportUploadProgress] = useState<number | null>(null); // Media upload disabled
+  // const reportFileInputRef = useRef<HTMLInputElement>(null); // Media upload disabled
 
   const fetchActiveGigs = useCallback(async () => {
     if (!user || !db) return;
@@ -91,7 +91,7 @@ export default function StudentWorksPage() {
             }
           } catch (clientProfileError) { console.error("Error fetching client profile:", clientProfileError); }
         }
-        
+
         // Ensure progressReports are initialized correctly
         const numReports = gigData.numberOfReports || 0;
         const completeProgressReports: ProgressReport[] = [];
@@ -148,27 +148,15 @@ export default function StudentWorksPage() {
     setCurrentSubmittingGigId(gigId);
     setCurrentReportNumber(reportNumber);
     setReportText("");
-    setReportFile(null);
-    setReportUploadProgress(null);
-    if(reportFileInputRef.current) reportFileInputRef.current.value = "";
+    // setReportFile(null); // Media upload disabled
+    // setReportUploadProgress(null); // Media upload disabled
+    // if(reportFileInputRef.current) reportFileInputRef.current.value = ""; // Media upload disabled
   };
 
-  const handleReportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        toast({ title: "File Too Large", description: "Please select a file smaller than 10MB.", variant: "destructive" });
-        if (reportFileInputRef.current) reportFileInputRef.current.value = "";
-        return;
-      }
-      setReportFile(file);
-    } else {
-      setReportFile(null);
-    }
-  };
+  // handleReportFileChange removed as media upload is disabled
 
   const handleSubmitReport = async () => {
-    if (!currentSubmittingGigId || !currentReportNumber || !user || !db || !storage) {
+    if (!currentSubmittingGigId || !currentReportNumber || !user || !db) { // Removed storage check
       toast({ title: "Error", description: "Cannot submit report. Missing context or Firebase not ready.", variant: "destructive" });
       return;
     }
@@ -177,101 +165,44 @@ export default function StudentWorksPage() {
       return;
     }
     setIsSubmittingReport(true);
-    setReportUploadProgress(reportFile ? 0 : null);
+    // setReportUploadProgress(reportFile ? 0 : null); // Media upload disabled
 
-    let fileUrl: string | undefined = undefined;
-    let fileName: string | undefined = undefined;
+    // let fileUrl: string | undefined = undefined; // Media upload disabled
+    // let fileName: string | undefined = undefined; // Media upload disabled
 
-    if (reportFile) {
-      try {
-        const filePath = `gig_reports/${currentSubmittingGigId}/${user.uid}/report_${currentReportNumber}/${Date.now()}_${reportFile.name}`;
-        const fileRef = storageRefFn(storage, filePath);
-        const uploadTask = uploadBytesResumable(fileRef, reportFile);
-
-        fileName = reportFile.name;
-
-        await new Promise<void>((resolve, reject) => {
-          uploadTask.on('state_changed',
-            (snapshot) => {
-              setReportUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            },
-            (error: any) => {
-              console.error("Firebase Storage Upload Error (Report File):", error);
-              let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
-              let toastTitle = "Upload Failed";
-              let duration = 15000;
-
-              switch (error.code) {
-                case 'storage/unauthorized':
-                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules for 'gig_reports/...'. Also, check login. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan.";
-                  break;
-                case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
-                // Add other specific cases as needed, mirroring other upload handlers
-                default:
-                  if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
-                    toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed (network issue). Check internet, browser Network tab, CORS for Storage bucket. Ensure Storage is enabled and rules are set. Error: ${error.message || 'Unknown network error'}`;
-                    duration = 20000;
-                  } else {
-                    detailedErrorMessage = `An unknown error occurred (Code: ${error.code || 'N/A'}). Check network, Storage rules, project plan. Server response: ${error.serverResponse || 'N/A'}`;
-                  }
-                  break;
-              }
-              toast({
-                id: `report-upload-failed-${currentReportNumber}-${error.code || 'unknown'}`,
-                title: toastTitle,
-                description: detailedErrorMessage,
-                variant: "destructive",
-                duration: duration
-              });
-              reject(error);
-            },
-            async () => {
-              fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve();
-            }
-          );
-        });
-      } catch (uploadError) {
-        setIsSubmittingReport(false);
-        setReportUploadProgress(null);
-        return; 
-      }
-    }
+    // File upload logic removed as media upload is disabled
 
     try {
       const gigDocRef = doc(db, 'gigs', currentSubmittingGigId);
       const gigSnap = await getDoc(gigDocRef);
       if (!gigSnap.exists()) throw new Error("Gig not found");
 
-      const currentGigData = gigSnap.data() as WorkGig; // Use WorkGig here
+      const currentGigData = gigSnap.data() as WorkGig;
       let progressReports: ProgressReport[] = currentGigData.progressReports || [];
-      
+
       const reportIndex = progressReports.findIndex(r => r.reportNumber === currentReportNumber);
       const studentSubmission: StudentSubmission = {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
-        ...(fileUrl && { fileUrl }),
-        ...(fileName && { fileName }),
+        // fileUrl and fileName removed as media upload is disabled
       };
 
       if (reportIndex > -1) {
         progressReports[reportIndex] = {
-          ...progressReports[reportIndex], // Preserve deadline and other fields
+          ...progressReports[reportIndex],
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: null, 
-          reviewedAt: null,   
+          clientFeedback: null,
+          reviewedAt: null,
         };
       } else {
-        // This case should ideally not happen if reports are pre-initialized
         progressReports.push({
           reportNumber: currentReportNumber as number,
-          deadline: null, // If not pre-initialized, deadline might be missing
+          deadline: null,
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: null, 
-          reviewedAt: null,  
+          clientFeedback: null,
+          reviewedAt: null,
         });
       }
       progressReports.sort((a, b) => a.reportNumber - b.reportNumber);
@@ -279,14 +210,14 @@ export default function StudentWorksPage() {
       await updateDoc(gigDocRef, { progressReports });
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
-      setCurrentSubmittingGigId(null); 
-      fetchActiveGigs(); 
+      setCurrentSubmittingGigId(null);
+      fetchActiveGigs();
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
     } finally {
       setIsSubmittingReport(false);
-      setReportUploadProgress(null);
+      // setReportUploadProgress(null); // Media upload disabled
     }
   };
 
@@ -294,10 +225,10 @@ export default function StudentWorksPage() {
     if (!timestamp) return 'N/A';
     try { return format(timestamp.toDate(), "MMM d, yyyy"); } catch (e) { return 'Invalid Date'; }
   };
-  
+
   const formatSpecificDate = (timestamp: Timestamp | undefined | null): string => {
      if (!timestamp) return 'Not set';
-     try { return format(timestamp.toDate(), "PPp"); } // e.g. Jan 1st, 2023, 2:30 PM
+     try { return format(timestamp.toDate(), "PPp"); }
      catch (e) { return 'Invalid date'; }
    };
 
@@ -306,7 +237,7 @@ export default function StudentWorksPage() {
       case 'approved': return 'default';
       case 'rejected': return 'destructive';
       case 'pending_review': return 'secondary';
-      default: return 'outline'; 
+      default: return 'outline';
     }
   };
 
@@ -350,13 +281,13 @@ export default function StudentWorksPage() {
               <div
                 className={cn(
                   "transition-all duration-500 ease-in-out overflow-hidden",
-                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100" 
+                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100"
                 )}
               >
                 <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
                   <div className="flex items-center text-xs sm:text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
                   <div className="flex items-center text-xs sm:text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Gig Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
-                  
+
                   {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                     <div className="pt-2 border-t">
                       <h4 className="font-semibold mt-2 mb-2 text-sm sm:text-md">Progress Reports ({gig.progressReports?.filter(r => r.studentSubmission).length || 0} / {gig.numberOfReports})</h4>
@@ -378,11 +309,7 @@ export default function StudentWorksPage() {
                               {report.studentSubmission ? (
                                 <div className="text-xs space-y-1">
                                   <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
-                                  {report.studentSubmission.fileUrl && (
-                                    <Button variant="link" size="xs" asChild className="p-0 h-auto">
-                                      <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer"><Paperclip className="mr-1 h-3 w-3" />View Attachment ({report.studentSubmission.fileName || 'file'})</a>
-                                    </Button>
-                                  )}
+                                  {/* File attachment display removed as media upload is disabled */}
                                   <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
                                 </div>
                               ): (
@@ -391,8 +318,8 @@ export default function StudentWorksPage() {
 
                               {report.clientStatus && report.clientStatus !== 'pending_review' && report.clientFeedback && (
                                 <div className="mt-1 pt-1 border-t border-dashed text-xs">
-                                  <p><span className="font-medium">Client Feedback:</span> {report.clientFeedback}</p>
-                                  <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
+                                   <p><span className="font-medium">Client Feedback:</span> {report.clientFeedback}</p>
+                                   <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
                                 </div>
                               )}
                               {(!report.studentSubmission || isRejected) && canSubmitThisReport && (
@@ -424,21 +351,15 @@ export default function StudentWorksPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Submit Report #{currentReportNumber} for Gig: {activeGigs.find(g => g.id === currentSubmittingGigId)?.title}</DialogTitle>
-            <DialogDescription>Provide details about your progress. You can optionally attach a file.</DialogDescription>
+            <DialogDescription>Provide details about your progress.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <Textarea placeholder="Describe your progress, challenges, and next steps..." value={reportText} onChange={(e) => setReportText(e.target.value)} rows={5} disabled={isSubmittingReport} />
             <div>
-                <label htmlFor="reportFile" className="text-sm font-medium">Attach File (Optional, max 10MB)</label>
-                <Input id="reportFile" type="file" ref={reportFileInputRef} onChange={handleReportFileChange} className="mt-1" disabled={isSubmittingReport} />
-                {reportFile && <p className="text-xs text-muted-foreground mt-1">Selected: {reportFile.name}</p>}
+                {/* File input removed as media upload is disabled */}
+                <p className="text-xs text-muted-foreground mt-1">File attachments are currently disabled.</p>
             </div>
-            {reportUploadProgress !== null && (
-                <div className="mt-2 space-y-1">
-                    <Progress value={reportUploadProgress} className="w-full h-2" />
-                    <p className="text-xs text-muted-foreground text-center">Uploading: {reportUploadProgress.toFixed(0)}%</p>
-                </div>
-            )}
+            {/* Upload progress display removed */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCurrentSubmittingGigId(null)} disabled={isSubmittingReport}>Cancel</Button>
@@ -453,5 +374,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-
-    

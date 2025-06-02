@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, UploadCloud, Edit, User, Briefcase, Building, Globe, Info, Mail, Phone, ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
+// import { Progress } from '@/components/ui/progress'; // Media upload disabled
 
 const clientProfileEditSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters").max(50, "Username cannot exceed 50 characters"),
@@ -38,11 +38,11 @@ export default function EditClientProfilePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormReady, setIsFormReady] = useState(false);
 
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  // const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null); // Media upload disabled
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // const [uploadProgress, setUploadProgress] = useState<number | null>(null); // Media upload disabled
+  // const [isUploading, setIsUploading] = useState(false); // Media upload disabled
+  // const fileInputRef = useRef<HTMLInputElement>(null); // Media upload disabled
 
   const form = useForm<ClientProfileEditFormValues>({
     resolver: zodResolver(clientProfileEditSchema),
@@ -75,87 +75,8 @@ export default function EditClientProfilePage() {
     }
   }, [user, userProfile, authLoading, role, router, form]);
 
-  const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        toast({ title: "Image Too Large", description: "Please select an image smaller than 5MB.", variant: "destructive" });
-        return;
-      }
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-        toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, WEBP, or GIF image.", variant: "destructive" });
-        return;
-      }
-      setSelectedImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleImageUpload = async () => {
-    if (!selectedImageFile || !user || !storage) {
-      toast({ title: "Upload Error", description: "No image selected or storage service unavailable. Check Firebase setup.", variant: "destructive" });
-      return;
-    }
-    setIsUploading(true);
-    setUploadProgress(0);
-    const filePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedImageFile.name}`;
-    const fileStorageRefInstance = storageRefFn(storage, filePath);
-
-    const uploadTask = uploadBytesResumable(fileStorageRefInstance, selectedImageFile);
-
-    uploadTask.on('state_changed',
-      (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
-      (error: any) => {
-        console.error("Firebase Storage Upload Error (Client Profile Pic):", error);
-        let detailedErrorMessage = `Could not upload image. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
-        let toastTitle = "Upload Failed";
-        let duration = 15000;
-
-        switch (error.code) {
-          case 'storage/unauthorized':
-            detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules for 'profile_pictures/{userId}/...'. Ensure they allow authenticated users to write. Also, check your login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality.";
-            break;
-          case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
-          case 'storage/object-not-found': detailedErrorMessage = "Upload failed: Path or object not found. Check Storage bucket config or rules."; break;
-          case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Firebase Storage bucket not found. Verify `storageBucket` in Firebase config and ensure Storage is enabled."; break;
-          case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase project settings."; break;
-          case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded. Upgrade plan or free up space."; break;
-          case 'storage/retry-limit-exceeded': detailedErrorMessage = "Upload failed after retries. Check network and Firebase Storage status."; break;
-          default:
-            if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
-              toastTitle = "Network Error During Upload";
-              detailedErrorMessage = `Upload failed (network issue). Check internet, browser Network tab, CORS for Storage bucket. Ensure Storage is enabled and rules are set. Error: ${error.message || 'Unknown network error'}`;
-              duration = 20000;
-            } else {
-              detailedErrorMessage = `An unknown error occurred (Code: ${error.code || 'N/A'}). Check network, Storage rules, project plan. Server response: ${error.serverResponse || 'N/A'}`;
-            }
-            break;
-        }
-        toast({
-          id: `client-pfp-upload-failed-${error.code || 'unknown'}`,
-          title: toastTitle,
-          description: detailedErrorMessage,
-          variant: "destructive",
-          duration: duration
-        });
-        setIsUploading(false); setUploadProgress(null); setSelectedImageFile(null);
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const userDocRef = doc(db, 'users', user.uid);
-          await updateDoc(userDocRef, { profilePictureUrl: downloadURL, updatedAt: Timestamp.now() });
-          toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
-          if (refreshUserProfile) await refreshUserProfile();
-          setSelectedImageFile(null);
-        } catch (updateError: any) {
-          toast({ title: "Update Failed", description: `Could not save profile picture URL: ${updateError.message}`, variant: "destructive" });
-        } finally {
-          setIsUploading(false); setUploadProgress(null);
-        }
-      }
-    );
-  };
+  // handleImageFileChange removed as media upload is disabled
+  // handleImageUpload removed as media upload is disabled
 
   const onSubmit = async (data: ClientProfileEditFormValues) => {
     if (!user || !db) return;
@@ -172,17 +93,16 @@ export default function EditClientProfilePage() {
         updatedAt: Timestamp.now(),
       };
 
-      if (userProfile?.profilePictureUrl && !selectedImageFile) { 
+      // Preserve existing profile picture if not changing
+      if (userProfile?.profilePictureUrl) {
         updateData.profilePictureUrl = userProfile.profilePictureUrl;
-      } else if (imagePreview && !selectedImageFile && userProfile?.profilePictureUrl !== imagePreview) {
-        updateData.profilePictureUrl = userProfile?.profilePictureUrl || '';
       }
-      
+
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your client profile has been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
-      router.push('/client/dashboard'); 
+      router.push('/client/dashboard');
     } catch (error: any) {
       console.error('Client profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -190,7 +110,7 @@ export default function EditClientProfilePage() {
       setIsSubmitting(false);
     }
   };
-  
+
   const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
     const nameToUse = companyName || username;
     if (nameToUse && nameToUse.trim() !== '') return nameToUse.substring(0, 2).toUpperCase();
@@ -220,28 +140,9 @@ export default function EditClientProfilePage() {
                 <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.companyName || userProfile?.username || 'Client'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username, userProfile?.companyName)}</AvatarFallback>
               </Avatar>
-              <Button
-                variant="outline" size="icon"
-                className="absolute bottom-0 right-0 h-8 w-8 p-0 rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
-                onClick={() => fileInputRef.current?.click()}
-                title="Change profile picture"
-                disabled={isUploading}
-              >
-                <UploadCloud className="h-4 w-4" />
-              </Button>
+              {/* Upload button removed as media upload is disabled */}
             </div>
-            <input type="file" ref={fileInputRef} hidden accept="image/png, image/jpeg, image/webp, image/gif" onChange={handleImageFileChange} disabled={isUploading} />
-            {selectedImageFile && !isUploading && (
-              <Button onClick={handleImageUpload} size="sm" className="mt-2">
-                <UploadCloud className="mr-2 h-4 w-4" /> Upload New Picture
-              </Button>
-            )}
-            {isUploading && uploadProgress !== null && (
-              <div className="mt-2 w-full max-w-xs space-y-1">
-                <Progress value={uploadProgress} className="w-full h-2" />
-                <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
-              </div>
-            )}
+            {/* File input and upload logic removed as media upload is disabled */}
           </div>
 
           <Form {...form}>
@@ -299,7 +200,7 @@ export default function EditClientProfilePage() {
                   </FormItem>
                 )}
               />
-              
+
               <Card className="bg-secondary/30">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">Personal Contact Details (for sharing)</CardTitle>
@@ -335,8 +236,8 @@ export default function EditClientProfilePage() {
                 </CardContent>
               </Card>
 
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isUploading}>
-                {(isSubmitting || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting /* || isUploading - removed */}>
+                {isSubmitting /* || isUploading - removed */ && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>
             </form>
@@ -346,5 +247,3 @@ export default function EditClientProfilePage() {
     </div>
   );
 }
-
-    

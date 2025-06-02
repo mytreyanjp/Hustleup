@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,7 @@ import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as Applicatio
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
-import { Progress } from '@/components/ui/progress';
+// import { Progress } from '@/components/ui/progress'; // Media upload disabled
 import type { UserProfile } from '@/context/firebase-context';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
@@ -59,11 +59,11 @@ export default function StudentProfilePage() {
   const [isFormReady, setIsFormReady] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  // const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null); // Media upload disabled
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // const [uploadProgress, setUploadProgress] = useState<number | null>(null); // Media upload disabled
+  // const [isUploading, setIsUploading] = useState(false); // Media upload disabled
+  // const fileInputRef = useRef<HTMLInputElement>(null); // Media upload disabled
 
   const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
   const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
@@ -189,90 +189,8 @@ export default function StudentProfilePage() {
     }
   }, [user, userProfile, role, authLoading, toast]);
 
-  const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
-        toast({ title: "Image Too Large", description: "Please select an image smaller than 5MB.", variant: "destructive" });
-        return;
-      }
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-        toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, WEBP, or GIF image.", variant: "destructive" });
-        return;
-      }
-      setSelectedImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleImageUpload = async () => {
-    if (!selectedImageFile || !user) {
-      toast({ title: "No Image Selected", description: "Please select an image file to upload.", variant: "destructive" });
-      return;
-    }
-    if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured. Cannot upload. Check setup.", variant: "destructive", duration: 10000 });
-      return;
-    }
-    setIsUploading(true);
-    setUploadProgress(0);
-    const filePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedImageFile.name}`;
-    const fileStorageRefInstance = storageRefFn(storage, filePath); // Renamed for clarity
-    const uploadTask = uploadBytesResumable(fileStorageRefInstance, selectedImageFile);
-    uploadTask.on('state_changed',
-      (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
-      (error: any) => {
-        console.error("Firebase Storage Upload Error (Student Profile Pic):", error);
-        let detailedErrorMessage = `Could not upload image. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
-        let toastTitle = "Upload Failed";
-        let duration = 15000;
-
-        switch (error.code) {
-          case 'storage/unauthorized':
-            detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules for 'profile_pictures/{userId}/...'. Ensure they allow authenticated users to write. Also, check login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan.";
-            break;
-          case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
-          case 'storage/object-not-found': detailedErrorMessage = "Upload failed: Path or object not found. Check Storage bucket config or rules."; break;
-          case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Firebase Storage bucket not found. Verify `storageBucket` in Firebase config and ensure Storage is enabled."; break;
-          case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase project settings."; break;
-          case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded. Upgrade plan or free up space."; break;
-          case 'storage/retry-limit-exceeded': detailedErrorMessage = "Upload failed after retries. Check network and Firebase Storage status."; break;
-          default:
-            if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
-              toastTitle = "Network Error During Upload";
-              detailedErrorMessage = `Upload failed (network issue). Check internet, browser Network tab, CORS for Storage bucket. Ensure Storage is enabled and rules are set. Error: ${error.message || 'Unknown network error'}`;
-              duration = 20000;
-            } else {
-              detailedErrorMessage = `An unknown error occurred (Code: ${error.code || 'N/A'}). Check network, Storage rules, project plan. Server response: ${error.serverResponse || 'N/A'}`;
-            }
-            break;
-        }
-        toast({
-          id: `student-pfp-upload-failed-${error.code || 'unknown'}`,
-          title: toastTitle,
-          description: detailedErrorMessage,
-          variant: "destructive",
-          duration: duration
-        });
-        setIsUploading(false); setUploadProgress(null); setSelectedImageFile(null);
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const userDocRef = doc(db, 'users', user.uid);
-          await updateDoc(userDocRef, { profilePictureUrl: downloadURL, updatedAt: Timestamp.now() });
-          toast({ title: "Profile Picture Updated!", description: "Your new picture is now live." });
-          if (refreshUserProfile) await refreshUserProfile();
-          setSelectedImageFile(null); 
-        } catch (updateError: any) {
-          console.error("Error updating profile picture URL in Firestore:", updateError);
-          toast({ title: "Update Failed", description: `Could not save profile picture URL: ${updateError.message}`, variant: "destructive" });
-        } finally {
-          setIsUploading(false); setUploadProgress(null);
-        }
-      }
-    );
-  };
+  // handleImageFileChange removed as media upload is disabled
+  // handleImageUpload removed as media upload is disabled
 
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
@@ -286,18 +204,17 @@ export default function StudentProfilePage() {
         portfolioLinks: data.portfolioLinks?.map(link => link.value).filter(Boolean) || [],
         updatedAt: Timestamp.now(),
       };
-      
-      if (userProfile?.profilePictureUrl && !selectedImageFile) { 
+
+      // Preserve existing profile picture if not changing
+      if (userProfile?.profilePictureUrl) {
         updateData.profilePictureUrl = userProfile.profilePictureUrl;
-      } else if (imagePreview && !selectedImageFile && (!userProfile || userProfile.profilePictureUrl !== imagePreview)) {
-         updateData.profilePictureUrl = imagePreview; 
       }
 
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
-      setIsEditing(false); 
+      setIsEditing(false);
     } catch (error: any) {
       console.error('Profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -307,8 +224,8 @@ export default function StudentProfilePage() {
   };
 
   const handleCancelEdit = () => {
-    populateFormAndPreview(userProfile); 
-    setSelectedImageFile(null); 
+    populateFormAndPreview(userProfile);
+    // setSelectedImageFile(null); // Media upload disabled
     setIsEditing(false);
   };
 
@@ -343,7 +260,7 @@ export default function StudentProfilePage() {
   };
 
   const handleOpenFollowersModal = () => {
-    setModalUserList([]); 
+    setModalUserList([]);
     setShowFollowersModal(true);
     setIsLoadingModalList(false);
   };
@@ -366,20 +283,10 @@ export default function StudentProfilePage() {
                 <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
               </Avatar>
-              {isEditing && (
-                <Button
-                  variant="outline" size="sm"
-                  className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 h-8 w-8 p-0 rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Change profile picture"
-                  disabled={isUploading}
-                >
-                  <UploadCloud className="h-4 w-4" />
-                </Button>
-              )}
+              {/* Profile picture upload button disabled */}
             </div>
-            <input type="file" ref={fileInputRef} hidden accept="image/png, image/jpeg, image/webp, image/gif" onChange={handleImageFileChange} disabled={!isEditing || isUploading} />
-            
+            {/* File input ref removed as media upload is disabled */}
+
             <div className='text-center sm:text-left flex-grow space-y-1'>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <CardTitle className="text-xl sm:text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
@@ -390,7 +297,7 @@ export default function StudentProfilePage() {
                 )}
               </div>
               <CardDescription className="text-xs sm:text-sm">{userProfile?.email || 'No email provided'}</CardDescription>
-              
+
               <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground pt-1">
                  <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                     <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers
@@ -399,17 +306,7 @@ export default function StudentProfilePage() {
                     <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following
                  </button>
                </div>
-              {isEditing && selectedImageFile && !isUploading && (
-                <Button onClick={handleImageUpload} size="sm" className="mt-2">
-                  <UploadCloud className="mr-2 h-4 w-4" /> Upload New Picture
-                </Button>
-              )}
-              {isEditing && isUploading && uploadProgress !== null && (
-                <div className="mt-2 space-y-1">
-                  <Progress value={uploadProgress} className="w-full h-2" />
-                  <p className="text-xs text-muted-foreground text-center">Uploading: {uploadProgress.toFixed(0)}%</p>
-                </div>
-              )}
+              {/* Image upload button and progress display removed as media upload is disabled */}
             </div>
           </div>
         </CardHeader>
@@ -487,9 +384,9 @@ export default function StudentProfilePage() {
                   <FormDescription className="mt-1">Links to your work (GitHub, Behance, personal site, etc. max 5).</FormDescription>
                 </div>
                 <div className="flex gap-2 justify-end pt-4">
-                  <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSubmitting || isUploading}>Cancel</Button>
-                  <Button type="submit" disabled={isSubmitting || isUploading}>
-                    {(isSubmitting || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSubmitting /* || isUploading - removed */}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting /* || isUploading - removed */}>
+                    {isSubmitting /* || isUploading - removed */ && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Changes
                   </Button>
                 </div>
@@ -689,5 +586,3 @@ export default function StudentProfilePage() {
     </div>
   );
 }
-
-    

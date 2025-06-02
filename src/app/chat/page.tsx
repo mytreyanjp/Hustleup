@@ -28,7 +28,7 @@ import {
   updateDoc,
   arrayUnion,
 } from 'firebase/firestore';
-import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Commented out as media upload is disabled
 import { getChatId, cn } from '@/lib/utils';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
@@ -64,10 +64,10 @@ export default function ChatPage() {
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // const [selectedFile, setSelectedFile] = useState<File | null>(null); // Media upload disabled
   const [pendingShareData, setPendingShareData] = useState<PendingShareData | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // const [uploadProgress, setUploadProgress] = useState<number | null>(null); // Media upload disabled
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [chats, setChats] = useState<ChatMetadata[]>([]);
@@ -79,7 +79,7 @@ export default function ChatPage() {
 
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // const fileInputRef = useRef<HTMLInputElement | null>(null); // Media upload disabled
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
 
 
@@ -134,7 +134,7 @@ export default function ChatPage() {
           lastMessageReadBy: [user.uid],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          participantProfilePictures: {}, 
+          participantProfilePictures: {},
         };
          if (gigIdForContext) {
             newChatData.gigId = gigIdForContext;
@@ -143,7 +143,7 @@ export default function ChatPage() {
         if (userProfile.profilePictureUrl) {
           newChatData.participantProfilePictures![user.uid] = userProfile.profilePictureUrl;
         }
-        if (targetProfilePictureUrl) { 
+        if (targetProfilePictureUrl) {
           newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
         }
 
@@ -165,18 +165,18 @@ export default function ChatPage() {
     const targetUserId = searchParams.get('userId');
     const shareGigId = searchParams.get('shareGigId');
     const shareGigTitle = searchParams.get('shareGigTitle');
-    const gigIdForChatContext = searchParams.get('gigId'); 
+    const gigIdForChatContext = searchParams.get('gigId');
     const preselectChatId = searchParams.get('chatId');
 
     if (shareGigId && shareGigTitle) {
       setPendingShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
-      setMessage(''); 
+      setMessage('');
       toast({
         title: "Gig Ready to Share",
         description: "Select a chat and send your message.",
       });
       if (typeof window !== 'undefined') {
-        router.replace('/chat', { scroll: false }); 
+        router.replace('/chat', { scroll: false });
       }
     } else if (preselectChatId) {
         setSelectedChatId(preselectChatId);
@@ -218,9 +218,6 @@ export default function ChatPage() {
       return;
     }
     setIsLoadingChats(true);
-    // Firestore query requires an index on 'chats' collection: participants (array-contains), updatedAt (descending)
-    // Create it via the link in the Firebase console error message if it's missing.
-    // Example Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Ckxwcm9qZWN0cy9YOUR_PROJECT_IDL2RhdGFiYXNlcy8oZGVmYXVsdCkvY29sbGVjdGlvbkdyb3Vwcy9jaGF0cy9pbmRleGVzL18QARoQDAxwYXJ0aWNpcGFudHMYARoNCgl1cGRhdGVkQXQQAhocCghfX25hbWVfXxAC
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', user.uid),
@@ -327,135 +324,53 @@ export default function ChatPage() {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
-    setSelectedFile(null);
-    setUploadProgress(null);
+    // setSelectedFile(null); // Media upload disabled
+    // setUploadProgress(null); // Media upload disabled
     setShowEmojiPicker(false);
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        toast({ title: "File Too Large", description: "Please select a file smaller than 10MB.", variant: "destructive" });
-        return;
-      }
-      setSelectedFile(file);
-      setMessage(''); 
-      setPendingShareData(null); // Clear pending share if a file is selected
-    }
-  };
+  // const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => { // Media upload disabled
+  //   if (event.target.files && event.target.files[0]) {
+  //     const file = event.target.files[0];
+  //     if (file.size > 10 * 1024 * 1024) { // 10MB limit
+  //       toast({ title: "File Too Large", description: "Please select a file smaller than 10MB.", variant: "destructive" });
+  //       return;
+  //     }
+  //     setSelectedFile(file);
+  //     setMessage(''); 
+  //     setPendingShareData(null); 
+  //   }
+  // };
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
     setMessage(prevMessage => prevMessage + emojiData.emoji);
   };
 
   const handleSendMessage = async (
-    isRequestingDetails: boolean = false, 
+    isRequestingDetails: boolean = false,
     isSharingDetails: boolean = false,
     sharedDetails?: { email?: string, phone?: string }
     ) => {
-    if ((!message.trim() && !selectedFile && !pendingShareData && !isRequestingDetails && !isSharingDetails) || !selectedChatId || !user || !userProfile || !db ) {
+    // Removed selectedFile from condition as media upload is disabled
+    if ((!message.trim() && !pendingShareData && !isRequestingDetails && !isSharingDetails) || !selectedChatId || !user || !userProfile || !db ) {
         toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
         return;
     }
-    if (!storage && selectedFile) {
-        toast({ title: "Storage Error", description: "Firebase Storage is not configured or available. Cannot upload file. Check Firebase setup. If on Spark plan, ensure it allows Storage configuration or upgrade to Blaze plan if Rules tab is inaccessible.", variant: "destructive", duration: 15000 });
-        console.error("Firebase Storage object is null or undefined. Check Firebase configuration and initialization.");
-        setIsSending(false); 
-        return;
-    }
+    // Removed storage check as media upload is disabled
     setIsSending(true);
-    setUploadProgress(null);
+    // setUploadProgress(null); // Media upload disabled
     setShowEmojiPicker(false);
 
-    let mediaUrl: string | undefined = undefined;
-    let mediaType: string | undefined = undefined;
+    // let mediaUrl: string | undefined = undefined; // Media upload disabled
+    // let mediaType: string | undefined = undefined; // Media upload disabled
 
-    if (selectedFile && storage) {
-      try {
-        const file = selectedFile;
-        const filePath = `chat_attachments/${selectedChatId}/${Date.now()}_${file.name}`;
-        const fileStorageRefInstance = storageRefFn(storage, filePath);
-        const uploadTask = uploadBytesResumable(fileStorageRefInstance, file);
-        console.log("Chat File Upload: Task created for path", filePath);
-
-        await new Promise<void>((resolve, reject) => {
-          uploadTask.on('state_changed',
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              setUploadProgress(progress);
-              console.log('Upload is ' + progress + '% done. State: ' + snapshot.state);
-            },
-            (error: any) => {
-              console.error("Firebase Storage Upload Error (chat):", error);
-              console.error("Full Error Object:", JSON.stringify(error, null, 2));
-              console.error("Error serverResponse (if any):", error.serverResponse);
-              
-              let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
-              let toastTitle = "Upload Failed";
-              let duration = 15000;
-
-              switch (error.code) {
-                case 'storage/unauthorized': 
-                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules in your Firebase project console. Ensure they allow authenticated users to write to 'chat_attachments/{chatId}/...'. Also check login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan for full Storage functionality."; 
-                  break;
-                case 'storage/canceled': detailedErrorMessage = "Upload canceled by the user."; break;
-                case 'storage/object-not-found': detailedErrorMessage = "Upload failed: The file path may be incorrect or the object does not exist. This can sometimes indicate a configuration issue with the storage bucket itself or incorrect rules."; break;
-                case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: The Firebase Storage bucket configured in your project does not exist or is not accessible. Verify your `storageBucket` setting in firebase config and that Storage is enabled in Firebase Console."; break;
-                case 'storage/project-not-found': detailedErrorMessage = "Upload failed: The Firebase project configured does not exist. Verify your Firebase project settings."; break;
-                case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Your Firebase Storage quota has been exceeded. Please upgrade your plan or free up space."; break;
-                case 'storage/retry-limit-exceeded': detailedErrorMessage = "Upload failed after multiple retries. Check network connection and Firebase Storage status."; break;
-                case 'storage/invalid-argument': detailedErrorMessage = "Upload failed: Invalid argument provided to storage operation. This might be an issue with the file path or metadata."; break;
-                default:
-                  if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
-                    toastTitle = "Network Error During Upload";
-                    detailedErrorMessage = `Upload failed due to a network issue (e.g., net::ERR_FAILED). Please check your internet connection, browser's Network tab for more details, and CORS configuration for your Firebase Storage bucket if this persists. Ensure Firebase Storage is enabled and rules are set in your Firebase project. Raw error: ${error.message || 'Unknown network error'}`;
-                    duration = 20000; 
-                  } else {
-                    detailedErrorMessage = `An unknown error occurred during upload (Code: ${error.code || 'N/A'}). Please check your network connection, Firebase Storage rules in Firebase Console, and ensure your Firebase project plan supports Storage operations (e.g., Blaze plan if Spark plan's Rules tab is inaccessible). Server response (if any): ${error.serverResponse || 'N/A'}`; 
-                  }
-                  break;
-              }
-              toast({ 
-                  id: `chat-file-upload-failed-${error.code || 'unknown'}`,
-                  title: toastTitle, 
-                  description: detailedErrorMessage, 
-                  variant: "destructive", 
-                  duration: duration 
-              });
-              reject(error);
-            },
-            async () => {
-              console.log('Upload task completed. Getting download URL...');
-              try {
-                mediaUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                mediaType = file.type;
-                console.log('Download URL obtained:', mediaUrl);
-                resolve();
-              } catch (urlError: any) {
-                console.error("Error getting download URL:", urlError);
-                toast({ title: "Upload Failed", description: `File uploaded, but could not get URL: ${urlError.message}`, variant: "destructive", duration: 10000 });
-                reject(urlError);
-              }
-            }
-          );
-        });
-      } catch (error) {
-        console.error("Outer catch for upload process (chat):", error);
-        setIsSending(false);
-        setUploadProgress(null);
-        if (!toast.isActive(`upload-error-${selectedChatId}`)) { // Check if a more specific toast was already shown
-            toast({ id: `upload-error-${selectedChatId}`, title: "Upload Process Failed", description: "An unexpected error occurred during file upload. Check console for details.", variant: "destructive" });
-        }
-        return;
-      }
-    }
+    // Media upload logic removed
 
     const newMessageContent: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: user.uid,
       timestamp: serverTimestamp(),
     };
-    
+
     let lastMessageText = '';
 
     if (isRequestingDetails) {
@@ -464,8 +379,8 @@ export default function ChatPage() {
         lastMessageText = `${userProfile.username} requested contact details.`;
     } else if (isSharingDetails && sharedDetails) {
         newMessageContent.isDetailsShared = true;
-        newMessageContent.sharedContactInfo = { 
-            email: sharedDetails.email, 
+        newMessageContent.sharedContactInfo = {
+            email: sharedDetails.email,
             phone: sharedDetails.phone,
             note: "Here are my contact details as requested:"
         };
@@ -475,7 +390,7 @@ export default function ChatPage() {
       newMessageContent.sharedGigId = pendingShareData.gigId;
       newMessageContent.sharedGigTitle = pendingShareData.gigTitle;
       lastMessageText = `[Gig Shared] ${pendingShareData.gigTitle}`;
-      if (message.trim()) { 
+      if (message.trim()) {
         newMessageContent.text = message.trim();
         lastMessageText = `${message.trim()} (Shared: ${pendingShareData.gigTitle})`;
       }
@@ -483,17 +398,8 @@ export default function ChatPage() {
       newMessageContent.text = message.trim();
       lastMessageText = message.trim();
     }
-    
-    if (mediaUrl) {
-      newMessageContent.mediaUrl = mediaUrl;
-      newMessageContent.mediaType = mediaType;
-      if (!lastMessageText) { 
-        lastMessageText = `Attachment: ${selectedFile?.name || 'file'}`;
-      } else { 
-        lastMessageText += ` (Attachment: ${selectedFile?.name || 'file'})`;
-      }
-    }
 
+    // Removed mediaUrl and mediaType assignment as media upload is disabled
 
     try {
       const chatDocRef = doc(db, 'chats', selectedChatId);
@@ -503,15 +409,15 @@ export default function ChatPage() {
       batchOp.set(doc(messagesColRef), newMessageContent);
 
       const chatUpdateData: Partial<ChatMetadata> & {updatedAt: any, lastMessageTimestamp: any} = {
-        lastMessage: lastMessageText.substring(0, 100), 
+        lastMessage: lastMessageText.substring(0, 100),
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
-        lastMessageReadBy: [user.uid], 
+        lastMessageReadBy: [user.uid],
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
 
-      if (userProfile.profilePictureUrl) { 
+      if (userProfile.profilePictureUrl) {
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
         if (existingPictures[user.uid] !== userProfile.profilePictureUrl) {
@@ -526,10 +432,10 @@ export default function ChatPage() {
 
       await batchOp.commit();
       setMessage('');
-      setSelectedFile(null);
-      setPendingShareData(null); 
-      setUploadProgress(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      // setSelectedFile(null); // Media upload disabled
+      setPendingShareData(null);
+      // setUploadProgress(null); // Media upload disabled
+      // if (fileInputRef.current) fileInputRef.current.value = ""; // Media upload disabled
     } catch (error) {
       console.error("Error sending message:", error);
       toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
@@ -552,7 +458,7 @@ export default function ChatPage() {
   if (!user) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
-  
+
   const selectedChatDetails = chats.find(c => c.id === selectedChatId);
   const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user?.uid);
   const otherUsername = otherUserId ? selectedChatDetails?.participantUsernames[otherUserId] : 'User';
@@ -615,7 +521,7 @@ export default function ChatPage() {
                   <div className="flex-grow overflow-hidden">
                     {otherParticipantId ? (
                        <Link href={`/profile/${otherParticipantId}`} passHref
-                          onClick={(e) => e.stopPropagation()} 
+                          onClick={(e) => e.stopPropagation()}
                           className={`text-sm truncate hover:underline ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}
                        >
                          {chatPartnerUsername}
@@ -705,7 +611,7 @@ export default function ChatPage() {
                     className={`flex ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}
                   >
                     <div // This is the chat bubble
-                      className={`p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden ${ 
+                      className={`p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden ${
                         msg.senderId === user?.uid
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-secondary dark:bg-muted'
@@ -721,13 +627,13 @@ export default function ChatPage() {
                             <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
                             {msg.sharedContactInfo.email && (
                                 <div className="flex items-center gap-1.5 text-sm">
-                                   <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
+                                   <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
                                    <span className="break-all">{msg.sharedContactInfo.email}</span>
                                 </div>
                             )}
                             {msg.sharedContactInfo.phone && (
                                 <div className="flex items-center gap-1.5 text-sm mt-0.5">
-                                   <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} /> 
+                                   <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
                                    <span className="break-all">{msg.sharedContactInfo.phone}</span>
                                 </div>
                             )}
@@ -748,20 +654,8 @@ export default function ChatPage() {
                            {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
                         </Link>
                       )}
+                      {/* Media display (image/file) logic removed as media upload is disabled */}
                       {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
-                      {msg.mediaUrl && msg.mediaType?.startsWith('image/') && (
-                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
-                          <img src={msg.mediaUrl} alt="Uploaded media" className="max-w-xs max-h-64 object-contain rounded-md mt-1 cursor-pointer hover:opacity-80" data-ai-hint="chat image" />
-                        </a>
-                      )}
-                      {msg.mediaUrl && !msg.mediaType?.startsWith('image/') && (
-                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className={`mt-1 block ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground' : 'text-accent-foreground hover:text-accent-foreground/80'} underline`}>
-                          <div className="flex items-center gap-2 p-2 rounded-md bg-black/10 dark:bg-white/10">
-                            <FileIcon className="h-5 w-5" />
-                            <span className="text-sm break-all">View Attachment ({msg.mediaType || 'file'})</span>
-                          </div>
-                        </a>
-                      )}
                       <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
                         {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                       </p>
@@ -770,7 +664,7 @@ export default function ChatPage() {
                 ))}
                 <div ref={messagesEndRef} />
                 {!isLoadingMessages && messages.length === 0 && (
-                    <p className="text-center text-muted-foreground pt-10">Send a message or attachment to start the conversation.</p>
+                    <p className="text-center text-muted-foreground pt-10">Send a message to start the conversation.</p>
                 )}
               </CardContent>
             </ScrollArea>
@@ -801,27 +695,14 @@ export default function ChatPage() {
                   </Button>
                 </div>
               )}
-              {selectedFile && (
-                <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    {selectedFile.type.startsWith('image/') ? <ImageIconLucide className="h-5 w-5 text-muted-foreground" /> : <FileIcon className="h-5 w-5 text-muted-foreground" />}
-                    <span className="text-sm text-muted-foreground truncate">{selectedFile.name}</span>
-                    {uploadProgress !== null && <span className="text-xs text-primary">({uploadProgress.toFixed(0)}%)</span>}
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setSelectedFile(null); setUploadProgress(null); if(fileInputRef.current) fileInputRef.current.value = ""; }}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-              {uploadProgress !== null && uploadProgress < 100 && (
-                 <Progress value={uploadProgress} className="w-full h-2 mb-2" />
-              )}
+              {/* Selected file display removed as media upload is disabled */}
+              {/* Upload progress display removed as media upload is disabled */}
               <div className="flex gap-2 w-full">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowEmojiPicker(prev => !prev)}
-                  disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
+                  disabled={isSending}
                   title="Add emoji"
                 >
                     <Smile className="h-5 w-5" />
@@ -829,18 +710,14 @@ export default function ChatPage() {
                 </Button>
                 <Input
                   type="text"
-                  placeholder={pendingShareData ? "Add a caption (optional)..." : (selectedFile ? "Add a caption (optional)..." : "Type your message...")}
+                  placeholder={pendingShareData ? "Add a caption (optional)..." : "Type your message..."}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isSending && handleSendMessage()}
-                  disabled={isSending || (uploadProgress !== null && uploadProgress < 100)}
+                  disabled={isSending}
                 />
-                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" />
-                 <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isSending || (uploadProgress !== null && uploadProgress < 100) || !!pendingShareData} title="Attach file">
-                    <Paperclip className="h-5 w-5" />
-                    <span className="sr-only">Attach file</span>
-                 </Button>
-                <Button onClick={() => handleSendMessage()} disabled={isSending || (!message.trim() && !selectedFile && !pendingShareData) || (uploadProgress !== null && uploadProgress < 100)} title={pendingShareData ? "Send Gig" : "Send message"}>
+                 {/* File input and paperclip button removed as media upload is disabled */}
+                <Button onClick={() => handleSendMessage()} disabled={isSending || (!message.trim() && !pendingShareData)} title={pendingShareData ? "Send Gig" : "Send message"}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="sr-only">{pendingShareData ? "Send Gig" : "Send"}</span>
                 </Button>
