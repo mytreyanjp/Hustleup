@@ -78,6 +78,7 @@ interface FetchedGigData { // For data fetched from Firestore
   requiredSkills: string[];
   numberOfReports?: number;
   progressReports?: Partial<ProgressReport>[]; // Firestore progress reports
+  status: 'open' | 'in-progress' | 'completed' | 'closed'; // Added status
 }
 
 export default function EditGigPage() {
@@ -145,6 +146,19 @@ export default function EditGigPage() {
           return;
         }
 
+        // Check if gig status allows editing
+        if (gigData.status && (gigData.status === 'in-progress' || gigData.status === 'completed' || gigData.status === 'closed')) {
+          setError(`This gig is ${gigData.status} and can no longer be edited.`);
+          toast({
+            title: "Editing Not Allowed",
+            description: `This gig is ${gigData.status} and can no longer be edited.`,
+            variant: "destructive",
+          });
+          router.push(`/client/gigs/${gigId}/manage`); // Redirect to manage page
+          setIsLoadingGig(false); // Stop loading as we are redirecting
+          return;
+        }
+
         const initialReportDeadlines: (Date | null)[] = [];
         const numReports = gigData.numberOfReports || 0;
         if (numReports > 0) {
@@ -201,6 +215,19 @@ export default function EditGigPage() {
       const existingGigSnap = await getDoc(gigDocRef);
       if (!existingGigSnap.exists()) throw new Error("Gig not found for update.");
       const existingGigData = existingGigSnap.data() as FetchedGigData;
+
+      // Double check status before submitting, though UI should prevent this.
+      if (existingGigData.status && (existingGigData.status === 'in-progress' || existingGigData.status === 'completed' || existingGigData.status === 'closed')) {
+        toast({
+          title: "Editing Not Allowed",
+          description: `This gig is ${existingGigData.status} and can no longer be edited.`,
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        router.push(`/client/gigs/${gigId}/manage`);
+        return;
+      }
+
 
       const newProgressReports: Partial<ProgressReport>[] = [];
       if (data.numberOfReports && data.numberOfReports > 0 && data.reportDeadlines) {
@@ -262,8 +289,8 @@ export default function EditGigPage() {
     return (
       <div className="max-w-3xl mx-auto py-8 text-center">
         <p className="text-destructive mb-4">{error}</p>
-        <Button variant="outline" onClick={() => router.push('/client/gigs')}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to My Gigs
+        <Button variant="outline" onClick={() => router.push(`/client/gigs/${gigId}/manage`)}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Manage Gig
         </Button>
       </div>
     );
