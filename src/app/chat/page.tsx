@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -28,7 +28,7 @@ import {
   updateDoc,
   arrayUnion,
 } from 'firebase/firestore';
-// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Commented out as media upload is disabled
+// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { getChatId, cn } from '@/lib/utils';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
@@ -76,6 +76,7 @@ export default function ChatPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [targetUserForNewChat, setTargetUserForNewChat] = useState<UserProfile | null>(null);
   const [currentGigForChat, setCurrentGigForChat] = useState<GigForChatContext | null>(null);
+  const [isAcceptingOrRejecting, setIsAcceptingOrRejecting] = useState(false);
 
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -112,39 +113,81 @@ export default function ChatPage() {
       const chatSnap = await getDoc(chatDocRef);
       if (chatSnap.exists()) {
         const existingChatData = chatSnap.data() as ChatMetadata;
-        // If gigIdForContext is provided and different from existing, or if no gigId exists, update it.
+        let updateRequired = false;
+        const updates: Partial<ChatMetadata> & {updatedAt?: any} = { updatedAt: serverTimestamp() };
+
         if (gigIdForContext && existingChatData.gigId !== gigIdForContext) {
-            await updateDoc(chatDocRef, { gigId: gigIdForContext, updatedAt: serverTimestamp() });
+            updates.gigId = gigIdForContext;
+            updateRequired = true;
         } else if (gigIdForContext && !existingChatData.gigId) {
-             await updateDoc(chatDocRef, { gigId: gigIdForContext, updatedAt: serverTimestamp() });
+             updates.gigId = gigIdForContext;
+             updateRequired = true;
+        }
+
+        // If a gig context is now provided for a previously pending/rejected direct chat,
+        // and this gig implies a working relationship, make the chat accepted.
+        if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
+            updates.chatStatus = 'accepted';
+            updates.lastMessage = "Chat is now active via gig link.";
+            updates.lastMessageTimestamp = serverTimestamp();
+            updates.lastMessageSenderId = 'system';
+            updates.lastMessageReadBy = []; // Mark as unread for both to see this update
+            updateRequired = true;
+            
+            // Add a system message to the messages subcollection
+            const messagesColRef = collection(chatDocRef, 'messages');
+            addDoc(messagesColRef, {
+                senderId: 'system',
+                text: 'This chat has been automatically activated because you are now connected through a gig.',
+                timestamp: serverTimestamp(),
+                messageType: 'system_gig_connection_activated',
+            }).catch(console.error);
+        }
+        
+        if (updateRequired) {
+            await updateDoc(chatDocRef, updates);
         }
         setSelectedChatId(chatId);
         return chatId;
       } else {
-        const newChatData: Omit<ChatMetadata, 'id' | 'createdAt' | 'updatedAt' | 'lastMessageTimestamp'> & { id: string, createdAt: any, updatedAt: any, lastMessageTimestamp: any } = {
+        // New chat needs to be created
+        const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
           participantUsernames: {
             [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
             [targetUserId]: targetUsername,
           },
-          lastMessage: 'Chat started.',
-          lastMessageTimestamp: serverTimestamp(),
-          lastMessageSenderId: user.uid,
-          lastMessageReadBy: [user.uid],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp() as Timestamp, // Cast for type matching
+          updatedAt: serverTimestamp() as Timestamp, // Cast for type matching
           participantProfilePictures: {},
+          lastMessageReadBy: [],
+          // chatStatus and requestInitiatorId will be set based on context
         };
-         if (gigIdForContext) {
-            newChatData.gigId = gigIdForContext;
-        }
 
         if (userProfile.profilePictureUrl) {
           newChatData.participantProfilePictures![user.uid] = userProfile.profilePictureUrl;
         }
         if (targetProfilePictureUrl) {
           newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
+        }
+
+        if (gigIdForContext) {
+          // Directly linked via a gig
+          newChatData.chatStatus = 'accepted';
+          newChatData.gigId = gigIdForContext;
+          newChatData.lastMessage = 'Chat started.';
+          newChatData.lastMessageSenderId = user.uid;
+          newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
+          newChatData.lastMessageReadBy = [user.uid];
+        } else {
+          // No direct gig link from context - this is a "cold" chat initiation.
+          newChatData.chatStatus = 'pending_request';
+          newChatData.requestInitiatorId = user.uid;
+          newChatData.lastMessage = 'Chat request sent.'; // Will be overwritten by the first actual message
+          newChatData.lastMessageSenderId = user.uid;
+          newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
+          newChatData.lastMessageReadBy = [user.uid];
         }
 
         await setDoc(chatDocRef, newChatData);
@@ -327,6 +370,7 @@ export default function ChatPage() {
     // setSelectedFile(null); // Media upload disabled
     // setUploadProgress(null); // Media upload disabled
     setShowEmojiPicker(false);
+    setMessage('');
   };
 
   // const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => { // Media upload disabled
@@ -337,8 +381,8 @@ export default function ChatPage() {
   //       return;
   //     }
   //     setSelectedFile(file);
-  //     setMessage(''); 
-  //     setPendingShareData(null); 
+  //     setMessage('');
+  //     setPendingShareData(null);
   //   }
   // };
 
@@ -351,20 +395,36 @@ export default function ChatPage() {
     isSharingDetails: boolean = false,
     sharedDetails?: { email?: string, phone?: string }
     ) => {
-    // Removed selectedFile from condition as media upload is disabled
-    if ((!message.trim() && !pendingShareData && !isRequestingDetails && !isSharingDetails) || !selectedChatId || !user || !userProfile || !db ) {
-        toast({ title: "Cannot Send", description: "Message is empty or chat session is invalid.", variant: "destructive"});
+    if (!selectedChatId || !user || !userProfile || !db ) {
+        toast({ title: "Cannot Send", description: "Chat session is invalid.", variant: "destructive"});
         return;
     }
-    // Removed storage check as media upload is disabled
+
+    const currentChatDetails = chats.find(c => c.id === selectedChatId);
+    if (!currentChatDetails) {
+        toast({ title: "Cannot Send", description: "Chat details not found.", variant: "destructive"});
+        return;
+    }
+
+    const isInitiator = currentChatDetails.requestInitiatorId === user.uid;
+    const isPendingRequest = currentChatDetails.chatStatus === 'pending_request';
+
+    // Allow sending first message if it's a pending request and current user is initiator and no messages exist
+    const canSendRequestMessage = isPendingRequest && isInitiator && messages.length === 0;
+
+    if (!canSendRequestMessage && currentChatDetails.chatStatus !== 'accepted') {
+         toast({ title: "Cannot Send", description: "Chat not active or request pending.", variant: "destructive"});
+         return;
+    }
+    
+    if (!message.trim() && !pendingShareData && !isRequestingDetails && !isSharingDetails) {
+        toast({ title: "Cannot Send", description: "Message is empty.", variant: "destructive"});
+        return;
+    }
+
+
     setIsSending(true);
-    // setUploadProgress(null); // Media upload disabled
     setShowEmojiPicker(false);
-
-    // let mediaUrl: string | undefined = undefined; // Media upload disabled
-    // let mediaType: string | undefined = undefined; // Media upload disabled
-
-    // Media upload logic removed
 
     const newMessageContent: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: user.uid,
@@ -399,7 +459,6 @@ export default function ChatPage() {
       lastMessageText = message.trim();
     }
 
-    // Removed mediaUrl and mediaType assignment as media upload is disabled
 
     try {
       const chatDocRef = doc(db, 'chats', selectedChatId);
@@ -416,6 +475,9 @@ export default function ChatPage() {
         lastMessageReadBy: [user.uid],
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
+      
+      // If this was the first message of a pending request, update status if needed by UI cues, but server handles actual acceptance.
+      // The UI disabling input after first message in pending state is the main gate.
 
       if (userProfile.profilePictureUrl) {
         const currentChat = chats.find(c => c.id === selectedChatId);
@@ -432,10 +494,7 @@ export default function ChatPage() {
 
       await batchOp.commit();
       setMessage('');
-      // setSelectedFile(null); // Media upload disabled
       setPendingShareData(null);
-      // setUploadProgress(null); // Media upload disabled
-      // if (fileInputRef.current) fileInputRef.current.value = ""; // Media upload disabled
     } catch (error) {
       console.error("Error sending message:", error);
       toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
@@ -444,11 +503,38 @@ export default function ChatPage() {
     }
   };
 
-  useEffect(() => {
-    if (!authLoading && !user && typeof window !== 'undefined') {
-      router.push('/auth/login?redirect=/chat');
+  const handleChatRequestAction = async (action: 'accepted' | 'rejected') => {
+    if (!selectedChatId || !user || !db) return;
+    setIsAcceptingOrRejecting(true);
+    try {
+      const chatDocRef = doc(db, 'chats', selectedChatId);
+      const messagesColRef = collection(chatDocRef, 'messages');
+      const systemMessageText = action === 'accepted' ? 'Chat request accepted. You can now chat freely.' : 'Chat request rejected.';
+
+      const batch = writeBatch(db);
+      batch.update(chatDocRef, {
+        chatStatus: action,
+        updatedAt: serverTimestamp(),
+        lastMessage: systemMessageText,
+        lastMessageSenderId: 'system',
+        lastMessageTimestamp: serverTimestamp(),
+        lastMessageReadBy: [], // Mark as unread for both
+      });
+      batch.set(doc(messagesColRef), {
+        senderId: 'system',
+        text: systemMessageText,
+        messageType: action === 'accepted' ? 'system_request_accepted' : 'system_request_rejected',
+        timestamp: serverTimestamp(),
+      });
+      await batch.commit();
+      toast({ title: `Request ${action}`, description: `Chat request has been ${action}.` });
+    } catch (error) {
+      console.error(`Error ${action} chat request:`, error);
+      toast({ title: "Action Failed", description: `Could not ${action} the chat request.`, variant: "destructive" });
+    } finally {
+      setIsAcceptingOrRejecting(false);
     }
-  }, [authLoading, user, router]);
+  };
 
 
   if (authLoading && typeof window !== 'undefined') {
@@ -473,6 +559,17 @@ export default function ChatPage() {
                             currentGigForChat?.status === 'in-progress' &&
                             currentGigForChat?.selectedStudentId === user?.uid;
 
+  const isCurrentUserInitiator = selectedChatDetails?.requestInitiatorId === user?.uid;
+  const isChatPendingRequest = selectedChatDetails?.chatStatus === 'pending_request';
+  const isChatRejected = selectedChatDetails?.chatStatus === 'rejected';
+  const showRequestActionButtons = isChatPendingRequest && !isCurrentUserInitiator;
+  // Input is disabled if chat is pending and current user is initiator AND has already sent first message,
+  // OR if chat is pending and current user is receiver, OR if chat is rejected.
+  const isInputDisabled =
+    (isChatPendingRequest && isCurrentUserInitiator && messages.length > 0) ||
+    (isChatPendingRequest && !isCurrentUserInitiator) ||
+    isChatRejected ||
+    isSending;
 
 
   return (
@@ -502,6 +599,7 @@ export default function ChatPage() {
               const chatPartnerUsername = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
               const partnerProfilePic = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
               const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
+              const isPendingForCurrentUser = chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid;
 
               return (
                 <div
@@ -512,6 +610,9 @@ export default function ChatPage() {
                   {isUnread && (
                     <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary rounded-full"></span>
                   )}
+                   {isPendingForCurrentUser && (
+                     <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-orange-500 rounded-full animate-pulse" title="New chat request"></span>
+                   )}
                   <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}>
                     <Avatar className="h-10 w-10 ml-2">
                         <AvatarImage src={partnerProfilePic} alt={chatPartnerUsername} />
@@ -522,14 +623,20 @@ export default function ChatPage() {
                     {otherParticipantId ? (
                        <Link href={`/profile/${otherParticipantId}`} passHref
                           onClick={(e) => e.stopPropagation()}
-                          className={`text-sm truncate hover:underline ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}
+                          className={`text-sm truncate hover:underline ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}
                        >
                          {chatPartnerUsername}
                        </Link>
                     ) : (
-                       <p className={`text-sm truncate ${isUnread ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                       <p className={`text-sm truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
                     )}
-                    <p className={`text-xs truncate ${isUnread ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>{chat.lastMessage}</p>
+                    <p className={`text-xs truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
+                       {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length === 0 && "Your request message will appear here..."}
+                       {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length > 0 && "Waiting for acceptance..."}
+                       {chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid && "Responded to your request."}
+                       {chat.chatStatus === 'rejected' && "Chat request rejected."}
+                       {chat.chatStatus !== 'pending_request' && chat.chatStatus !== 'rejected' && chat.lastMessage}
+                    </p>
                      <p className="text-xs text-muted-foreground/70">
                         {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
                     </p>
@@ -548,7 +655,7 @@ export default function ChatPage() {
         {selectedChatId && selectedChatDetails && otherUserId && user ? (
           <>
             <CardHeader className="border-b flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-2 sm:gap-0 flex-wrap">
-              <div className="flex items-center gap-3 flex-grow min-w-0"> {/* Ensure this part can shrink and text can truncate */}
+              <div className="flex items-center gap-3 flex-grow min-w-0">
                 <Button variant="ghost" size="icon" className="md:hidden h-8 w-8" onClick={() => setSelectedChatId(null)}>
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -558,20 +665,28 @@ export default function ChatPage() {
                       <AvatarFallback>{otherUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
                 </Link>
-                <div className="overflow-hidden"> {/* Added overflow-hidden here for truncation */}
+                <div className="overflow-hidden">
                   <Link href={`/profile/${otherUserId}`} className="hover:underline">
-                    <CardTitle className="text-base truncate">{otherUsername}</CardTitle> {/* Added truncate */}
+                    <CardTitle className="text-base truncate">{otherUsername}</CardTitle>
                   </Link>
-                  {currentGigForChat?.title && (
-                      <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline truncate block"> {/* Added truncate and block */}
+                  {currentGigForChat?.title && selectedChatDetails.chatStatus === 'accepted' && (
+                      <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline truncate block">
                           Gig: {currentGigForChat.title}
                       </Link>
                   )}
+                   {selectedChatDetails.chatStatus === 'pending_request' && selectedChatDetails.requestInitiatorId === user.uid && messages.length > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">Request sent, waiting for acceptance.</p>
+                    )}
+                    {selectedChatDetails.chatStatus === 'pending_request' && selectedChatDetails.requestInitiatorId !== user.uid && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">Responded to your chat request.</p>
+                    )}
+                    {selectedChatDetails.chatStatus === 'rejected' && (
+                        <p className="text-xs text-destructive">Chat request rejected.</p>
+                    )}
                 </div>
               </div>
-               {/* Share/Request Details Buttons */}
-               <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0"> {/* Added flex-wrap and justify-end */}
-                {canShareDetails && userProfile && (
+               <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                {selectedChatDetails.chatStatus === 'accepted' && canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="outline" size="sm"><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
@@ -595,10 +710,20 @@ export default function ChatPage() {
                         </AlertDialogContent>
                     </AlertDialog>
                 )}
-                {canRequestDetails && (
+                {selectedChatDetails.chatStatus === 'accepted' && canRequestDetails && (
                     <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)}>
                         <Info className="mr-2 h-4 w-4" /> Request Contact
                     </Button>
+                )}
+                {showRequestActionButtons && (
+                    <>
+                        <Button variant="default" size="sm" onClick={() => handleChatRequestAction('accepted')} disabled={isAcceptingOrRejecting}>
+                           {isAcceptingOrRejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} Accept Request
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleChatRequestAction('rejected')} disabled={isAcceptingOrRejecting}>
+                            {isAcceptingOrRejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertTriangle className="mr-2 h-4 w-4" />} Reject Request
+                        </Button>
+                    </>
                 )}
                </div>
             </CardHeader>
@@ -608,21 +733,23 @@ export default function ChatPage() {
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${msg.senderId === user?.uid ? 'justify-end' : msg.senderId === 'system' ? 'justify-center' : 'justify-start'}`}
                   >
-                    <div // This is the chat bubble
-                      className={`p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden ${
-                        msg.senderId === user?.uid
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-secondary dark:bg-muted'
-                      }`}
+                    <div 
+                      className={cn(
+                        "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
+                         msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 
+                         msg.senderId === 'system' ? 'bg-muted/70 text-muted-foreground text-xs italic' : 'bg-secondary dark:bg-muted'
+                      )}
                     >
-                       {msg.isDetailShareRequest && (
+                       {msg.messageType?.startsWith('system_') && <p className="text-center">{msg.text}</p>}
+
+                       {!msg.messageType?.startsWith('system_') && msg.isDetailShareRequest && (
                          <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
                             <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
                          </div>
                        )}
-                       {msg.isDetailsShared && msg.sharedContactInfo && (
+                       {!msg.messageType?.startsWith('system_') && msg.isDetailsShared && msg.sharedContactInfo && (
                         <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
                             <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
                             {msg.sharedContactInfo.email && (
@@ -641,7 +768,7 @@ export default function ChatPage() {
                         </div>
                        )}
 
-                      {msg.sharedGigId && msg.sharedGigTitle && (
+                      {!msg.messageType?.startsWith('system_') && msg.sharedGigId && msg.sharedGigTitle && (
                         <Link href={`/gigs/${msg.sharedGigId}`} target="_blank" rel="noopener noreferrer"
                               className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
                           <div className="flex items-center gap-2 mb-1">
@@ -654,17 +781,23 @@ export default function ChatPage() {
                            {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
                         </Link>
                       )}
-                      {/* Media display (image/file) logic removed as media upload is disabled */}
-                      {msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
-                      <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
-                        {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
-                      </p>
+                      {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
+                      {msg.senderId !== 'system' && (
+                         <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
+                            {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                         </p>
+                      )}
                     </div>
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
                 {!isLoadingMessages && messages.length === 0 && (
-                    <p className="text-center text-muted-foreground pt-10">Send a message to start the conversation.</p>
+                    <p className="text-center text-muted-foreground pt-10">
+                       {isChatPendingRequest && isCurrentUserInitiator && "Send a message to request a chat."}
+                       {isChatPendingRequest && !isCurrentUserInitiator && "Waiting for chat request..."}
+                       {selectedChatDetails.chatStatus === 'accepted' && "Send a message to start the conversation."}
+                       {isChatRejected && "This chat request was rejected. You cannot send further messages."}
+                    </p>
                 )}
               </CardContent>
             </ScrollArea>
@@ -695,14 +828,12 @@ export default function ChatPage() {
                   </Button>
                 </div>
               )}
-              {/* Selected file display removed as media upload is disabled */}
-              {/* Upload progress display removed as media upload is disabled */}
               <div className="flex gap-2 w-full">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowEmojiPicker(prev => !prev)}
-                  disabled={isSending}
+                  disabled={isInputDisabled}
                   title="Add emoji"
                 >
                     <Smile className="h-5 w-5" />
@@ -710,14 +841,16 @@ export default function ChatPage() {
                 </Button>
                 <Input
                   type="text"
-                  placeholder={pendingShareData ? "Add a caption (optional)..." : "Type your message..."}
+                  placeholder={
+                    isChatPendingRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
+                    pendingShareData ? "Add a caption (optional)..." : "Type your message..."
+                   }
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isSending && handleSendMessage()}
-                  disabled={isSending}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isInputDisabled && handleSendMessage()}
+                  disabled={isInputDisabled}
                 />
-                 {/* File input and paperclip button removed as media upload is disabled */}
-                <Button onClick={() => handleSendMessage()} disabled={isSending || (!message.trim() && !pendingShareData)} title={pendingShareData ? "Send Gig" : "Send message"}>
+                <Button onClick={() => handleSendMessage()} disabled={isInputDisabled || (!message.trim() && !pendingShareData)} title={pendingShareData ? "Send Gig" : "Send message"}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="sr-only">{pendingShareData ? "Send Gig" : "Send"}</span>
                 </Button>

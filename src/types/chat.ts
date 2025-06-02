@@ -20,6 +20,7 @@ export interface ChatMessage {
     phone?: string;
     note?: string; // Optional note from client when sharing
   };
+  messageType?: 'user' | 'system_request_accepted' | 'system_request_rejected' | 'system_gig_connection_activated';
 }
 
 export interface ChatMetadata {
@@ -34,4 +35,7 @@ export interface ChatMetadata {
   gigId?: string; // Original gigId for chat context, not for shared gig message
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  chatStatus?: 'pending_request' | 'accepted' | 'rejected'; // New field for request status
+  requestInitiatorId?: string; // UID of the user who sent the request
 }
+
