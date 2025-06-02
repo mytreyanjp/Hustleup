@@ -142,13 +142,13 @@ export default function BrowseHustlersPage() {
           {filteredStudents.map((student) => (
             <Card key={student.uid} className="glass-card flex flex-col">
               <CardHeader className="items-center text-center p-4 sm:p-6">
-                <Avatar className="h-20 w-20 sm:h-20 mb-3">
+                <Avatar className="h-16 w-16 sm:h-20 sm:w-20 mb-2 sm:mb-3">
                   <AvatarImage src={student.profilePictureUrl} alt={student.username || 'Student'} />
                   <AvatarFallback>{getInitials(student.email, student.username)}</AvatarFallback>
                 </Avatar>
-                <CardTitle className="text-md sm:text-lg line-clamp-1">{student.username || 'Student User'}</CardTitle>
+                <CardTitle className="text-md sm:text-lg line-clamp-1 break-words">{student.username || 'Student User'}</CardTitle>
                 {student.bio && (
-                  <CardDescription className="text-xs sm:text-sm line-clamp-2">
+                  <CardDescription className="text-xs sm:text-sm line-clamp-2 break-words">
                     {student.bio}
                   </CardDescription>
                 )}
