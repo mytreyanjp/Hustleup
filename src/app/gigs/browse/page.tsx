@@ -33,6 +33,7 @@ interface Gig {
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
+  applicationRequests?: { studentId: string; studentUsername: string; requestedAt: Timestamp; status: 'pending' | 'approved_to_apply' | 'denied_to_apply' }[];
   isFromFollowedClient?: boolean;
 }
 
@@ -65,9 +66,6 @@ export default function BrowseGigsPage() {
       }
       try {
         const gigsCollectionRef = collection(db, 'gigs');
-        // IMPORTANT: This query requires a composite index on 'gigs': status (Ascending), createdAt (Descending)
-        // Create it in Firebase console if missing.
-        // Example Link: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=Cktwcm9qZWN0cy9ZT1VSX1BST0pFQ1RfSUQvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2dpZ3MvaW5kZXhlcy9fEAEaCgoGc3RhdHVzEAESDQoJY3JlYXRlZEF0EAJaDAoIX19uYW1lX18QAg
         const q = query(
           gigsCollectionRef,
           where('status', '==', 'open'),
@@ -86,11 +84,14 @@ export default function BrowseGigsPage() {
 
           let followedGigsTemp: Gig[] = [];
           let skillBasedGigsTemp: Gig[] = [];
-          let otherGigsTemp: Gig[] = []; // Gigs not from followed clients and not matching student skills (if student has skills)
+          let otherGigsTemp: Gig[] = []; 
 
-          const unappliedGigs = allOpenGigs.filter(gig => 
-            !(gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
-          );
+          const unappliedGigs = allOpenGigs.filter(gig => {
+            const hasRequested = gig.applicationRequests?.some(req => req.studentId === currentUser.uid);
+            const hasAppliedFull = gig.applicants?.some(app => app.studentId === currentUser.uid);
+            return !hasRequested && !hasAppliedFull;
+          });
+
 
           unappliedGigs.forEach(gig => {
             if (followedClientIds.includes(gig.clientId)) {
@@ -109,24 +110,22 @@ export default function BrowseGigsPage() {
                 if (hasMatchingSkill) {
                   skillBasedGigsTemp.push(gig);
                 } else {
-                  otherGigsTemp.push(gig); // Keep for potential display if no filters applied etc.
+                  otherGigsTemp.push(gig); 
                 }
               } else {
-                // If student has no skills, all non-followed, unapplied gigs are potential matches for the "other" category
                 otherGigsTemp.push(gig);
               }
             }
           });
           
-          // Combine: followed client gigs first, then skill-based, then others.
-          // The actual display filtering (user-selected filters) happens later in filteredAndSortedGigs.
-          // This `gigs` state is the base dataset for the page.
           setGigs([...followedGigsTemp, ...skillBasedGigsTemp, ...otherGigsTemp]);
 
         } else {
-          // For anonymous users or clients, or students without profiles yet.
           setGigs(allOpenGigs.filter(gig => 
-            !(currentUser && gig.applicants && gig.applicants.some(app => app.studentId === currentUser.uid))
+            !(currentUser && (
+                (gig.applicationRequests?.some(req => req.studentId === currentUser.uid)) ||
+                (gig.applicants?.some(app => app.studentId === currentUser.uid))
+            ))
           ));
         }
 
@@ -168,11 +167,10 @@ export default function BrowseGigsPage() {
       });
     }
     
-    // Sort: followed client gigs first, then by creation date.
     processedGigs.sort((a, b) => {
       if (a.isFromFollowedClient && !b.isFromFollowedClient) return -1;
       if (!a.isFromFollowedClient && b.isFromFollowedClient) return 1;
-      return b.createdAt.toMillis() - a.createdAt.toMillis(); // Newest first
+      return b.createdAt.toMillis() - a.createdAt.toMillis(); 
     });
 
     return processedGigs;
@@ -284,7 +282,7 @@ export default function BrowseGigsPage() {
               </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3 pb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4 sm:gap-6 pb-8">
             {filteredAndSortedGigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader className="p-4 sm:p-6">
