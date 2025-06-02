@@ -4,11 +4,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Users, Search, FilterIcon, X as XIcon } from 'lucide-react';
+import { Loader2, Users, Search, FilterIcon, X as XIcon, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import type { UserProfile } from '@/context/firebase-context'; 
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -144,24 +144,22 @@ export default function BrowseHustlersPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-6 pb-8">
             {filteredStudents.map((student) => (
-              <Card key={student.uid} className="glass-card flex flex-col">
-                <CardHeader className="items-center text-center p-4 sm:p-6 pb-2 sm:pb-3">
-                  <Avatar className="h-16 w-16 sm:h-20 sm:w-20 mb-2">
-                    <AvatarImage src={student.profilePictureUrl} alt={student.username || 'Student'} />
-                    <AvatarFallback>{getInitials(student.email, student.username)}</AvatarFallback>
-                  </Avatar>
-                  <CardTitle className="text-base sm:text-lg truncate break-words w-full">{student.companyName || student.username || 'User'}</CardTitle>
-                  <CardDescription className="capitalize text-xs sm:text-sm truncate break-words w-full">{student.role}</CardDescription>
-                </CardHeader>
-                
-                <CardFooter className="p-4 sm:p-6 pt-2 sm:pt-3">
-                  <Button asChild className="w-full" size="sm">
-                    <Link href={`/profile/${student.uid}`}>
-                      View
-                    </Link>
-                  </Button>
-                </CardFooter>
-              </Card>
+              <Link 
+                href={`/profile/${student.uid}`} 
+                key={student.uid} 
+                className="block hover:shadow-xl focus:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-shadow duration-200 rounded-lg group h-full"
+              >
+                <Card className="glass-card flex flex-col h-full group-hover:border-primary/50 transition-colors duration-200">
+                  <CardHeader className="items-center text-center p-4 sm:p-6 pb-3 flex-grow">
+                    <Avatar className="h-16 w-16 sm:h-20 sm:w-20 mb-2">
+                      <AvatarImage src={student.profilePictureUrl} alt={student.username || 'Student'} />
+                      <AvatarFallback>{getInitials(student.email, student.username)}</AvatarFallback>
+                    </Avatar>
+                    <CardTitle className="text-base sm:text-lg truncate w-full">{student.companyName || student.username || 'User'}</CardTitle>
+                    <CardDescription className="capitalize text-xs sm:text-sm truncate w-full">{student.role}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
             ))}
           </div>
         )}
@@ -169,4 +167,3 @@ export default function BrowseHustlersPage() {
     </div>
   );
 }
-
