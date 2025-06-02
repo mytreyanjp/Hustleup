@@ -43,6 +43,8 @@ interface FirebaseContextType {
   role: UserRole;
   refreshUserProfile: () => Promise<void>;
   totalUnreadChats: number;
+  firebaseActuallyInitialized: boolean;
+  initializationError: string | null;
 }
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
@@ -52,8 +54,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<UserRole>(null);
-  const [firebaseActuallyInitialized, setFirebaseActuallyInitialized] = useState(false);
-  const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [firebaseActuallyInitializedState, setFirebaseActuallyInitializedState] = useState(false);
+  const [initializationErrorState, setInitializationErrorState] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
@@ -132,9 +134,9 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshUserProfile = useCallback(async () => {
     if (user) {
-      setLoading(true); // Keep loading true while refreshing
+      setLoading(true); 
       await fetchUserProfile(user);
-      setLoading(false); // Set loading to false after refresh is complete
+      setLoading(false); 
     }
   }, [user, fetchUserProfile]);
 
@@ -144,15 +146,15 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
-      if (firebaseInitializationDetails.areEnvVarsMissing) {
+       if (firebaseInitializationDetails.areEnvVarsMissing) {
         console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Details: ${firebaseInitializationDetails.errorMessage}`;
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
         console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
         specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This can happen if environment variables are present but contain invalid values (e.g., incorrect API key format), or if there's a network issue preventing connection to Firebase services. Original error: ${firebaseInitializationDetails.errorMessage}`;
       }
-      setInitializationError(specificErrorMessage);
-      setFirebaseActuallyInitialized(false);
+      setInitializationErrorState(specificErrorMessage);
+      setFirebaseActuallyInitializedState(false);
       setLoading(false);
       setUser(null);
       setUserProfile(null);
@@ -160,8 +162,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    setFirebaseActuallyInitialized(true);
-    setInitializationError(null); 
+    setFirebaseActuallyInitializedState(true);
+    setInitializationErrorState(null); 
 
     if (auth) {
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -171,7 +173,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       }, (error) => {
         console.error("Auth state error:", error);
-        setInitializationError(`Firebase Auth error: ${error.message}`);
+        setInitializationErrorState(`Firebase Auth error: ${error.message}`);
         setUser(null);
         setUserProfile(null);
         setRole(null);
@@ -180,8 +182,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     } else {
       const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
       console.error(authErrorMessage);
-      setInitializationError(authErrorMessage);
-      setFirebaseActuallyInitialized(false); 
+      setInitializationErrorState(authErrorMessage);
+      setFirebaseActuallyInitializedState(false); 
       setLoading(false);
     }
 
@@ -231,59 +233,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user]);
 
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
+  // Note: Removed the direct rendering of global loader/error from here.
+  // Consumers of the context (like AppBody) will handle this.
 
-  if (loading && isClient) { 
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
-  if (!firebaseActuallyInitialized && initializationError && isClient) {
-    const isEnvVarError = firebaseInitializationDetails.areEnvVarsMissing;
-    const isCoreServiceError = firebaseInitializationDetails.didCoreServicesFail && !isEnvVarError;
-
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
-        <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-lg">
-          <h2 className="text-xl font-semibold mb-2">Firebase Configuration Error!</h2>
-          <p className="text-sm whitespace-pre-wrap mb-3">{initializationError}</p>
-          
-          {isEnvVarError && (
-            <div className="text-left text-xs mt-4 bg-destructive-foreground/10 p-3 rounded-md text-destructive-foreground/80">
-              <p className="font-bold mb-1 text-destructive-foreground">CRITICAL: To fix missing environment variables:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li><strong><code>.env.local</code> File Location:</strong> Ensure this file is in the <strong>root directory</strong> of your project (same folder as <code>package.json</code>).</li>
-                <li><strong>Variable Naming:</strong> All Firebase variables in <code>.env.local</code> <strong>MUST</strong> start with <code>NEXT_PUBLIC_</code>.</li>
-                <li><strong>Correct Values:</strong> Verify API keys and identifiers match your Firebase project settings.</li>
-                <li><strong>SERVER RESTART:</strong> After changes to <code>.env.local</code>, you <strong>MUST COMPLETELY STOP AND RESTART</strong> your Next.js development server (<code>npm run dev</code>).</li>
-              </ol>
-            </div>
-          )}
-
-           {isCoreServiceError && (
-             <div className="text-left text-xs mt-4 bg-destructive-foreground/10 p-3 rounded-md text-destructive-foreground/80">
-               <p className="font-bold mb-1 text-destructive-foreground">Action Required - Please double-check:</p>
-               <ol className="list-decimal list-inside space-y-1">
-                 <li><strong>Firebase Project Settings:</strong> Verify API key, Auth Domain, Project ID, etc., in your <code>.env.local</code> file match your Firebase project console.</li>
-                 <li><strong>Firebase Services Enabled:</strong> Ensure Authentication, Firestore Database, and Storage are enabled in your Firebase project.</li>
-                 <li><strong>Network Connectivity:</strong> Check your internet connection.</li>
-                 <li><strong><code>storageBucket</code> URL:</strong> Ensure the `storageBucket` in <code>.env.local</code> is correct (e.g., `your-project-id.appspot.com` vs `your-project-id.firebasestorage.app`).</li>
-               </ol>
-             </div>
-           )}
-        </div>
-      </div>
-    );
-  }
-
-  const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats };
+  const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats, firebaseActuallyInitialized: firebaseActuallyInitializedState, initializationError: initializationErrorState };
 
   return (
     <FirebaseContext.Provider value={value}>
