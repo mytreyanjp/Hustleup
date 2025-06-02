@@ -141,38 +141,16 @@ export default function BrowseHustlersPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-6">
           {filteredStudents.map((student) => (
             <Card key={student.uid} className="glass-card flex flex-col">
-              <CardHeader className="items-center text-center p-4 sm:p-6">
-                <Avatar className="h-16 w-16 sm:h-20 sm:w-20 mb-2 sm:mb-3">
+              <CardHeader className="items-center text-center p-4 sm:p-6 pb-2 sm:pb-3">
+                <Avatar className="h-16 w-16 sm:h-20 sm:w-20 mb-2">
                   <AvatarImage src={student.profilePictureUrl} alt={student.username || 'Student'} />
                   <AvatarFallback>{getInitials(student.email, student.username)}</AvatarFallback>
                 </Avatar>
                 <CardTitle className="text-base sm:text-lg truncate break-words w-full">{student.companyName || student.username || 'User'}</CardTitle>
                 <CardDescription className="capitalize text-xs sm:text-sm truncate break-words w-full">{student.role}</CardDescription>
               </CardHeader>
-              <CardContent className="flex-grow p-4 sm:p-6 pt-0">
-                {student.skills && student.skills.length > 0 && (
-                  <div className="mb-3">
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-1 text-center">Top Skills:</h4>
-                    <div className="flex flex-wrap gap-1 justify-center">
-                      {student.skills.slice(0, 3).map((skill, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">{skill}</Badge>
-                      ))}
-                      {student.skills.length > 3 && (
-                        <Badge variant="outline" className="text-xs">+{student.skills.length - 3} more</Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {!student.skills || student.skills.length === 0 && !student.bio && (
-                    <p className="text-xs text-muted-foreground text-center">Profile details not yet available.</p>
-                )}
-                 {student.bio && (!student.skills || student.skills.length === 0) && (
-                     <p className="text-xs text-muted-foreground text-center line-clamp-2 break-words">
-                         {student.bio}
-                     </p>
-                 )}
-              </CardContent>
-              <CardFooter className="p-4 sm:p-6 pt-0">
+              {/* CardContent for skills and bio has been removed here */}
+              <CardFooter className="p-4 sm:p-6 pt-2 sm:pt-3">
                 <Button asChild className="w-full" size="sm">
                   <Link href={`/profile/${student.uid}`}>
                     View Profile <ArrowRight className="ml-1 sm:ml-2 h-4 w-4" />
