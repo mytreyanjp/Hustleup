@@ -22,11 +22,13 @@ import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 // import { Progress } from '@/components/ui/progress'; // Media upload disabled
 import type { UserProfile } from '@/context/firebase-context';
+import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 
 interface Gig {
@@ -51,6 +53,15 @@ const profileSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
+const PREDEFINED_AVATARS = [
+  { url: 'https://picsum.photos/seed/hustleavatar1/200/200', hint: 'abstract avatar' },
+  { url: 'https://picsum.photos/seed/hustleavatar2/200/200', hint: 'profile illustration' },
+  { url: 'https://picsum.photos/seed/hustleavatar3/200/200', hint: 'geometric pattern' },
+  { url: 'https://picsum.photos/seed/hustleavatar4/200/200', hint: 'nature silhouette' },
+  { url: 'https://picsum.photos/seed/hustleavatar5/200/200', hint: 'gradient background' },
+  { url: 'https://picsum.photos/seed/hustleavatar6/200/200', hint: 'minimalist icon' },
+];
+
 export default function StudentProfilePage() {
   const { user, userProfile, loading: authLoading, role, refreshUserProfile } = useFirebase();
   const router = useRouter();
@@ -59,11 +70,8 @@ export default function StudentProfilePage() {
   const [isFormReady, setIsFormReady] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null); // Media upload disabled
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  // const [uploadProgress, setUploadProgress] = useState<number | null>(null); // Media upload disabled
-  // const [isUploading, setIsUploading] = useState(false); // Media upload disabled
-  // const fileInputRef = useRef<HTMLInputElement>(null); // Media upload disabled
+  const [selectedPredefinedAvatar, setSelectedPredefinedAvatar] = useState<string | null>(null);
 
   const [availableGigsCount, setAvailableGigsCount] = useState<number | null>(null);
   const [activeApplicationsCount, setActiveApplicationsCount] = useState<number | null>(null);
@@ -75,6 +83,7 @@ export default function StudentProfilePage() {
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [modalUserList, setModalUserList] = useState<UserProfile[]>([]);
   const [isLoadingModalList, setIsLoadingModalList] = useState(false);
+
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -100,6 +109,7 @@ export default function StudentProfilePage() {
         portfolioLinks: profile.portfolioLinks?.map(link => ({ value: link })) || [],
       });
       setImagePreview(profile.profilePictureUrl || null);
+      setSelectedPredefinedAvatar(null); // Reset on form population
     } else if (user) {
       form.reset({
         username: user.email?.split('@')[0] || '',
@@ -108,6 +118,7 @@ export default function StudentProfilePage() {
         portfolioLinks: [],
       });
       setImagePreview(null);
+      setSelectedPredefinedAvatar(null);
     }
   }, [form, user]);
 
@@ -189,11 +200,9 @@ export default function StudentProfilePage() {
     }
   }, [user, userProfile, role, authLoading, toast]);
 
-  // handleImageFileChange removed as media upload is disabled
-  // handleImageUpload removed as media upload is disabled
 
   const onSubmit = async (data: ProfileFormValues) => {
-    if (!user) return;
+    if (!user || !db) return; // Added db check
     setIsSubmitting(true);
     try {
       const userDocRef = doc(db, 'users', user.uid);
@@ -205,11 +214,11 @@ export default function StudentProfilePage() {
         updatedAt: Timestamp.now(),
       };
 
-      // Preserve existing profile picture if not changing
-      if (userProfile?.profilePictureUrl) {
-        updateData.profilePictureUrl = userProfile.profilePictureUrl;
+      if (selectedPredefinedAvatar) {
+        updateData.profilePictureUrl = selectedPredefinedAvatar;
+      } else {
+        updateData.profilePictureUrl = userProfile?.profilePictureUrl || '';
       }
-
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
@@ -225,7 +234,6 @@ export default function StudentProfilePage() {
 
   const handleCancelEdit = () => {
     populateFormAndPreview(userProfile);
-    // setSelectedImageFile(null); // Media upload disabled
     setIsEditing(false);
   };
 
@@ -233,6 +241,11 @@ export default function StudentProfilePage() {
     if (username) return username.substring(0, 2).toUpperCase();
     if (email) return email.substring(0, 2).toUpperCase();
     return '??';
+  };
+  
+  const handleSelectPredefinedAvatar = (avatarUrl: string) => {
+    setSelectedPredefinedAvatar(avatarUrl);
+    setImagePreview(avatarUrl);
   };
 
   const handleOpenFollowingModal = async () => {
@@ -244,15 +257,16 @@ export default function StudentProfilePage() {
     setIsLoadingModalList(true);
     setShowFollowingModal(true);
     try {
+        if (!db) throw new Error("Firestore not available");
         const followingProfilesPromises = userProfile.following.map(uid => getDoc(doc(db, 'users', uid)));
         const followingSnapshots = await Promise.all(followingProfilesPromises);
         const fetchedProfiles = followingSnapshots
             .filter(snap => snap.exists())
             .map(snap => ({ uid: snap.id, ...snap.data() } as UserProfile));
         setModalUserList(fetchedProfiles);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error fetching following list:", error);
-        toast({ title: "Error", description: "Could not load following list.", variant: "destructive" });
+        toast({ title: "Error", description: `Could not load following list: ${error.message}`, variant: "destructive" });
         setModalUserList([]);
     } finally {
         setIsLoadingModalList(false);
@@ -269,6 +283,7 @@ export default function StudentProfilePage() {
   const followersCount = userProfile?.followersCount || 0;
   const followingCount = userProfile?.following?.length || 0;
 
+
   if (authLoading || !isFormReady) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -280,13 +295,10 @@ export default function StudentProfilePage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
             <div className="relative group shrink-0">
               <Avatar className="h-24 w-24 sm:h-32 sm:w-32 text-4xl border-2 border-muted shadow-md">
-                <AvatarImage src={imagePreview || userProfile?.profilePictureUrl} alt={userProfile?.username || 'User'} />
+                <AvatarImage src={imagePreview || undefined} alt={userProfile?.username || 'User'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
               </Avatar>
-              {/* Profile picture upload button disabled */}
             </div>
-            {/* File input ref removed as media upload is disabled */}
-
             <div className='text-center sm:text-left flex-grow space-y-1'>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <CardTitle className="text-xl sm:text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
@@ -297,7 +309,6 @@ export default function StudentProfilePage() {
                 )}
               </div>
               <CardDescription className="text-xs sm:text-sm">{userProfile?.email || 'No email provided'}</CardDescription>
-
               <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground pt-1">
                  <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                     <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followersCount}</span> Followers
@@ -306,7 +317,6 @@ export default function StudentProfilePage() {
                     <Users className="h-4 w-4" /> <span className="font-semibold text-foreground">{followingCount}</span> Following
                  </button>
                </div>
-              {/* Image upload button and progress display removed as media upload is disabled */}
             </div>
           </div>
         </CardHeader>
@@ -315,6 +325,36 @@ export default function StudentProfilePage() {
           {isEditing ? (
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                
+                {/* Predefined Avatar Selection */}
+                <FormItem>
+                  <FormLabel>Choose an Avatar</FormLabel>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-2">
+                    {PREDEFINED_AVATARS.map((avatar) => (
+                      <button
+                        type="button"
+                        key={avatar.url}
+                        onClick={() => handleSelectPredefinedAvatar(avatar.url)}
+                        className={cn(
+                          "rounded-full overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                          imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                        )}
+                        title={`Select avatar: ${avatar.hint}`}
+                      >
+                        <NextImage
+                          src={avatar.url}
+                          alt={avatar.hint}
+                          width={80}
+                          height={80}
+                          className="rounded-full object-cover aspect-square"
+                          data-ai-hint={avatar.hint}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <FormDescription>Or keep your current picture. File uploads are disabled.</FormDescription>
+                </FormItem>
+
                 <FormField
                   control={form.control} name="username"
                   render={({ field }) => (
@@ -384,9 +424,9 @@ export default function StudentProfilePage() {
                   <FormDescription className="mt-1">Links to your work (GitHub, Behance, personal site, etc. max 5).</FormDescription>
                 </div>
                 <div className="flex gap-2 justify-end pt-4">
-                  <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSubmitting /* || isUploading - removed */}>Cancel</Button>
-                  <Button type="submit" disabled={isSubmitting /* || isUploading - removed */}>
-                    {isSubmitting /* || isUploading - removed */ && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSubmitting}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Changes
                   </Button>
                 </div>
@@ -516,7 +556,7 @@ export default function StudentProfilePage() {
         </CardContent>
       </Card>
 
-       {/* Followers Modal */}
+      {/* Followers Modal */}
        <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -559,7 +599,7 @@ export default function StudentProfilePage() {
               </div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
-                {modalUserList.map(followedUser => (
+                {modalUserList.map((followedUser) => (
                   <li key={followedUser.uid} className="flex items-center justify-between">
                     <Link href={`/profile/${followedUser.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
                       <Avatar className="h-8 w-8">
