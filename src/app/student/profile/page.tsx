@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIcon, Grid3X3, Image as ImageIconLucide, ExternalLink } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIcon, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -86,6 +86,8 @@ export default function StudentProfilePage() {
   const [bookmarkedGigsCount, setBookmarkedGigsCount] = useState<number | null>(null);
   const [currentWorksCount, setCurrentWorksCount] = useState<number | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [reviewsCount, setReviewsCount] = useState<number | null>(null);
+
 
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
@@ -148,6 +150,7 @@ export default function StudentProfilePage() {
       const fetchStudentDashboardStats = async () => {
         setIsLoadingStats(true);
         try {
+          // Fetch available gigs count
           const gigsCollectionRef = collection(db, 'gigs');
           const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
           const openGigsSnapshot = await getDocs(openGigsQuery);
@@ -171,6 +174,7 @@ export default function StudentProfilePage() {
           }
           setAvailableGigsCount(matchingGigsCount);
 
+          // Fetch active applications and current works count
           const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs'));
           let currentActiveApplications = 0;
           let currentActiveWorks = 0;
@@ -188,7 +192,15 @@ export default function StudentProfilePage() {
           });
           setActiveApplicationsCount(currentActiveApplications);
           setCurrentWorksCount(currentActiveWorks);
+
+          // Bookmarked gigs count
           setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
+
+          // Fetch reviews count
+          const reviewsQuery = query(collection(db, 'reviews'), where('studentId', '==', user.uid));
+          const reviewsSnapshot = await getDocs(reviewsQuery);
+          setReviewsCount(reviewsSnapshot.size);
+
         } catch (error) {
           console.error("Error fetching student dashboard stats:", error);
           toast({ title: "Stats Error", description: "Could not load dashboard statistics.", variant: "destructive" });
@@ -196,6 +208,7 @@ export default function StudentProfilePage() {
           setActiveApplicationsCount(0);
           setBookmarkedGigsCount(0);
           setCurrentWorksCount(0);
+          setReviewsCount(0);
         } finally {
           setIsLoadingStats(false);
         }
@@ -207,6 +220,7 @@ export default function StudentProfilePage() {
       setActiveApplicationsCount(0);
       setBookmarkedGigsCount(0);
       setCurrentWorksCount(0);
+      setReviewsCount(0);
     }
   }, [user, userProfile, role, authLoading, toast]);
 
@@ -555,6 +569,19 @@ export default function StudentProfilePage() {
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/works">Manage Works</Link></Button>
             </CardContent>
           </Card>
+           <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+              <CardTitle className="text-sm font-medium">My Reviews</CardTitle>
+              <StarIcon className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
+              <div className="text-2xl sm:text-3xl font-bold">
+                {isLoadingStats && reviewsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : reviewsCount}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Total feedback received from clients.</p>
+              <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/reviews">View Reviews</Link></Button>
+            </CardContent>
+          </Card>
           <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">Wallet Balance</CardTitle>
@@ -652,5 +679,7 @@ export default function StudentProfilePage() {
     </div>
   );
 }
+
+    
 
     

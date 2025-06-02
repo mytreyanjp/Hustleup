@@ -21,7 +21,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon, User as UserIcon, Edit3, Sun, Moon, Laptop } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, Menu as MenuIcon, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -330,6 +330,12 @@ export default function Navbar() {
                             <span>Your Works</span>
                           </Link>
                         </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/student/reviews">
+                            <StarIcon className="mr-2 h-4 w-4" />
+                            <span>My Reviews</span>
+                          </Link>
+                        </DropdownMenuItem>
                       </>
                     )}
                     {role === 'client' && (
@@ -421,3 +427,6 @@ export default function Navbar() {
     </header>
   );
 }
+
+
+    
