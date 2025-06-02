@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -211,19 +211,49 @@ export default function StudentProfilePage() {
       return;
     }
     if (!storage) {
-      toast({ title: "Storage Error", description: "Firebase Storage is not configured.", variant: "destructive" });
+      toast({ title: "Storage Error", description: "Firebase Storage is not configured. Cannot upload. Check setup.", variant: "destructive", duration: 10000 });
       return;
     }
     setIsUploading(true);
     setUploadProgress(0);
     const filePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedImageFile.name}`;
-    const fileStorageRef = storageRef(storage, filePath);
-    const uploadTask = uploadBytesResumable(fileStorageRef, selectedImageFile);
+    const fileStorageRefInstance = storageRefFn(storage, filePath); // Renamed for clarity
+    const uploadTask = uploadBytesResumable(fileStorageRefInstance, selectedImageFile);
     uploadTask.on('state_changed',
       (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
-      (error) => {
-        console.error("Image upload error:", error);
-        toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
+      (error: any) => {
+        console.error("Firebase Storage Upload Error (Student Profile Pic):", error);
+        let detailedErrorMessage = `Could not upload image. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
+        let toastTitle = "Upload Failed";
+        let duration = 15000;
+
+        switch (error.code) {
+          case 'storage/unauthorized':
+            detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules for 'profile_pictures/{userId}/...'. Ensure they allow authenticated users to write. Also, check login status. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan.";
+            break;
+          case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
+          case 'storage/object-not-found': detailedErrorMessage = "Upload failed: Path or object not found. Check Storage bucket config or rules."; break;
+          case 'storage/bucket-not-found': detailedErrorMessage = "Upload failed: Firebase Storage bucket not found. Verify `storageBucket` in Firebase config and ensure Storage is enabled."; break;
+          case 'storage/project-not-found': detailedErrorMessage = "Upload failed: Firebase project not found. Verify Firebase project settings."; break;
+          case 'storage/quota-exceeded': detailedErrorMessage = "Upload failed: Storage quota exceeded. Upgrade plan or free up space."; break;
+          case 'storage/retry-limit-exceeded': detailedErrorMessage = "Upload failed after retries. Check network and Firebase Storage status."; break;
+          default:
+            if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
+              toastTitle = "Network Error During Upload";
+              detailedErrorMessage = `Upload failed (network issue). Check internet, browser Network tab, CORS for Storage bucket. Ensure Storage is enabled and rules are set. Error: ${error.message || 'Unknown network error'}`;
+              duration = 20000;
+            } else {
+              detailedErrorMessage = `An unknown error occurred (Code: ${error.code || 'N/A'}). Check network, Storage rules, project plan. Server response: ${error.serverResponse || 'N/A'}`;
+            }
+            break;
+        }
+        toast({
+          id: `student-pfp-upload-failed-${error.code || 'unknown'}`,
+          title: toastTitle,
+          description: detailedErrorMessage,
+          variant: "destructive",
+          duration: duration
+        });
         setIsUploading(false); setUploadProgress(null); setSelectedImageFile(null);
       },
       async () => {
@@ -236,7 +266,7 @@ export default function StudentProfilePage() {
           setSelectedImageFile(null); 
         } catch (updateError: any) {
           console.error("Error updating profile picture URL in Firestore:", updateError);
-          toast({ title: "Update Failed", description: `Could not save profile picture: ${updateError.message}`, variant: "destructive" });
+          toast({ title: "Update Failed", description: `Could not save profile picture URL: ${updateError.message}`, variant: "destructive" });
         } finally {
           setIsUploading(false); setUploadProgress(null);
         }
@@ -659,3 +689,5 @@ export default function StudentProfilePage() {
     </div>
   );
 }
+
+    

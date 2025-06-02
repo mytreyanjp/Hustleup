@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
@@ -169,7 +169,7 @@ export default function StudentWorksPage() {
 
   const handleSubmitReport = async () => {
     if (!currentSubmittingGigId || !currentReportNumber || !user || !db || !storage) {
-      toast({ title: "Error", description: "Cannot submit report. Missing context.", variant: "destructive" });
+      toast({ title: "Error", description: "Cannot submit report. Missing context or Firebase not ready.", variant: "destructive" });
       return;
     }
     if (!reportText.trim()) {
@@ -193,12 +193,37 @@ export default function StudentWorksPage() {
         await new Promise<void>((resolve, reject) => {
           uploadTask.on('state_changed',
             (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              setReportUploadProgress(progress);
+              setReportUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
             },
-            (error) => {
-              console.error("Report file upload error:", error);
-              toast({ title: "Upload Failed", description: `Could not upload file: ${error.message}. Check console for details. Ensure Storage rules are set in Firebase and your project plan supports Storage.`, variant: "destructive" });
+            (error: any) => {
+              console.error("Firebase Storage Upload Error (Report File):", error);
+              let detailedErrorMessage = `Could not upload file. Code: ${error.code || 'UNKNOWN'}. Message: ${error.message || 'No message'}.`;
+              let toastTitle = "Upload Failed";
+              let duration = 15000;
+
+              switch (error.code) {
+                case 'storage/unauthorized':
+                  detailedErrorMessage = "Upload failed: Permission denied. CRITICAL: Check Firebase Storage rules for 'gig_reports/...'. Also, check login. If on Spark plan and cannot access Rules tab, you may need to upgrade to Blaze plan.";
+                  break;
+                case 'storage/canceled': detailedErrorMessage = "Upload canceled."; break;
+                // Add other specific cases as needed, mirroring other upload handlers
+                default:
+                  if (error.message && (error.message.toLowerCase().includes('network request failed') || error.message.toLowerCase().includes('net::err_failed')) || error.code === 'storage/unknown' || !error.code) {
+                    toastTitle = "Network Error During Upload";
+                    detailedErrorMessage = `Upload failed (network issue). Check internet, browser Network tab, CORS for Storage bucket. Ensure Storage is enabled and rules are set. Error: ${error.message || 'Unknown network error'}`;
+                    duration = 20000;
+                  } else {
+                    detailedErrorMessage = `An unknown error occurred (Code: ${error.code || 'N/A'}). Check network, Storage rules, project plan. Server response: ${error.serverResponse || 'N/A'}`;
+                  }
+                  break;
+              }
+              toast({
+                id: `report-upload-failed-${currentReportNumber}-${error.code || 'unknown'}`,
+                title: toastTitle,
+                description: detailedErrorMessage,
+                variant: "destructive",
+                duration: duration
+              });
               reject(error);
             },
             async () => {
@@ -428,3 +453,5 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+
+    
