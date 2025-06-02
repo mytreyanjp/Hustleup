@@ -328,7 +328,9 @@ export default function BrowseGigsPage() {
                 </CardContent>
                 <CardFooter className="p-4 sm:p-6 pt-0">
                   <Button asChild className="w-full" size="sm">
-                    <Link href={`/gigs/${gig.id}`}>View Details & Apply</Link>
+                    <Link href={`/gigs/${gig.id}`}>
+                      {role === 'client' ? "View Details" : "View Details & Apply"}
+                    </Link>
                   </Button>
                 </CardFooter>
               </Card>
