@@ -3,11 +3,11 @@
 
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter, useSearchParams } from 'next/navigation';
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -77,6 +77,7 @@ export default function ChatPage() {
   const [targetUserForNewChat, setTargetUserForNewChat] = useState<UserProfile | null>(null);
   const [currentGigForChat, setCurrentGigForChat] = useState<GigForChatContext | null>(null);
   const [isAcceptingOrRejecting, setIsAcceptingOrRejecting] = useState(false);
+  const [chatSearchTerm, setChatSearchTerm] = useState('');
 
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -536,6 +537,21 @@ export default function ChatPage() {
     }
   };
 
+  const filteredChats = useMemo(() => {
+    if (!chatSearchTerm.trim()) {
+      return chats;
+    }
+    const lowerSearchTerm = chatSearchTerm.toLowerCase();
+    return chats.filter(chat => {
+      const otherParticipantId = chat.participants.find(pId => pId !== user?.uid);
+      if (otherParticipantId) {
+        const chatPartnerUsername = chat.participantUsernames[otherParticipantId];
+        return chatPartnerUsername?.toLowerCase().includes(lowerSearchTerm);
+      }
+      return false;
+    });
+  }, [chats, chatSearchTerm, user]);
+
 
   if (authLoading && typeof window !== 'undefined') {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -586,66 +602,80 @@ export default function ChatPage() {
             )}
           </CardTitle>
         </CardHeader>
-        <ScrollArea className="flex-grow">
-          <CardContent className="p-2 space-y-1">
-            {isLoadingChats && (
-              <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
-            )}
-            {!isLoadingChats && chats.length === 0 && (
-              <p className="text-sm text-muted-foreground p-4 text-center">No active conversations. Start one!</p>
-            )}
-            {chats.map((chat) => {
-              const otherParticipantId = chat.participants.find(pId => pId !== user?.uid);
-              const chatPartnerUsername = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
-              const partnerProfilePic = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
-              const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
-              const isPendingForCurrentUser = chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid;
+        <CardContent className="p-0 flex flex-col flex-grow">
+           <div className="relative p-2 border-b">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search conversations..."
+              className="pl-8 h-9 w-full"
+              value={chatSearchTerm}
+              onChange={(e) => setChatSearchTerm(e.target.value)}
+            />
+          </div>
+          <ScrollArea className="flex-grow">
+            <div className="p-2 space-y-1">
+                {isLoadingChats && (
+                <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
+                )}
+                {!isLoadingChats && filteredChats.length === 0 && (
+                <p className="text-sm text-muted-foreground p-4 text-center">
+                    {chatSearchTerm ? 'No conversations match your search.' : 'No active conversations. Start one!'}
+                </p>
+                )}
+                {filteredChats.map((chat) => {
+                const otherParticipantId = chat.participants.find(pId => pId !== user?.uid);
+                const chatPartnerUsername = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
+                const partnerProfilePic = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
+                const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
+                const isPendingForCurrentUser = chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid;
 
-              return (
-                <div
-                  key={chat.id}
-                  className={`p-3 rounded-md cursor-pointer hover:bg-accent/50 flex items-center gap-3 relative ${selectedChatId === chat.id ? 'bg-accent' : ''} ${isUnread ? 'font-semibold' : ''}`}
-                  onClick={() => handleSelectChat(chat.id)}
-                >
-                  {isUnread && (
-                    <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary rounded-full"></span>
-                  )}
-                   {isPendingForCurrentUser && (
-                     <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-orange-500 rounded-full animate-pulse" title="New chat request"></span>
-                   )}
-                  <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}>
-                    <Avatar className="h-10 w-10 ml-2">
-                        <AvatarImage src={partnerProfilePic} alt={chatPartnerUsername} />
-                        <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
-                    </Avatar>
-                  </Link>
-                  <div className="flex-grow overflow-hidden">
-                    {otherParticipantId ? (
-                       <Link href={`/profile/${otherParticipantId}`} passHref
-                          onClick={(e) => e.stopPropagation()}
-                          className={`text-sm truncate hover:underline ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}
-                       >
-                         {chatPartnerUsername}
-                       </Link>
-                    ) : (
-                       <p className={`text-sm truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                return (
+                    <div
+                    key={chat.id}
+                    className={`p-3 rounded-md cursor-pointer hover:bg-accent/50 flex items-center gap-3 relative ${selectedChatId === chat.id ? 'bg-accent' : ''} ${isUnread ? 'font-semibold' : ''}`}
+                    onClick={() => handleSelectChat(chat.id)}
+                    >
+                    {isUnread && (
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary rounded-full"></span>
                     )}
-                    <p className={`text-xs truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
-                       {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length === 0 && "Your request message will appear here..."}
-                       {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length > 0 && "Waiting for acceptance..."}
-                       {chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid && "Responded to your request."}
-                       {chat.chatStatus === 'rejected' && "Chat request rejected."}
-                       {chat.chatStatus !== 'pending_request' && chat.chatStatus !== 'rejected' && chat.lastMessage}
-                    </p>
-                     <p className="text-xs text-muted-foreground/70">
-                        {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </ScrollArea>
+                    {isPendingForCurrentUser && (
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-orange-500 rounded-full animate-pulse" title="New chat request"></span>
+                    )}
+                    <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}>
+                        <Avatar className="h-10 w-10 ml-2">
+                            <AvatarImage src={partnerProfilePic} alt={chatPartnerUsername} />
+                            <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                        </Avatar>
+                    </Link>
+                    <div className="flex-grow overflow-hidden">
+                        {otherParticipantId ? (
+                        <Link href={`/profile/${otherParticipantId}`} passHref
+                            onClick={(e) => e.stopPropagation()}
+                            className={`text-sm truncate hover:underline ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}
+                        >
+                            {chatPartnerUsername}
+                        </Link>
+                        ) : (
+                        <p className={`text-sm truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                        )}
+                        <p className={`text-xs truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
+                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length === 0 && "Your request message will appear here..."}
+                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length > 0 && "Waiting for acceptance..."}
+                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid && "Responded to your request."}
+                        {chat.chatStatus === 'rejected' && "Chat request rejected."}
+                        {chat.chatStatus !== 'pending_request' && chat.chatStatus !== 'rejected' && chat.lastMessage}
+                        </p>
+                        <p className="text-xs text-muted-foreground/70">
+                            {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
+                        </p>
+                    </div>
+                    </div>
+                );
+                })}
+            </div>
+          </ScrollArea>
+        </CardContent>
       </Card>
 
       <Card className={cn(
