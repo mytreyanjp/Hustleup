@@ -12,17 +12,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  // DropdownMenuSub, // No longer needed for simple theme toggle
-  // DropdownMenuSubContent, // No longer needed
-  // DropdownMenuSubTrigger, // No longer needed
-  // DropdownMenuPortal, // No longer needed
 } from '@/components/ui/dropdown-menu';
 import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
 import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -44,9 +40,10 @@ interface SuggestedGig {
 export default function Navbar() {
   const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
   const router = useRouter();
-  const { theme, setTheme } = useTheme(); // Get current theme
+  const { theme, setTheme } = useTheme();
   const [isClient, setIsClient] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const pathname = usePathname();
 
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedGig[]>([]);
@@ -56,6 +53,8 @@ export default function Navbar() {
   const isMobile = useIsMobile();
   const [isMobileSearchVisible, setIsMobileSearchVisible] = React.useState(false);
   const [themeOptionsVisible, setThemeOptionsVisible] = React.useState(false);
+
+  const isLoginPage = pathname === '/auth/login';
 
 
   const fetchInitialSuggestions = useCallback(async () => {
@@ -152,7 +151,10 @@ export default function Navbar() {
   const SearchBarComponent = (
      <Popover open={isSuggestionsOpen && !!searchTerm.trim()} onOpenChange={setIsSuggestionsOpen}>
         <PopoverTrigger asChild>
-          <form onSubmit={handleSearchSubmit} className={cn("relative", isMobile && isMobileSearchVisible ? "flex-grow" : "w-full max-w-xs")}>
+          <form onSubmit={handleSearchSubmit} className={cn(
+              "relative",
+              isMobile && isMobileSearchVisible ? "flex-grow" : "w-full md:max-w-xs"
+            )}>
             <SearchIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
@@ -231,12 +233,15 @@ export default function Navbar() {
         </PopoverContent>
       </Popover>
   );
+  
+  // Determine if the left navigation (Logo + Desktop Links) should be shown
+  const showLeftNav = !(isMobile && (isMobileSearchVisible || isLoginPage));
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
-
-        {(!isMobile || !isMobileSearchVisible) && (
+        
+        {showLeftNav ? (
           <div className="flex items-center">
             <Link href="/" className="mr-4 flex items-center space-x-2 cursor-default">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
@@ -272,128 +277,210 @@ export default function Navbar() {
               )}
             </nav>
           </div>
+        ) : (
+          <div /> // Empty div to maintain justify-between for the right side when LeftNav is hidden
         )}
 
-        {isMobile && isMobileSearchVisible && (
-          <div className="flex items-center w-full">
-            <Button variant="ghost" size="icon" onClick={handleHideMobileSearch} className="mr-2 shrink-0">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            {SearchBarComponent}
-          </div>
-        )}
 
-        {(!isMobile || !isMobileSearchVisible) && (
-          <div className="flex items-center space-x-1 sm:space-x-2">
-            {isMobile ? (
-              <Button variant="ghost" size="icon" onClick={handleShowMobileSearch} aria-label="Open search" className="h-8 w-8 sm:h-9 sm:w-9">
-                <SearchIcon className="h-5 w-5" />
-              </Button>
-            ) : (
-              SearchBarComponent
-            )}
-
-            {!isMobile && <ModeToggle />}
-
-            {isClient ? (
-              loading ? ( <Skeleton className="h-8 w-8 rounded-full" /> ) :
-              user ? (
-                <DropdownMenu onOpenChange={(open) => { if (!open) setThemeOptionsVisible(false); }}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="User menu">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
-                        <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-52 sm:w-56" align="end" forceMount>
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none truncate">
-                          {userProfile?.username || user.email?.split('@')[0]}
-                        </p>
-                        <p className="text-xs leading-none text-muted-foreground truncate">
-                          {user.email}
-                        </p>
-                        <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
-                          Role: {role || 'N/A'}
-                        </p>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {role === 'student' && (
-                      <>
-                        <DropdownMenuItem asChild><Link href="/student/profile"><UserIcon className="mr-2 h-4 w-4" /><span>My Profile</span></Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link href="/student/applications"><ApplicationsIcon className="mr-2 h-4 w-4" /><span>My Applications</span></Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link href="/student/bookmarks"><Bookmark className="mr-2 h-4 w-4" /><span>My Bookmarks</span></Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link href="/student/works"><Briefcase className="mr-2 h-4 w-4" /><span>Your Works</span></Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link href="/student/reviews"><StarIcon className="mr-2 h-4 w-4" /><span>My Reviews</span></Link></DropdownMenuItem>
-                      </>
-                    )}
-                    {role === 'client' && (
-                      <>
-                        <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
-                      </>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
-                    <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
-                    
-                    <DropdownMenuSeparator />
-                    
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.preventDefault(); // Prevent menu from closing immediately
-                        setThemeOptionsVisible(!themeOptionsVisible);
-                      }}
-                      className="justify-between"
-                    >
-                      <div className="flex items-center">
-                        {theme === 'light' && <Sun className="mr-2 h-4 w-4" />}
-                        {theme === 'dark' && <Moon className="mr-2 h-4 w-4" />}
-                        {theme === 'system' && <Laptop className="mr-2 h-4 w-4" />}
-                        <span>Theme</span>
-                      </div>
-                      {themeOptionsVisible ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
-                    </DropdownMenuItem>
-
-                    {themeOptionsVisible && (
-                      <>
-                        <DropdownMenuItem onClick={() => { setTheme("light"); setThemeOptionsVisible(false); }} className="pl-8">
-                          <Sun className="mr-2 h-4 w-4" />
-                          Light
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => { setTheme("dark"); setThemeOptionsVisible(false); }} className="pl-8">
-                          <Moon className="mr-2 h-4 w-4" />
-                          Dark
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => { setTheme("system"); setThemeOptionsVisible(false); }} className="pl-8">
-                          <Laptop className="mr-2 h-4 w-4" />
-                          System
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /><span>Log out</span></DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
+        <div className="flex items-center space-x-1 sm:space-x-2">
+          {isMobile ? (
+            // Mobile View
+            <>
+              {isLoginPage ? (
+                // Mobile + Login Page: Show Explore, Theme
                 <>
-                  <Button variant="ghost" asChild size="sm" className="hidden sm:inline-flex"><Link href="/auth/login">Log In</Link></Button>
-                  <Button asChild size="sm" className="hidden sm:inline-flex"><Link href="/auth/signup">Sign Up</Link></Button>
-                  <Button variant="ghost" asChild className="text-xs px-2 sm:hidden"><Link href="/auth/login">Log In</Link></Button>
+                  <Link href="/gigs/browse" className="text-muted-foreground hover:text-primary p-1.5" aria-label="Explore Gigs">
+                    <Compass className="h-5 w-5" />
+                  </Link>
+                  <ModeToggle />
                 </>
-              )
-            ) : ( <Skeleton className="h-8 w-8 rounded-full" /> )
-            }
-          </div>
-        )}
+              ) : isMobileSearchVisible ? (
+                // Mobile + Search Active (not login page): Show Back button + Search Bar
+                <div className="flex items-center w-full">
+                  <Button variant="ghost" size="icon" onClick={handleHideMobileSearch} className="mr-2 shrink-0">
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                  {SearchBarComponent}
+                </div>
+              ) : (
+                // Mobile + Default (not login, not search active): Show Search Icon
+                <>
+                  <Button variant="ghost" size="icon" onClick={handleShowMobileSearch} aria-label="Open search" className="h-8 w-8">
+                    <SearchIcon className="h-5 w-5" />
+                  </Button>
+                  {/* ModeToggle is hidden by default on mobile unless on login page due to space; theme available in user menu */}
+                </>
+              )}
+
+              {/* User/Auth Buttons for Mobile: Only shown if NOT (search active AND not login page) */}
+              { (!isMobileSearchVisible || isLoginPage) && (
+                isClient ? (
+                  loading ? (<Skeleton className="h-8 w-8 rounded-full" />) :
+                  user ? (
+                    <DropdownMenu onOpenChange={(open) => { if (!open) setThemeOptionsVisible(false); }}>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="User menu">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
+                            <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
+                          </Avatar>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-52 sm:w-56" align="end" forceMount>
+                        <DropdownMenuLabel className="font-normal">
+                          <div className="flex flex-col space-y-1">
+                            <p className="text-sm font-medium leading-none truncate">
+                              {userProfile?.username || user.email?.split('@')[0]}
+                            </p>
+                            <p className="text-xs leading-none text-muted-foreground truncate">
+                              {user.email}
+                            </p>
+                            <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
+                              Role: {role || 'N/A'}
+                            </p>
+                          </div>
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {role === 'student' && (
+                          <>
+                            <DropdownMenuItem asChild><Link href="/student/profile"><UserIcon className="mr-2 h-4 w-4" /><span>My Profile</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/student/applications"><ApplicationsIcon className="mr-2 h-4 w-4" /><span>My Applications</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/student/bookmarks"><Bookmark className="mr-2 h-4 w-4" /><span>My Bookmarks</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/student/works"><Briefcase className="mr-2 h-4 w-4" /><span>Your Works</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/student/reviews"><StarIcon className="mr-2 h-4 w-4" /><span>My Reviews</span></Link></DropdownMenuItem>
+                          </>
+                        )}
+                        {role === 'client' && (
+                          <>
+                            <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
+                        <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={(e) => { e.preventDefault(); setThemeOptionsVisible(!themeOptionsVisible); }}
+                          className="justify-between"
+                        >
+                          <div className="flex items-center">
+                            {theme === 'light' && <Sun className="mr-2 h-4 w-4" />}
+                            {theme === 'dark' && <Moon className="mr-2 h-4 w-4" />}
+                            {theme === 'system' && <Laptop className="mr-2 h-4 w-4" />}
+                            <span>Theme</span>
+                          </div>
+                          {themeOptionsVisible ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
+                        </DropdownMenuItem>
+                        {themeOptionsVisible && (
+                          <>
+                            <DropdownMenuItem onClick={() => { setTheme("light"); setThemeOptionsVisible(false); }} className="pl-8"> <Sun className="mr-2 h-4 w-4" /> Light </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setTheme("dark"); setThemeOptionsVisible(false); }} className="pl-8"> <Moon className="mr-2 h-4 w-4" /> Dark </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setTheme("system"); setThemeOptionsVisible(false); }} className="pl-8"> <Laptop className="mr-2 h-4 w-4" /> System </DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /><span>Log out</span></DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    // Not logged in (e.g. on login page): show Login/Signup buttons
+                    <>
+                      <Button variant="ghost" asChild size="sm" className="text-xs px-2"><Link href="/auth/login">Log In</Link></Button>
+                      <Button asChild size="sm" className="text-xs px-2"><Link href="/auth/signup">Sign Up</Link></Button>
+                    </>
+                  )
+                ) : (<Skeleton className="h-8 w-8 rounded-full" />)
+              )}
+            </>
+          ) : (
+            // Desktop View
+            <>
+              {SearchBarComponent}
+              <ModeToggle />
+              {isClient ? (
+                loading ? (<Skeleton className="h-8 w-8 rounded-full" />) :
+                user ? (
+                  <DropdownMenu onOpenChange={(open) => { if (!open) setThemeOptionsVisible(false); }}>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="User menu">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={userProfile?.profilePictureUrl} alt={userProfile?.username || user.email || 'User'} />
+                          <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
+                        </Avatar>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-52 sm:w-56" align="end" forceMount>
+                      {/* Same dropdown content as mobile */}
+                      <DropdownMenuLabel className="font-normal">
+                        <div className="flex flex-col space-y-1">
+                          <p className="text-sm font-medium leading-none truncate">
+                            {userProfile?.username || user.email?.split('@')[0]}
+                          </p>
+                          <p className="text-xs leading-none text-muted-foreground truncate">
+                            {user.email}
+                          </p>
+                          <p className="text-xs leading-none text-muted-foreground capitalize pt-1">
+                            Role: {role || 'N/A'}
+                          </p>
+                        </div>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {role === 'student' && (
+                        <>
+                          <DropdownMenuItem asChild><Link href="/student/profile"><UserIcon className="mr-2 h-4 w-4" /><span>My Profile</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/student/applications"><ApplicationsIcon className="mr-2 h-4 w-4" /><span>My Applications</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/student/bookmarks"><Bookmark className="mr-2 h-4 w-4" /><span>My Bookmarks</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/student/works"><Briefcase className="mr-2 h-4 w-4" /><span>Your Works</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/student/reviews"><StarIcon className="mr-2 h-4 w-4" /><span>My Reviews</span></Link></DropdownMenuItem>
+                        </>
+                      )}
+                      {role === 'client' && (
+                        <>
+                          <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
+                        </>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={(e) => { e.preventDefault(); setThemeOptionsVisible(!themeOptionsVisible); }}
+                        className="justify-between"
+                      >
+                        <div className="flex items-center">
+                          {theme === 'light' && <Sun className="mr-2 h-4 w-4" />}
+                          {theme === 'dark' && <Moon className="mr-2 h-4 w-4" />}
+                          {theme === 'system' && <Laptop className="mr-2 h-4 w-4" />}
+                          <span>Theme</span>
+                        </div>
+                        {themeOptionsVisible ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
+                      </DropdownMenuItem>
+                      {themeOptionsVisible && (
+                        <>
+                          <DropdownMenuItem onClick={() => { setTheme("light"); setThemeOptionsVisible(false); }} className="pl-8"> <Sun className="mr-2 h-4 w-4" /> Light </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setTheme("dark"); setThemeOptionsVisible(false); }} className="pl-8"> <Moon className="mr-2 h-4 w-4" /> Dark </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setTheme("system"); setThemeOptionsVisible(false); }} className="pl-8"> <Laptop className="mr-2 h-4 w-4" /> System </DropdownMenuItem>
+                        </>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /><span>Log out</span></DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <>
+                    <Button variant="ghost" asChild size="sm"><Link href="/auth/login">Log In</Link></Button>
+                    <Button asChild size="sm"><Link href="/auth/signup">Sign Up</Link></Button>
+                  </>
+                )
+              ) : (<Skeleton className="h-8 w-8 rounded-full" />)}
+            </>
+          )}
+        </div>
       </div>
     </header>
   );
 }
-
