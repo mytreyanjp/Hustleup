@@ -12,16 +12,16 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuPortal,
+  // DropdownMenuSub, // No longer needed for simple theme toggle
+  // DropdownMenuSubContent, // No longer needed
+  // DropdownMenuSubTrigger, // No longer needed
+  // DropdownMenuPortal, // No longer needed
 } from '@/components/ui/dropdown-menu';
 import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -44,7 +44,7 @@ interface SuggestedGig {
 export default function Navbar() {
   const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
   const router = useRouter();
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme(); // Get current theme
   const [isClient, setIsClient] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -55,6 +55,7 @@ export default function Navbar() {
   
   const isMobile = useIsMobile();
   const [isMobileSearchVisible, setIsMobileSearchVisible] = React.useState(false);
+  const [themeOptionsVisible, setThemeOptionsVisible] = React.useState(false);
 
 
   const fetchInitialSuggestions = useCallback(async () => {
@@ -103,6 +104,7 @@ export default function Navbar() {
       setSuggestions([]);
       setIsSuggestionsOpen(false);
       setIsMobileSearchVisible(false);
+      setThemeOptionsVisible(false);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -234,7 +236,6 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
 
-        {/* Left Part: Logo + Desktop Nav. Hidden on mobile when search is active. */}
         {(!isMobile || !isMobileSearchVisible) && (
           <div className="flex items-center">
             <Link href="/" className="mr-4 flex items-center space-x-2 cursor-default">
@@ -273,7 +274,6 @@ export default function Navbar() {
           </div>
         )}
 
-        {/* Mobile Search Active State */}
         {isMobile && isMobileSearchVisible && (
           <div className="flex items-center w-full">
             <Button variant="ghost" size="icon" onClick={handleHideMobileSearch} className="mr-2 shrink-0">
@@ -283,7 +283,6 @@ export default function Navbar() {
           </div>
         )}
 
-        {/* Right Part: Search Icon (mobile inactive), Desktop Search, ModeToggle, UserMenu. */}
         {(!isMobile || !isMobileSearchVisible) && (
           <div className="flex items-center space-x-1 sm:space-x-2">
             {isMobile ? (
@@ -299,7 +298,7 @@ export default function Navbar() {
             {isClient ? (
               loading ? ( <Skeleton className="h-8 w-8 rounded-full" /> ) :
               user ? (
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={(open) => { if (!open) setThemeOptionsVisible(false); }}>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="User menu">
                       <Avatar className="h-8 w-8">
@@ -344,29 +343,39 @@ export default function Navbar() {
                     <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
                     
                     <DropdownMenuSeparator />
-                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <Sun className="mr-2 h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                        <Moon className="absolute mr-2 h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                    
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault(); // Prevent menu from closing immediately
+                        setThemeOptionsVisible(!themeOptionsVisible);
+                      }}
+                      className="justify-between"
+                    >
+                      <div className="flex items-center">
+                        {theme === 'light' && <Sun className="mr-2 h-4 w-4" />}
+                        {theme === 'dark' && <Moon className="mr-2 h-4 w-4" />}
+                        {theme === 'system' && <Laptop className="mr-2 h-4 w-4" />}
                         <span>Theme</span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuPortal>
-                        <DropdownMenuSubContent sideOffset={isMobile ? -10 : 8} align={isMobile ? "end" : "start"} className="w-36">
-                          <DropdownMenuItem onClick={() => setTheme("light")}>
-                            <Sun className="mr-2 h-4 w-4" />
-                            Light
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setTheme("dark")}>
-                            <Moon className="mr-2 h-4 w-4" />
-                            Dark
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setTheme("system")}>
-                            <Laptop className="mr-2 h-4 w-4" />
-                            System
-                          </DropdownMenuItem>
-                        </DropdownMenuSubContent>
-                      </DropdownMenuPortal>
-                    </DropdownMenuSub>
+                      </div>
+                      {themeOptionsVisible ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
+                    </DropdownMenuItem>
+
+                    {themeOptionsVisible && (
+                      <>
+                        <DropdownMenuItem onClick={() => { setTheme("light"); setThemeOptionsVisible(false); }} className="pl-8">
+                          <Sun className="mr-2 h-4 w-4" />
+                          Light
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setTheme("dark"); setThemeOptionsVisible(false); }} className="pl-8">
+                          <Moon className="mr-2 h-4 w-4" />
+                          Dark
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setTheme("system"); setThemeOptionsVisible(false); }} className="pl-8">
+                          <Laptop className="mr-2 h-4 w-4" />
+                          System
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /><span>Log out</span></DropdownMenuItem>
