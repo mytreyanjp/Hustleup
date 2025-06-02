@@ -149,11 +149,11 @@ export default function BrowseHustlersPage() {
                 <CardTitle className="text-base sm:text-lg truncate break-words w-full">{student.companyName || student.username || 'User'}</CardTitle>
                 <CardDescription className="capitalize text-xs sm:text-sm truncate break-words w-full">{student.role}</CardDescription>
               </CardHeader>
-              {/* CardContent for skills and bio has been removed here */}
+              
               <CardFooter className="p-4 sm:p-6 pt-2 sm:pt-3">
                 <Button asChild className="w-full" size="sm">
                   <Link href={`/profile/${student.uid}`}>
-                    View Profile <ArrowRight className="ml-1 sm:ml-2 h-4 w-4" />
+                    View
                   </Link>
                 </Button>
               </CardFooter>
