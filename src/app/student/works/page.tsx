@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
@@ -10,14 +10,15 @@ import { db, storage } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon } from 'lucide-react';
 import Link from 'next/link';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 // import { Progress } from '@/components/ui/progress'; // Media upload disabled
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from '@/lib/utils';
 
 interface StudentSubmission {
@@ -49,7 +50,63 @@ interface WorkGig {
   numberOfReports?: number;
   status: 'in-progress';
   progressReports?: ProgressReport[];
+  // For internal processing
+  effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress';
+  nextUpcomingDeadline?: Timestamp | null;
 }
+
+type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress';
+
+
+// Helper function to determine the effective status of a gig for a student
+const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
+    if (!gig.progressReports || gig.progressReports.length === 0 || (gig.numberOfReports === 0)) {
+        return 'in-progress'; // No reports defined, or none submitted yet
+    }
+    const hasRejected = gig.progressReports.some(r => r.clientStatus === 'rejected');
+    if (hasRejected) return 'action-required';
+
+    const hasPendingReview = gig.progressReports.some(r => r.studentSubmission && r.clientStatus === 'pending_review');
+    if (hasPendingReview) return 'pending-review';
+    
+    // Check if any report is not yet submitted AND its deadline (if set) has passed
+    // OR if all reports are approved.
+    const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
+    if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
+        return 'in-progress'; // All reports done and approved, awaiting final gig completion/payment
+    }
+
+    return 'in-progress'; // Actively working, or next report due
+};
+
+// Helper function to get the next upcoming deadline (report or final gig)
+const getNextUpcomingDeadline = (gig: WorkGig): Timestamp | null => {
+    let nextDeadline: Timestamp | null = gig.deadline; // Start with overall gig deadline
+    const now = Timestamp.now();
+
+    if (gig.progressReports && gig.progressReports.length > 0) {
+        const futureReportDeadlines = gig.progressReports
+            .filter(r => r.deadline && r.deadline.toMillis() >= now.toMillis() && r.clientStatus !== 'approved' && r.clientStatus !== 'rejected')
+            .sort((a, b) => (a.deadline?.toMillis() || Infinity) - (b.deadline?.toMillis() || Infinity));
+        
+        if (futureReportDeadlines.length > 0 && futureReportDeadlines[0].deadline) {
+            if (!nextDeadline || futureReportDeadlines[0].deadline.toMillis() < nextDeadline.toMillis()) {
+                nextDeadline = futureReportDeadlines[0].deadline;
+            }
+        } else {
+            // If all reports are done or their deadlines passed, but some not approved (and not rejected)
+            // the effective "next" deadline is still the gig deadline for overall completion.
+            // If some reports are rejected, the next deadline is less clear cut, but gig deadline is a fallback.
+             const unapprovedUnrejectedFutureReports = gig.progressReports
+                .filter(r => r.deadline && r.deadline.toMillis() >= now.toMillis() && r.clientStatus !== 'approved' && r.clientStatus !== 'rejected');
+             if (unapprovedUnrejectedFutureReports.length === 0) {
+                // All report deadlines passed, or reports approved/rejected. Stick with gig deadline.
+             }
+        }
+    }
+    return nextDeadline;
+};
+
 
 export default function StudentWorksPage() {
   const { user, userProfile, loading: authLoading, role } = useFirebase();
@@ -65,9 +122,11 @@ export default function StudentWorksPage() {
   const [currentSubmittingGigId, setCurrentSubmittingGigId] = useState<string | null>(null);
   const [currentReportNumber, setCurrentReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
-  // const [reportFile, setReportFile] = useState<File | null>(null); // Media upload disabled
-  // const [reportUploadProgress, setReportUploadProgress] = useState<number | null>(null); // Media upload disabled
-  // const reportFileInputRef = useRef<HTMLInputElement>(null); // Media upload disabled
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<EffectiveStatusType | 'all'>('all');
+  const [sortBy, setSortBy] = useState<'default' | 'deadlineAsc' | 'deadlineDesc'>('default');
+
 
   const fetchActiveGigs = useCallback(async () => {
     if (!user || !db) return;
@@ -92,7 +151,6 @@ export default function StudentWorksPage() {
           } catch (clientProfileError) { console.error("Error fetching client profile:", clientProfileError); }
         }
 
-        // Ensure progressReports are initialized correctly
         const numReports = gigData.numberOfReports || 0;
         const completeProgressReports: ProgressReport[] = [];
         if (numReports > 0) {
@@ -117,8 +175,14 @@ export default function StudentWorksPage() {
         } as WorkGig;
       });
       const resolvedGigs = await Promise.all(fetchedGigsPromises);
-      setActiveGigs(resolvedGigs);
-      setCollapsedGigs(new Set(resolvedGigs.map(gig => gig.id)));
+      setActiveGigs(resolvedGigs.map(gig => ({
+          ...gig,
+          effectiveStatus: getEffectiveGigStatus(gig),
+          nextUpcomingDeadline: getNextUpcomingDeadline(gig)
+      })));
+      // Initially collapse all gigs that don't require immediate action or aren't pending review
+      setCollapsedGigs(new Set(resolvedGigs.filter(g => getEffectiveGigStatus(g) === 'in-progress').map(gig => gig.id)));
+
     } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
     } finally { setIsLoading(false); }
   }, [user]);
@@ -130,6 +194,59 @@ export default function StudentWorksPage() {
       fetchActiveGigs();
     }
   }, [user, authLoading, role, router, fetchActiveGigs]);
+
+  const processedGigs = useMemo(() => {
+    let gigsToProcess = [...activeGigs];
+
+    // Enrich with effective status and next deadline if not already done (e.g., after report submission)
+    gigsToProcess = gigsToProcess.map(gig => ({
+        ...gig,
+        effectiveStatus: getEffectiveGigStatus(gig),
+        nextUpcomingDeadline: getNextUpcomingDeadline(gig)
+    }));
+
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      gigsToProcess = gigsToProcess.filter(gig =>
+        gig.title.toLowerCase().includes(lowerSearchTerm) ||
+        (gig.clientCompanyName && gig.clientCompanyName.toLowerCase().includes(lowerSearchTerm)) ||
+        (gig.clientUsername && gig.clientUsername.toLowerCase().includes(lowerSearchTerm))
+      );
+    }
+
+    // Filter by status
+    if (filterStatus !== 'all') {
+      gigsToProcess = gigsToProcess.filter(gig => gig.effectiveStatus === filterStatus);
+    }
+
+    // Sort
+    gigsToProcess.sort((a, b) => {
+      // Primary sort by effective status
+      const statusOrder: Record<EffectiveStatusType, number> = {
+        'action-required': 1,
+        'pending-review': 2,
+        'in-progress': 3,
+      };
+      const statusA = statusOrder[a.effectiveStatus!];
+      const statusB = statusOrder[b.effectiveStatus!];
+      if (statusA !== statusB) return statusA - statusB;
+
+      // Secondary sort by deadline based on sortBy
+      const deadlineA = a.nextUpcomingDeadline?.toMillis() || Infinity;
+      const deadlineB = b.nextUpcomingDeadline?.toMillis() || Infinity;
+
+      if (sortBy === 'deadlineAsc') {
+        return deadlineA - deadlineB;
+      } else if (sortBy === 'deadlineDesc') {
+        return deadlineB - deadlineA;
+      }
+      // Default secondary sort (if sortBy is 'default') is nearest deadline first
+      return deadlineA - deadlineB;
+    });
+
+    return gigsToProcess;
+  }, [activeGigs, searchTerm, filterStatus, sortBy]);
 
 
   const toggleGigCollapse = (gigId: string) => {
@@ -148,15 +265,11 @@ export default function StudentWorksPage() {
     setCurrentSubmittingGigId(gigId);
     setCurrentReportNumber(reportNumber);
     setReportText("");
-    // setReportFile(null); // Media upload disabled
-    // setReportUploadProgress(null); // Media upload disabled
-    // if(reportFileInputRef.current) reportFileInputRef.current.value = ""; // Media upload disabled
   };
 
-  // handleReportFileChange removed as media upload is disabled
 
   const handleSubmitReport = async () => {
-    if (!currentSubmittingGigId || !currentReportNumber || !user || !db) { // Removed storage check
+    if (!currentSubmittingGigId || !currentReportNumber || !user || !db) { 
       toast({ title: "Error", description: "Cannot submit report. Missing context or Firebase not ready.", variant: "destructive" });
       return;
     }
@@ -165,13 +278,6 @@ export default function StudentWorksPage() {
       return;
     }
     setIsSubmittingReport(true);
-    // setReportUploadProgress(reportFile ? 0 : null); // Media upload disabled
-
-    // let fileUrl: string | undefined = undefined; // Media upload disabled
-    // let fileName: string | undefined = undefined; // Media upload disabled
-
-    // File upload logic removed as media upload is disabled
-
     try {
       const gigDocRef = doc(db, 'gigs', currentSubmittingGigId);
       const gigSnap = await getDoc(gigDocRef);
@@ -184,7 +290,6 @@ export default function StudentWorksPage() {
       const studentSubmission: StudentSubmission = {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
-        // fileUrl and fileName removed as media upload is disabled
       };
 
       if (reportIndex > -1) {
@@ -211,13 +316,12 @@ export default function StudentWorksPage() {
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
       setCurrentSubmittingGigId(null);
-      fetchActiveGigs();
+      fetchActiveGigs(); // Re-fetch to update effective statuses and sorting
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
     } finally {
       setIsSubmittingReport(false);
-      // setReportUploadProgress(null); // Media upload disabled
     }
   };
 
@@ -241,37 +345,118 @@ export default function StudentWorksPage() {
     }
   };
 
+  const getEffectiveStatusBadgeVariant = (status?: EffectiveStatusType): "default" | "secondary" | "destructive" | "outline" => {
+     switch (status) {
+      case 'action-required': return 'destructive';
+      case 'pending-review': return 'secondary';
+      case 'in-progress':
+      default: return 'default';
+    }
+  };
+
+  const getEffectiveStatusLabel = (status?: EffectiveStatusType): string => {
+     switch (status) {
+      case 'action-required': return 'Action Required';
+      case 'pending-review': return 'Pending Client Review';
+      case 'in-progress':
+      default: return 'In Progress';
+    }
+  }
+
+
   if (isLoading || authLoading) return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   if (error) return <div className="text-center py-10 text-destructive"><p>{error}</p></div>;
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Your Works</h1>
         <Button variant="outline" asChild size="sm" className="sm:text-sm"><Link href="/gigs/browse">Find More Gigs</Link></Button>
       </div>
 
-      {activeGigs.length === 0 ? (
+      {/* Filter and Search Controls */}
+      <Card className="glass-card p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <div className="sm:col-span-1">
+            <label htmlFor="search-works" className="text-xs font-medium text-muted-foreground block mb-1">Search Gigs</label>
+            <div className="relative">
+                <SearchIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                    id="search-works"
+                    type="search"
+                    placeholder="Gig title or client name..."
+                    className="pl-8 h-9 text-sm"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="filter-status-works" className="text-xs font-medium text-muted-foreground block mb-1">Filter by Status</label>
+            <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as EffectiveStatusType | 'all')}>
+              <SelectTrigger id="filter-status-works" className="h-9 text-sm">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Active Works</SelectItem>
+                <SelectItem value="action-required">Action Required</SelectItem>
+                <SelectItem value="pending-review">Pending Client Review</SelectItem>
+                <SelectItem value="in-progress">In Progress</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label htmlFor="sort-by-works" className="text-xs font-medium text-muted-foreground block mb-1">Sort by Deadline</label>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'default' | 'deadlineAsc' | 'deadlineDesc')}>
+              <SelectTrigger id="sort-by-works" className="h-9 text-sm">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default (Priority First)</SelectItem>
+                <SelectItem value="deadlineAsc">Deadline: Nearest First</SelectItem>
+                <SelectItem value="deadlineDesc">Deadline: Furthest First</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </Card>
+
+      {processedGigs.length === 0 && !isLoading ? (
         <Card className="glass-card text-center py-10">
-          <CardHeader className="p-4 sm:p-6"> <Briefcase className="mx-auto h-12 w-12 text-muted-foreground mb-4" /> <CardTitle>No Active Works</CardTitle> </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0"> <p className="text-muted-foreground mb-4">You don't have any gigs currently in progress.</p> <p className="text-sm text-muted-foreground">Once a client accepts your application, the gig will appear here.</p> </CardContent>
+          <CardHeader className="p-4 sm:p-6"> <Briefcase className="mx-auto h-12 w-12 text-muted-foreground mb-4" /> <CardTitle>No Active Works Found</CardTitle> </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            {searchTerm || filterStatus !== 'all' ? (
+                <p className="text-muted-foreground mb-4">No active works match your current search or filters.</p>
+            ) : (
+                <>
+                    <p className="text-muted-foreground mb-4">You don't have any gigs currently in progress.</p>
+                    <p className="text-sm text-muted-foreground">Once a client accepts your application, the gig will appear here.</p>
+                </>
+            )}
+          </CardContent>
         </Card>
       ) : (
         <div className="space-y-6">
-          {activeGigs.map((gig) => {
+          {processedGigs.map((gig) => {
             const isCollapsed = collapsedGigs.has(gig.id);
+            const effectiveStatusLabel = getEffectiveStatusLabel(gig.effectiveStatus);
+            const effectiveStatusVariant = getEffectiveStatusBadgeVariant(gig.effectiveStatus);
 
             return (
             <Card key={gig.id} className="glass-card">
-              <CardHeader className="flex flex-row justify-between items-start p-4 sm:p-6">
+              <CardHeader className="flex flex-col sm:flex-row justify-between items-start p-4 sm:p-6 gap-2">
                 <div className="flex-grow">
                   <Link href={`/gigs/${gig.id}`} className="hover:underline">
                       <CardTitle className="text-lg sm:text-xl">{gig.title}</CardTitle>
                   </Link>
                   <CardDescription className="text-xs sm:text-sm"> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline">{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
+                  <div className="mt-1">
+                     <Badge variant={effectiveStatusVariant} size="sm" className="capitalize text-xs">{effectiveStatusLabel}</Badge>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="capitalize text-xs">{gig.status}</Badge>
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                    {/* Overall status of gig is 'in-progress' on this page, so primary badge is less critical */}
+                    {/* <Badge variant="secondary" className="capitalize text-xs">{gig.status}</Badge>  */}
                     <Button variant="ghost" size="icon" onClick={() => toggleGigCollapse(gig.id)} className="h-8 w-8">
                         {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
                         <span className="sr-only">{isCollapsed ? 'Expand' : 'Collapse'}</span>
@@ -280,13 +465,16 @@ export default function StudentWorksPage() {
               </CardHeader>
               <div
                 className={cn(
-                  "transition-all duration-500 ease-in-out overflow-hidden",
-                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1000px] opacity-100"
+                  "transition-all duration-300 ease-in-out overflow-hidden",
+                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" // Increased max-h
                 )}
               >
                 <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
                   <div className="flex items-center text-xs sm:text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
                   <div className="flex items-center text-xs sm:text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Gig Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
+                  {gig.nextUpcomingDeadline && gig.nextUpcomingDeadline.toMillis() !== gig.deadline.toMillis() && (
+                       <div className="flex items-center text-xs sm:text-sm text-amber-600 dark:text-amber-400"> <CalendarDays className="mr-2 h-4 w-4" /> <span className="font-semibold mr-1">Next Report Due:</span> <span className="font-medium">{formatDeadlineDate(gig.nextUpcomingDeadline)}</span> </div>
+                  )}
 
                   {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                     <div className="pt-2 border-t">
@@ -309,7 +497,6 @@ export default function StudentWorksPage() {
                               {report.studentSubmission ? (
                                 <div className="text-xs space-y-1">
                                   <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
-                                  {/* File attachment display removed as media upload is disabled */}
                                   <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
                                 </div>
                               ): (
@@ -323,11 +510,11 @@ export default function StudentWorksPage() {
                                 </div>
                               )}
                               {(!report.studentSubmission || isRejected) && canSubmitThisReport && (
-                                  <Button size="xs" variant="outline" className="mt-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)}>
+                                  <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)}>
                                       <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{report.reportNumber}
                                   </Button>
                               )}
-                               {!canSubmitThisReport && !report.studentSubmission && report.reportNumber > (gig.progressReports?.filter(r => r.studentSubmission).length || 0) && (
+                               {!canSubmitThisReport && !report.studentSubmission && report.reportNumber > (gig.progressReports?.filter(r => r.studentSubmission && r.clientStatus !== 'rejected').length || 0) && (
                                   <p className="text-xs text-muted-foreground italic mt-1">Previous report needs approval before submitting this one.</p>
                               )}
                             </Card>
@@ -356,10 +543,8 @@ export default function StudentWorksPage() {
           <div className="space-y-4 py-2">
             <Textarea placeholder="Describe your progress, challenges, and next steps..." value={reportText} onChange={(e) => setReportText(e.target.value)} rows={5} disabled={isSubmittingReport} />
             <div>
-                {/* File input removed as media upload is disabled */}
                 <p className="text-xs text-muted-foreground mt-1">File attachments are currently disabled.</p>
             </div>
-            {/* Upload progress display removed */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCurrentSubmittingGigId(null)} disabled={isSubmittingReport}>Cancel</Button>
@@ -374,3 +559,4 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+
