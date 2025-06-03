@@ -126,7 +126,7 @@ export default function ChatPage() {
     try {
       const chatSnap = await getDoc(chatDocRef);
       if (chatSnap.exists()) {
-        const existingChatData = chatSnap.data() as ChatMetadata;
+        let existingChatData = { ...chatSnap.data(), id: chatId } as ChatMetadata;
         let updateRequired = false;
         const updates: Partial<ChatMetadata> & {updatedAt?: any, lastMessageTimestamp?: any, createdAt?: any} = { updatedAt: serverTimestamp() };
 
@@ -138,23 +138,30 @@ export default function ChatPage() {
              updateRequired = true;
         }
         
-        const isClientInitiatingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
-        if (isClientInitiatingWithStudent && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
-            updates.chatStatus = 'accepted';
-            updates.lastMessage = "Chat is now active.";
-            updates.lastMessageTimestamp = serverTimestamp();
-            updates.lastMessageSenderId = 'system'; 
-            updates.lastMessageReadBy = [];
+        const isClientInteractingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
+        
+        if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
+            updates.chatStatus = 'accepted'; // Ensure it's accepted
+            // Add system message only if it was explicitly pending/rejected or status was missing
+            if (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected' || existingChatData.chatStatus === undefined) {
+                updates.lastMessage = "Chat is now active.";
+                updates.lastMessageTimestamp = serverTimestamp();
+                updates.lastMessageSenderId = 'system'; 
+                updates.lastMessageReadBy = [];
+            }
             updateRequired = true;
             
-            const messagesColRef = collection(chatDocRef, 'messages');
-            addDoc(messagesColRef, {
-                senderId: 'system',
-                text: 'This chat has been automatically activated by the client.',
-                timestamp: serverTimestamp(),
-                messageType: 'system_gig_connection_activated',
-            }).catch(console.error);
+            if (updates.lastMessageSenderId === 'system') {
+                const messagesColRef = collection(chatDocRef, 'messages');
+                addDoc(messagesColRef, {
+                    senderId: 'system',
+                    text: 'This chat has been automatically activated by the client.',
+                    timestamp: serverTimestamp(),
+                    messageType: 'system_gig_connection_activated',
+                }).catch(console.error);
+            }
         } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
+            // This handles activation via gig link if not already client-student direct activation
             updates.chatStatus = 'accepted';
             updates.lastMessage = "Chat is now active via gig link.";
             updates.lastMessageTimestamp = serverTimestamp();
@@ -178,19 +185,29 @@ export default function ChatPage() {
             if (clientSideUpdates.lastMessageTimestamp === serverTimestamp()) clientSideUpdates.lastMessageTimestamp = Timestamp.now();
             if (clientSideUpdates.createdAt === serverTimestamp()) clientSideUpdates.createdAt = Timestamp.now();
 
-            const updatedLocalChat = {
+            const updatedLocalChat: ChatMetadata = {
                 ...existingChatData,
-                ...clientSideUpdates,
-                id: chatId, // ensure id is present
-            } as ChatMetadata;
-
+                ...clientSideUpdates, // This ensures chatStatus is overwritten if in updates
+                id: chatId,
+            };
             setChats(prev => prev.map(chat => chat.id === chatId ? updatedLocalChat : chat));
             setSelectedChatId(chatId);
             return updatedLocalChat;
         }
+        
+        // If no update was required, but it's client-student and status is missing, ensure local object has 'accepted'
+        if (isClientInteractingWithStudent && existingChatData.chatStatus === undefined) {
+            const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
+            // No actual Firestore update here, just ensuring the returned object for transient override is correct.
+            // It's a bit of a patch; ideally, old docs should be migrated or the `updateRequired` logic made more complex.
+            setSelectedChatId(chatId);
+            return chatWithForcedStatus;
+        }
+
         setSelectedChatId(chatId);
-        return { ...existingChatData, id: chatId } as ChatMetadata;
-      } else {
+        return existingChatData; // existingChatData already has id
+
+      } else { // Chat doesn't exist, create new
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -279,40 +296,79 @@ export default function ChatPage() {
       });
       setMessage(''); 
       toast({ title: "Profile Ready to Share", description: "Select a chat and send your message." });
-      // Attempt to auto-select/create chat if not already done
-      if (user.uid !== shareProfileUserId) {
+      
+      if (user.uid !== shareProfileUserId) { // Auto-select/create chat for the profile being shared, if not sharing own profile
           const fetchTargetUserAndCreateChatForProfileShare = async () => {
             if (!db) {
                 toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
                 return;
             }
-            const targetUserDocRef = doc(db, 'users', shareProfileUserId);
-            const targetUserSnap = await getDoc(targetUserDocRef);
-            if (targetUserSnap.exists()) {
-              const targetUserData = targetUserSnap.data() as UserProfile;
-              if (targetUserData.blockedUserIds?.includes(user.uid)) {
-                toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
-                router.replace('/chat'); // remove params
-                return;
-              }
-              setTargetUserForNewChat(targetUserData);
-              const newOrUpdatedChat = await getOrCreateChat(shareProfileUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
-              if (newOrUpdatedChat) {
-                  setSelectedChatId(newOrUpdatedChat.id);
-                  if (newOrUpdatedChat.chatStatus === 'accepted') {
-                      setTransientChatOverride(newOrUpdatedChat);
-                      setTimeout(() => setTransientChatOverride(null), 5000); // Clear after 5s
-                  }
-              }
-            } else {
-              toast({ title: "User Not Found", description: "The user you're trying to share doesn't exist.", variant: "destructive" });
+            // The "target" for the chat is the person TO WHOM the profile is being shared.
+            // The `shareProfileUserId` is the person WHOSE profile is shared.
+            // If client shares student X's profile to student Y, targetUserId is Y, shareProfileUserId is X.
+            // For now, let's assume user wants to share TO the person whose profile they are viewing or selecting from a list.
+            // This part needs clarification if the UX is "share profile X with user Y".
+            // Current code path assumes you are on profile X, click share, and then need to pick a chat (or it auto-opens a chat WITH X).
+            // If you want to share X's profile TO a *different* user Y, the UI flow to select Y is not yet here.
+            // For now, we'll assume the `targetUserId` from a previous navigation or direct `userId` param is who we share TO.
+            // If `targetUserId` is empty, user must select a chat.
+
+            const chatTargetId = targetUserId || preselectChatId?.split('_').find(id => id !== user.uid) || null; 
+            // If no explicit target for the chat, and we are sharing profile X, we need to prompt user to pick a chat.
+            // If `targetUserId` *is* the `shareProfileUserId`, it implies user is on Profile X page and wants to message X (to share X's profile TO X).
+            
+            if (chatTargetId) {
+                 const targetUserDocRef = doc(db, 'users', chatTargetId);
+                 const targetUserSnap = await getDoc(targetUserDocRef);
+                 if (targetUserSnap.exists()) {
+                   const targetUserData = targetUserSnap.data() as UserProfile;
+                   if (targetUserData.blockedUserIds?.includes(user.uid)) {
+                     toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
+                     router.replace('/chat'); 
+                     return;
+                   }
+                   setTargetUserForNewChat(targetUserData);
+                   const newOrUpdatedChat = await getOrCreateChat(chatTargetId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
+                   if (newOrUpdatedChat) {
+                       setSelectedChatId(newOrUpdatedChat.id);
+                       if (newOrUpdatedChat.chatStatus === 'accepted') {
+                           setTransientChatOverride(newOrUpdatedChat);
+                           setTimeout(() => setTransientChatOverride(null), 5000); 
+                       }
+                   }
+                 } else {
+                   toast({ title: "User Not Found", description: "The user you're trying to chat with to share the profile doesn't exist.", variant: "destructive" });
+                 }
+            } else if (user.uid === shareProfileUserId) { // Sharing own profile, but to whom?
+                 // Let user pick a chat. No auto-open.
+            } else { // Sharing someone else's profile, but no target chat selected.
+                // Try to open a chat with the person whose profile is being shared if no other target.
+                const targetUserDocRef = doc(db, 'users', shareProfileUserId);
+                const targetUserSnap = await getDoc(targetUserDocRef);
+                if (targetUserSnap.exists()) {
+                    const targetUserData = targetUserSnap.data() as UserProfile;
+                    if (targetUserData.blockedUserIds?.includes(user.uid)) {
+                        toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
+                        return;
+                    }
+                    setTargetUserForNewChat(targetUserData);
+                    const newOrUpdatedChat = await getOrCreateChat(shareProfileUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
+                    if (newOrUpdatedChat) {
+                        setSelectedChatId(newOrUpdatedChat.id);
+                        if (newOrUpdatedChat.chatStatus === 'accepted') {
+                            setTransientChatOverride(newOrUpdatedChat);
+                            setTimeout(() => setTransientChatOverride(null), 5000); 
+                        }
+                    }
+                }
             }
           };
           fetchTargetUserAndCreateChatForProfileShare();
       }
-      if (typeof window !== 'undefined') { // Remove params after processing
+      if (typeof window !== 'undefined') { 
         const currentUrl = new URL(window.location.href);
         ['shareUserId', 'shareUsername', 'shareUserProfilePictureUrl', 'shareUserRole'].forEach(param => currentUrl.searchParams.delete(param));
+        if (targetUserId) currentUrl.searchParams.delete('userId'); // Also remove userId if it was used for chat target
         router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
       }
     } else if (shareGigId && shareGigTitle) {
@@ -354,9 +410,9 @@ export default function ChatPage() {
           const newOrUpdatedChat = await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined, targetUserData.role);
           if (newOrUpdatedChat) {
             setSelectedChatId(newOrUpdatedChat.id);
-             if (newOrUpdatedChat.chatStatus === 'accepted') { // If directly activated
+             if (newOrUpdatedChat.chatStatus === 'accepted') { 
                 setTransientChatOverride(newOrUpdatedChat);
-                setTimeout(() => setTransientChatOverride(null), 5000); // Clear after 5s
+                setTimeout(() => setTransientChatOverride(null), 5000); 
             }
           }
         } else {
@@ -505,7 +561,7 @@ export default function ChatPage() {
     setSelectedChatId(chatId);
     setShowEmojiPicker(false);
     setMessage('');
-    setTransientChatOverride(null); // Clear any override when user manually selects a chat
+    setTransientChatOverride(null); 
   };
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
@@ -626,7 +682,7 @@ export default function ChatPage() {
       };
       
       if (userProfile.profilePictureUrl) {
-        const currentChatForPicUpdate = chats.find(c => c.id === selectedChatId) || transientChatOverride; // Use override if available
+        const currentChatForPicUpdate = chats.find(c => c.id === selectedChatId) || transientChatOverride; 
         const existingPictures = currentChatForPicUpdate?.participantProfilePictures || {};
         if (existingPictures[user.uid] !== userProfile.profilePictureUrl) {
            chatUpdateData.participantProfilePictures = {
@@ -642,7 +698,7 @@ export default function ChatPage() {
       setMessage('');
       setPendingGigShareData(null);
       setPendingProfileShareData(null);
-      setTransientChatOverride(null); // Clear override after successful send
+      setTransientChatOverride(null); 
     } catch (error) {
       console.error("Error sending message:", error);
       toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
@@ -676,7 +732,7 @@ export default function ChatPage() {
       });
       await batch.commit();
       toast({ title: `Request ${action}`, description: `Chat request has been ${action}.` });
-      setTransientChatOverride(null); // Clear override if action is taken on the chat
+      setTransientChatOverride(null); 
     } catch (error) {
       console.error(`Error ${action} chat request:`, error);
       toast({ title: "Action Failed", description: `Could not ${action} the chat request.`, variant: "destructive" });
@@ -946,7 +1002,7 @@ export default function ChatPage() {
   const isChatRejected = _selectedChatDetails?.chatStatus === 'rejected';
   const showRequestActionButtons = isChatPendingRequest && !isCurrentUserInitiator;
   const isInputDisabled =
-    !_selectedChatDetails || // Disable if no chat selected or details not loaded
+    !_selectedChatDetails || 
     (_selectedChatDetails.chatStatus === 'pending_request' && isCurrentUserInitiator && messages.length > 0) ||
     (_selectedChatDetails.chatStatus === 'pending_request' && !isCurrentUserInitiator) ||
     _selectedChatDetails.chatStatus === 'rejected' ||
@@ -1232,3 +1288,4 @@ export default function ChatPage() {
     </div>
   );
 }
+
