@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -41,10 +41,18 @@ import type { ChatMessage, ChatMetadata } from '@/types/chat';
 import { Progress } from '@/components/ui/progress';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-interface PendingShareData {
+interface PendingGigShareData {
   gigId: string;
   gigTitle: string;
 }
+
+interface PendingProfileShareData {
+  userId: string;
+  username: string;
+  profilePictureUrl?: string;
+  userRole?: 'student' | 'client';
+}
+
 
 interface GigForChatContext {
     id: string;
@@ -64,7 +72,8 @@ export default function ChatPage() {
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [pendingShareData, setPendingShareData] = useState<PendingShareData | null>(null);
+  const [pendingGigShareData, setPendingGigShareData] = useState<PendingGigShareData | null>(null);
+  const [pendingProfileShareData, setPendingProfileShareData] = useState<PendingProfileShareData | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
@@ -211,13 +220,28 @@ export default function ChatPage() {
     const gigIdForChatContext = searchParams.get('gigId');
     const preselectChatId = searchParams.get('chatId');
 
-    if (shareGigId && shareGigTitle) {
-      setPendingShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
-      setMessage('');
-      toast({
-        title: "Gig Ready to Share",
-        description: "Select a chat and send your message.",
+    // New profile share params
+    const shareProfileUserId = searchParams.get('shareUserId');
+    const shareProfileUsername = searchParams.get('shareUsername');
+    const shareProfilePicUrl = searchParams.get('shareUserProfilePictureUrl');
+    const shareProfileRole = searchParams.get('shareUserRole') as 'student' | 'client' | undefined;
+
+    if (shareProfileUserId) {
+      setPendingProfileShareData({
+        userId: shareProfileUserId,
+        username: decodeURIComponent(shareProfileUsername || 'User'),
+        profilePictureUrl: shareProfilePicUrl ? decodeURIComponent(shareProfilePicUrl) : undefined,
+        userRole: shareProfileRole,
       });
+      setMessage(''); // Clear message input for shared content
+      toast({ title: "Profile Ready to Share", description: "Select a chat and send your message." });
+      if (typeof window !== 'undefined') {
+        router.replace('/chat', { scroll: false }); // Clear query params
+      }
+    } else if (shareGigId && shareGigTitle) {
+      setPendingGigShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
+      setMessage('');
+      toast({ title: "Gig Ready to Share", description: "Select a chat and send your message." });
       if (typeof window !== 'undefined') {
         router.replace('/chat', { scroll: false });
       }
@@ -253,12 +277,23 @@ export default function ChatPage() {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
-        if ((searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
-            router.replace('/chat', { scroll: false });
+        // Clear all relevant query parameters after processing
+        const paramsToRemove = ['userId', 'gigId', 'shareGigId', 'shareGigTitle', 'shareUserId', 'shareUsername', 'shareUserProfilePictureUrl', 'shareUserRole', 'chatId'];
+        let currentUrl = new URL(window.location.href);
+        let paramsChanged = false;
+        paramsToRemove.forEach(param => {
+          if (currentUrl.searchParams.has(param)) {
+            currentUrl.searchParams.delete(param);
+            paramsChanged = true;
+          }
+        });
+        if (paramsChanged) {
+            router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
         }
       };
       fetchTargetUserAndCreateChat();
-    } else if (!shareGigId && !targetUserId && !preselectChatId && (searchParams.has('userId') || searchParams.has('gigId')) && typeof window !== 'undefined') {
+    } else if (!shareGigId && !targetUserId && !preselectChatId && (searchParams.toString() !== '') && typeof window !== 'undefined') {
+        // Generic cleanup if some params were present but not handled above
         router.replace('/chat', { scroll: false });
     }
   }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router, toast]);
@@ -417,8 +452,7 @@ export default function ChatPage() {
         toast({ title: "Cannot Send", description: "You have blocked this user. Unblock them to send messages.", variant: "destructive" });
         return;
     }
-    // Check if other user has blocked current user (requires target user's profile data)
-    // This might need an async check or rely on chat list filtering for simplicity
+
     const targetUserProfileSnap = otherParticipantId ? await getDoc(doc(db, 'users', otherParticipantId)) : null;
     if (targetUserProfileSnap?.exists() && (targetUserProfileSnap.data() as UserProfile).blockedUserIds?.includes(user.uid)) {
         toast({ title: "Cannot Send", description: "This user has blocked you.", variant: "destructive" });
@@ -435,7 +469,7 @@ export default function ChatPage() {
          return;
     }
     
-    if (!message.trim() && !pendingShareData && !isRequestingDetails && !isSharingDetails) {
+    if (!message.trim() && !pendingGigShareData && !pendingProfileShareData && !isRequestingDetails && !isSharingDetails) {
         toast({ title: "Cannot Send", description: "Message is empty.", variant: "destructive"});
         return;
     }
@@ -464,13 +498,23 @@ export default function ChatPage() {
         };
         newMessageContent.text = message.trim() || "Here are my contact details:";
         lastMessageText = "Shared contact details.";
-    } else if (pendingShareData) {
-      newMessageContent.sharedGigId = pendingShareData.gigId;
-      newMessageContent.sharedGigTitle = pendingShareData.gigTitle;
-      lastMessageText = `[Gig Shared] ${pendingShareData.gigTitle}`;
+    } else if (pendingGigShareData) {
+      newMessageContent.sharedGigId = pendingGigShareData.gigId;
+      newMessageContent.sharedGigTitle = pendingGigShareData.gigTitle;
+      lastMessageText = `[Gig Shared] ${pendingGigShareData.gigTitle}`;
       if (message.trim()) {
         newMessageContent.text = message.trim();
-        lastMessageText = `${message.trim()} (Shared: ${pendingShareData.gigTitle})`;
+        lastMessageText = `${message.trim()} (Shared: ${pendingGigShareData.gigTitle})`;
+      }
+    } else if (pendingProfileShareData) {
+      newMessageContent.sharedUserId = pendingProfileShareData.userId;
+      newMessageContent.sharedUsername = pendingProfileShareData.username;
+      newMessageContent.sharedUserProfilePictureUrl = pendingProfileShareData.profilePictureUrl;
+      newMessageContent.sharedUserRole = pendingProfileShareData.userRole;
+      lastMessageText = `[Profile Shared] ${pendingProfileShareData.username}`;
+      if (message.trim()) {
+        newMessageContent.text = message.trim();
+        lastMessageText = `${message.trim()} (Shared profile: ${pendingProfileShareData.username})`;
       }
     } else if (message.trim()) {
       newMessageContent.text = message.trim();
@@ -486,7 +530,7 @@ export default function ChatPage() {
       batchOp.set(doc(messagesColRef), newMessageContent);
 
       const chatUpdateData: Partial<ChatMetadata> & {updatedAt: any, lastMessageTimestamp: any} = {
-        lastMessage: lastMessageText.substring(0, 100),
+        lastMessage: lastMessageText.substring(0, 100), // Firestore limit
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
@@ -509,7 +553,8 @@ export default function ChatPage() {
 
       await batchOp.commit();
       setMessage('');
-      setPendingShareData(null);
+      setPendingGigShareData(null);
+      setPendingProfileShareData(null);
     } catch (error) {
       console.error("Error sending message:", error);
       toast({ title: "Send Error", description: "Could not send message.", variant: "destructive" });
@@ -599,7 +644,7 @@ export default function ChatPage() {
           key={msg.id}
           className={`flex mb-1 ${msg.senderId === user?.uid ? 'justify-end' : msg.senderId === 'system' ? 'justify-center' : 'justify-start'}`}
         >
-          {msg.sharedGigId && msg.sharedGigTitle ? (
+          {msg.sharedGigId && msg.sharedGigTitle ? ( // GIG SHARING CARD
              <Link
                 href={`/gigs/${msg.sharedGigId}`}
                 target="_blank"
@@ -656,7 +701,63 @@ export default function ChatPage() {
                     {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                  </p>
               </Link>
-          ) : (
+          ) : msg.sharedUserId && msg.sharedUsername ? ( // PROFILE SHARING CARD
+             <Link
+                href={`/profile/${msg.sharedUserId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'block p-3 my-1 rounded-lg shadow-sm max-w-[70%] min-w-0 overflow-hidden',
+                  msg.senderId === user?.uid
+                    ? 'bg-primary/90 border border-primary-foreground/20 hover:bg-primary/80 text-primary-foreground'
+                    : 'bg-card border border-border hover:bg-accent/60 text-card-foreground'
+                )}
+              >
+                <div className="flex items-start gap-2.5">
+                   <Avatar className={cn("h-10 w-10 shrink-0 mt-0.5 border", msg.senderId === user?.uid ? 'border-primary-foreground/30' : 'border-border')}>
+                      <AvatarImage src={msg.sharedUserProfilePictureUrl} alt={msg.sharedUsername} />
+                      <AvatarFallback>{msg.sharedUsername.substring(0,1).toUpperCase()}</AvatarFallback>
+                   </Avatar>
+                  <div className="flex-grow min-w-0">
+                    <h4
+                      className={cn(
+                        'font-semibold text-sm break-words',
+                        msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {msg.sharedUsername}
+                    </h4>
+                     {msg.sharedUserRole && <Badge variant={msg.senderId === user?.uid ? 'secondary' : 'outline'} className={cn("text-xs capitalize", msg.senderId === user?.uid ? 'bg-primary-foreground/20 text-primary-foreground/90 border-transparent' : '')}>{msg.sharedUserRole}</Badge>}
+                    {msg.text && (
+                      <p
+                        className={cn(
+                          'text-xs mt-1 whitespace-pre-wrap break-words',
+                          msg.senderId === user?.uid ? 'text-primary-foreground/90' : 'text-foreground/80'
+                        )}
+                      >
+                        {msg.text}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className={cn(
+                    "mt-2.5 pt-2.5 border-t border-dashed flex justify-end items-center",
+                    msg.senderId === user?.uid ? 'border-primary-foreground/50' : 'border-border/70'
+                    )}>
+                  <span
+                    className={cn(
+                      'text-xs font-medium',
+                      msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground' : 'text-primary hover:text-primary/80'
+                    )}
+                  >
+                    View Profile &rarr;
+                  </span>
+                </div>
+                 <p className={`text-xs mt-1.5 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
+                    {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                 </p>
+              </Link>
+          ) : ( // REGULAR MESSAGE BUBBLE
             <div 
               className={cn(
                 "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
@@ -688,7 +789,7 @@ export default function ChatPage() {
                      {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
                 </div>
                )}
-              {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
+              {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId && !msg.sharedUserId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
               {msg.senderId !== 'system' && (
                  <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
                     {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
@@ -971,13 +1072,24 @@ export default function ChatPage() {
             )}
 
             <CardFooter className="p-3 border-t flex flex-col items-start">
-              {pendingShareData && (
+              {pendingGigShareData && (
                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50 text-sm">
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <Link2 className="h-4 w-4 text-primary" />
-                    <span className="text-muted-foreground truncate">Sharing Gig: <span className="font-medium text-foreground">{pendingShareData.gigTitle}</span></span>
+                    <Briefcase className="h-4 w-4 text-primary" />
+                    <span className="text-muted-foreground truncate">Sharing Gig: <span className="font-medium text-foreground">{pendingGigShareData.gigTitle}</span></span>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPendingShareData(null)}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPendingGigShareData(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {pendingProfileShareData && (
+                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50 text-sm">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <UserCircle className="h-4 w-4 text-primary" />
+                    <span className="text-muted-foreground truncate">Sharing Profile: <span className="font-medium text-foreground">{pendingProfileShareData.username}</span></span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPendingProfileShareData(null)}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -998,16 +1110,16 @@ export default function ChatPage() {
                   placeholder={
                     isInputDisabled ? (isOtherUserBlockedByCurrentUser ? "You blocked this user" : isCurrentUserBlockedByOther ? "This user blocked you" : "Cannot send message") :
                     (isChatPendingRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
-                    pendingShareData ? "Add a caption (optional)..." : "Type your message...")
+                    (pendingGigShareData || pendingProfileShareData) ? "Add a caption (optional)..." : "Type your message...")
                    }
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isInputDisabled && handleSendMessage()}
                   disabled={isInputDisabled}
                 />
-                <Button onClick={() => handleSendMessage()} disabled={isInputDisabled || (!message.trim() && !pendingShareData)} title={pendingShareData ? "Send Gig" : "Send message"}>
+                <Button onClick={() => handleSendMessage()} disabled={isInputDisabled || (!message.trim() && !pendingGigShareData && !pendingProfileShareData)} title={pendingGigShareData ? "Send Gig" : (pendingProfileShareData ? "Send Profile" : "Send message")}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="sr-only">{pendingShareData ? "Send Gig" : "Send"}</span>
+                  <span className="sr-only">{pendingGigShareData ? "Send Gig" : (pendingProfileShareData ? "Send Profile" : "Send")}</span>
                 </Button>
               </div>
             </CardFooter>
@@ -1016,10 +1128,11 @@ export default function ChatPage() {
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <MessageSquare className="h-16 w-16 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') && !pendingShareData ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
-                 {(searchParams.get('shareGigId') || pendingShareData) && !selectedChatId && ' Select a chat to share the gig.'}
+                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') && !searchParams.get('shareUserId') && !pendingGigShareData && !pendingProfileShareData ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
+                 {(searchParams.get('shareGigId') || pendingGigShareData) && !selectedChatId && ' Select a chat to share the gig.'}
+                 {(searchParams.get('shareUserId') || pendingProfileShareData) && !selectedChatId && ' Select a chat to share the profile.'}
             </p>
-            {targetUserForNewChat && !selectedChatId && !pendingShareData && (
+            {targetUserForNewChat && !selectedChatId && !pendingGigShareData && !pendingProfileShareData && (
                  <p className="text-sm mt-2">Starting chat with {targetUserForNewChat.username}...</p>
             )}
           </div>

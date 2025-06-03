@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2 } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -221,17 +221,15 @@ export default function PublicProfilePage() {
     }
   };
   
-  const handleShareProfile = () => {
-    if (typeof window !== "undefined") {
-        navigator.clipboard.writeText(window.location.href)
-            .then(() => {
-                toast({ title: "Link Copied!", description: "Profile URL copied to clipboard." });
-            })
-            .catch(err => {
-                toast({ title: "Error", description: "Could not copy link.", variant: "destructive" });
-            });
+  const handleShareProfileToChat = () => {
+    if (!viewerUser || !profile) {
+        toast({ title: "Login Required", description: "Please log in to share profiles.", variant: "destructive" });
+        return;
     }
+    const shareUrl = `/chat?shareUserId=${profile.uid}&shareUsername=${encodeURIComponent(profile.username || 'User')}&shareUserProfilePictureUrl=${encodeURIComponent(profile.profilePictureUrl || '')}&shareUserRole=${profile.role || 'unknown'}`;
+    router.push(shareUrl);
   };
+
 
   const handleBlockUnblockUser = async () => {
     if (!viewerUser || !viewerUserProfile || !profile || !db) {
@@ -437,22 +435,22 @@ export default function PublicProfilePage() {
                                         <span className="sr-only">Profile Options</span>
                                     </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48">
-                                    <DropdownMenuItem onSelect={handleShareProfile} className="cursor-pointer">
-                                        <Copy className="mr-2 h-4 w-4" />
-                                        <span>Share Profile</span>
+                                <DropdownMenuContent align="end" className="w-56">
+                                     <DropdownMenuItem onSelect={handleShareProfileToChat} className="cursor-pointer">
+                                        <Share2 className="mr-2 h-4 w-4" />
+                                        <span>Share Profile to Chat</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem 
-                                        onSelect={() => setShowReportDialog(true)} 
-                                        className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                                      onSelect={() => { setShowReportDialog(true); }} 
+                                      className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
                                     >
                                         <ShieldAlert className="mr-2 h-4 w-4" />
                                         <span>Report Account</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
-                                        onSelect={() => setShowBlockConfirmDialog(true)} 
-                                        className={cn("cursor-pointer", isBlockedByViewer ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
+                                      onSelect={() => { setShowBlockConfirmDialog(true);}} 
+                                      className={cn("cursor-pointer", isBlockedByViewer ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
                                     >
                                         {isBlockedByViewer ? <UserCheck className="mr-2 h-4 w-4" /> : <UserX className="mr-2 h-4 w-4" />}
                                         <span>{isBlockedByViewer ? "Unblock Account" : "Block Account"}</span>
@@ -762,7 +760,7 @@ export default function PublicProfilePage() {
                     <AlertDialogAction
                         onClick={handleBlockUnblockUser}
                         disabled={isBlockProcessing}
-                        className={isBlockedByViewer ? "" : "bg-destructive hover:bg-destructive/90"}
+                        className={cn(isBlockedByViewer ? "" : "bg-destructive hover:bg-destructive/90 text-destructive-foreground")}
                     >
                         {isBlockProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isBlockedByViewer ? "Unblock" : "Block"}

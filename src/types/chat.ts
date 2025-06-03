@@ -21,6 +21,12 @@ export interface ChatMessage {
     note?: string; // Optional note from client when sharing
   };
   messageType?: 'user' | 'system_request_accepted' | 'system_request_rejected' | 'system_gig_connection_activated';
+
+  // New fields for shared profile
+  sharedUserId?: string;
+  sharedUsername?: string;
+  sharedUserProfilePictureUrl?: string;
+  sharedUserRole?: 'student' | 'client';
 }
 
 export interface ChatMetadata {
@@ -38,4 +44,3 @@ export interface ChatMetadata {
   chatStatus?: 'pending_request' | 'accepted' | 'rejected'; // New field for request status
   requestInitiatorId?: string; // UID of the user who sent the request
 }
-
