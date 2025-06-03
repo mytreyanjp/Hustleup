@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -64,10 +64,8 @@ export default function ChatPage() {
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  // const [selectedFile, setSelectedFile] = useState<File | null>(null); // Media upload disabled
   const [pendingShareData, setPendingShareData] = useState<PendingShareData | null>(null);
   const [isSending, setIsSending] = useState(false);
-  // const [uploadProgress, setUploadProgress] = useState<number | null>(null); // Media upload disabled
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [chats, setChats] = useState<ChatMetadata[]>([]);
@@ -81,7 +79,6 @@ export default function ChatPage() {
 
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  // const fileInputRef = useRef<HTMLInputElement | null>(null); // Media upload disabled
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
 
 
@@ -107,6 +104,15 @@ export default function ChatPage() {
   const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string) => {
     if (!user || !userProfile || !db) return null;
 
+    if (userProfile.blockedUserIds?.includes(targetUserId)) {
+        toast({ title: "Chat Blocked", description: "You have blocked this user. Unblock them to start a chat.", variant: "destructive" });
+        router.push('/chat'); // Go back to chat list or a safe page
+        return null;
+    }
+    // Also check if the target user has blocked the current user (if such a field exists and is readable)
+    // For now, this focuses on the current user's block list.
+
+
     const chatId = getChatId(user.uid, targetUserId);
     const chatDocRef = doc(db, 'chats', chatId);
 
@@ -125,17 +131,14 @@ export default function ChatPage() {
              updateRequired = true;
         }
 
-        // If a gig context is now provided for a previously pending/rejected direct chat,
-        // and this gig implies a working relationship, make the chat accepted.
         if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
             updates.chatStatus = 'accepted';
             updates.lastMessage = "Chat is now active via gig link.";
             updates.lastMessageTimestamp = serverTimestamp();
             updates.lastMessageSenderId = 'system';
-            updates.lastMessageReadBy = []; // Mark as unread for both to see this update
+            updates.lastMessageReadBy = []; 
             updateRequired = true;
             
-            // Add a system message to the messages subcollection
             const messagesColRef = collection(chatDocRef, 'messages');
             addDoc(messagesColRef, {
                 senderId: 'system',
@@ -151,7 +154,6 @@ export default function ChatPage() {
         setSelectedChatId(chatId);
         return chatId;
       } else {
-        // New chat needs to be created
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -159,11 +161,10 @@ export default function ChatPage() {
             [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
             [targetUserId]: targetUsername,
           },
-          createdAt: serverTimestamp() as Timestamp, // Cast for type matching
-          updatedAt: serverTimestamp() as Timestamp, // Cast for type matching
+          createdAt: serverTimestamp() as Timestamp, 
+          updatedAt: serverTimestamp() as Timestamp, 
           participantProfilePictures: {},
           lastMessageReadBy: [],
-          // chatStatus and requestInitiatorId will be set based on context
         };
 
         if (userProfile.profilePictureUrl) {
@@ -174,7 +175,6 @@ export default function ChatPage() {
         }
 
         if (gigIdForContext) {
-          // Directly linked via a gig
           newChatData.chatStatus = 'accepted';
           newChatData.gigId = gigIdForContext;
           newChatData.lastMessage = 'Chat started.';
@@ -182,10 +182,9 @@ export default function ChatPage() {
           newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
           newChatData.lastMessageReadBy = [user.uid];
         } else {
-          // No direct gig link from context - this is a "cold" chat initiation.
           newChatData.chatStatus = 'pending_request';
           newChatData.requestInitiatorId = user.uid;
-          newChatData.lastMessage = 'Chat request sent.'; // Will be overwritten by the first actual message
+          newChatData.lastMessage = 'Chat request sent.'; 
           newChatData.lastMessageSenderId = user.uid;
           newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
           newChatData.lastMessageReadBy = [user.uid];
@@ -200,7 +199,7 @@ export default function ChatPage() {
       toast({ title: "Chat Error", description: "Could not start or find the chat.", variant: "destructive" });
       return null;
     }
-  }, [user, userProfile, toast]);
+  }, [user, userProfile, toast, router]);
 
 
   useEffect(() => {
@@ -229,6 +228,11 @@ export default function ChatPage() {
         }
         return;
     } else if (targetUserId && user.uid !== targetUserId) {
+      if (userProfile.blockedUserIds?.includes(targetUserId)) {
+        toast({ title: "Chat Blocked", description: "You have blocked this user and cannot start a new chat.", variant: "destructive" });
+        router.replace('/chat');
+        return;
+      }
       const fetchTargetUserAndCreateChat = async () => {
         if (!db) {
             toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
@@ -238,6 +242,11 @@ export default function ChatPage() {
         const targetUserSnap = await getDoc(targetUserDocRef);
         if (targetUserSnap.exists()) {
           const targetUserData = targetUserSnap.data() as UserProfile;
+          if (targetUserData.blockedUserIds?.includes(user.uid)) {
+            toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
+            router.replace('/chat');
+            return;
+          }
           setTargetUserForNewChat(targetUserData);
           await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined);
         } else {
@@ -269,10 +278,21 @@ export default function ChatPage() {
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot: QuerySnapshot<DocumentData>) => {
-      const fetchedChats = querySnapshot.docs.map(docSnap => ({
+      let fetchedChats = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data(),
       })) as ChatMetadata[];
+
+      // Filter out chats with users blocked by the current user
+      if (userProfile && userProfile.blockedUserIds && userProfile.blockedUserIds.length > 0) {
+        fetchedChats = fetchedChats.filter(chat => {
+          const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
+          return !(otherParticipantId && userProfile.blockedUserIds?.includes(otherParticipantId));
+        });
+      }
+      // TODO: Also consider filtering if the *other* user has blocked the current user,
+      // if `blockedUserIds` is made public or if a separate "blocksMe" list is maintained.
+
       setChats(fetchedChats);
       setIsLoadingChats(false);
     }, (error) => {
@@ -282,7 +302,7 @@ export default function ChatPage() {
     });
 
     return () => unsubscribe();
-  }, [user, toast]);
+  }, [user, userProfile, toast]); // Added userProfile to dependencies
 
   useEffect(() => {
     if (!selectedChatId || !user || !db) {
@@ -368,24 +388,9 @@ export default function ChatPage() {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
-    // setSelectedFile(null); // Media upload disabled
-    // setUploadProgress(null); // Media upload disabled
     setShowEmojiPicker(false);
     setMessage('');
   };
-
-  // const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => { // Media upload disabled
-  //   if (event.target.files && event.target.files[0]) {
-  //     const file = event.target.files[0];
-  //     if (file.size > 10 * 1024 * 1024) { // 10MB limit
-  //       toast({ title: "File Too Large", description: "Please select a file smaller than 10MB.", variant: "destructive" });
-  //       return;
-  //     }
-  //     setSelectedFile(file);
-  //     setMessage('');
-  //     setPendingShareData(null);
-  //   }
-  // };
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
     setMessage(prevMessage => prevMessage + emojiData.emoji);
@@ -406,11 +411,23 @@ export default function ChatPage() {
         toast({ title: "Cannot Send", description: "Chat details not found.", variant: "destructive"});
         return;
     }
+    
+    const otherParticipantId = currentChatDetails.participants.find(pId => pId !== user.uid);
+    if (otherParticipantId && userProfile.blockedUserIds?.includes(otherParticipantId)) {
+        toast({ title: "Cannot Send", description: "You have blocked this user. Unblock them to send messages.", variant: "destructive" });
+        return;
+    }
+    // Check if other user has blocked current user (requires target user's profile data)
+    // This might need an async check or rely on chat list filtering for simplicity
+    const targetUserProfileSnap = otherParticipantId ? await getDoc(doc(db, 'users', otherParticipantId)) : null;
+    if (targetUserProfileSnap?.exists() && (targetUserProfileSnap.data() as UserProfile).blockedUserIds?.includes(user.uid)) {
+        toast({ title: "Cannot Send", description: "This user has blocked you.", variant: "destructive" });
+        return;
+    }
+
 
     const isInitiator = currentChatDetails.requestInitiatorId === user.uid;
     const isPendingRequest = currentChatDetails.chatStatus === 'pending_request';
-
-    // Allow sending first message if it's a pending request and current user is initiator and no messages exist
     const canSendRequestMessage = isPendingRequest && isInitiator && messages.length === 0;
 
     if (!canSendRequestMessage && currentChatDetails.chatStatus !== 'accepted') {
@@ -477,9 +494,6 @@ export default function ChatPage() {
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
       
-      // If this was the first message of a pending request, update status if needed by UI cues, but server handles actual acceptance.
-      // The UI disabling input after first message in pending state is the main gate.
-
       if (userProfile.profilePictureUrl) {
         const currentChat = chats.find(c => c.id === selectedChatId);
         const existingPictures = currentChat?.participantProfilePictures || {};
@@ -519,7 +533,7 @@ export default function ChatPage() {
         lastMessage: systemMessageText,
         lastMessageSenderId: 'system',
         lastMessageTimestamp: serverTimestamp(),
-        lastMessageReadBy: [], // Mark as unread for both
+        lastMessageReadBy: [], 
       });
       batch.set(doc(messagesColRef), {
         senderId: 'system',
@@ -655,6 +669,31 @@ export default function ChatPage() {
   const otherUserId = selectedChatDetails?.participants.find(pId => pId !== user?.uid);
   const otherUsername = otherUserId ? selectedChatDetails?.participantUsernames[otherUserId] : 'User';
   const otherUserProfilePicture = otherUserId ? selectedChatDetails?.participantProfilePictures?.[otherUserId] : undefined;
+  
+  const isOtherUserBlockedByCurrentUser = otherUserId && userProfile?.blockedUserIds?.includes(otherUserId);
+  // Add state to check if current user is blocked by otherUser, fetch this when selecting a chat.
+  const [isCurrentUserBlockedByOther, setIsCurrentUserBlockedByOther] = useState(false);
+
+  useEffect(() => {
+    const checkBlockedStatus = async () => {
+      if (otherUserId && db && user) {
+        const otherUserDocRef = doc(db, 'users', otherUserId);
+        const otherUserSnap = await getDoc(otherUserDocRef);
+        if (otherUserSnap.exists()) {
+          const otherUserData = otherUserSnap.data() as UserProfile;
+          setIsCurrentUserBlockedByOther(otherUserData.blockedUserIds?.includes(user.uid) || false);
+        } else {
+          setIsCurrentUserBlockedByOther(false);
+        }
+      } else {
+        setIsCurrentUserBlockedByOther(false);
+      }
+    };
+    if (selectedChatId) {
+      checkBlockedStatus();
+    }
+  }, [selectedChatId, otherUserId, user]);
+
 
   const canShareDetails = userProfile?.role === 'client' &&
                           currentGigForChat?.status === 'in-progress' &&
@@ -673,7 +712,9 @@ export default function ChatPage() {
     (isChatPendingRequest && isCurrentUserInitiator && messages.length > 0) ||
     (isChatPendingRequest && !isCurrentUserInitiator) ||
     isChatRejected ||
-    isSending;
+    isSending ||
+    isOtherUserBlockedByCurrentUser ||
+    isCurrentUserBlockedByOther;
 
 
   return (
@@ -801,13 +842,19 @@ export default function ChatPage() {
                     {selectedChatDetails.chatStatus === 'rejected' && (
                         <p className="text-xs text-destructive">Chat request rejected.</p>
                     )}
+                    {isOtherUserBlockedByCurrentUser && (
+                        <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>You have blocked this user.</p>
+                    )}
+                     {isCurrentUserBlockedByOther && (
+                        <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>This user has blocked you.</p>
+                    )}
                 </div>
               </div>
                <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                 {selectedChatDetails.chatStatus === 'accepted' && canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm"><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
+                            <Button variant="outline" size="sm" disabled={isInputDisabled}><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader>
@@ -829,7 +876,7 @@ export default function ChatPage() {
                     </AlertDialog>
                 )}
                 {selectedChatDetails.chatStatus === 'accepted' && canRequestDetails && (
-                    <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)}>
+                    <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)} disabled={isInputDisabled}>
                         <Info className="mr-2 h-4 w-4" /> Request Contact
                     </Button>
                 )}
@@ -846,7 +893,7 @@ export default function ChatPage() {
                </div>
             </CardHeader>
             <ScrollArea className="flex-grow p-0">
-               <CardContent className="p-4 space-y-1"> {/* Adjusted space-y */}
+               <CardContent className="p-4 space-y-1">
                 {isLoadingMessages && <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>}
                 {processedMessagesWithDates}
                 <div ref={messagesEndRef} />
@@ -854,8 +901,10 @@ export default function ChatPage() {
                     <p className="text-center text-muted-foreground pt-10">
                        {isChatPendingRequest && isCurrentUserInitiator && "Send a message to request a chat."}
                        {isChatPendingRequest && !isCurrentUserInitiator && "Waiting for chat request..."}
-                       {selectedChatDetails.chatStatus === 'accepted' && "Send a message to start the conversation."}
+                       {selectedChatDetails.chatStatus === 'accepted' && !isInputDisabled && "Send a message to start the conversation."}
                        {isChatRejected && "This chat request was rejected. You cannot send further messages."}
+                       {isOtherUserBlockedByCurrentUser && "You have blocked this user. Unblock them to send messages."}
+                       {isCurrentUserBlockedByOther && "This user has blocked you. You cannot send messages."}
                     </p>
                 )}
               </CardContent>
@@ -901,8 +950,9 @@ export default function ChatPage() {
                 <Input
                   type="text"
                   placeholder={
-                    isChatPendingRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
-                    pendingShareData ? "Add a caption (optional)..." : "Type your message..."
+                    isInputDisabled ? (isOtherUserBlockedByCurrentUser ? "You blocked this user" : isCurrentUserBlockedByOther ? "This user blocked you" : "Cannot send message") :
+                    (isChatPendingRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
+                    pendingShareData ? "Add a caption (optional)..." : "Type your message...")
                    }
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -932,4 +982,5 @@ export default function ChatPage() {
     </div>
   );
 }
+
 

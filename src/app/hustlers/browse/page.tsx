@@ -15,8 +15,11 @@ import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from '@/components/ui/separator';
+import { useFirebase } from '@/context/firebase-context'; // Import useFirebase
+
 
 export default function BrowseHustlersPage() {
+  const { user: currentUser, userProfile: viewerUserProfile, loading: authLoading } = useFirebase(); // Get viewer's profile
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,10 +40,16 @@ export default function BrowseHustlersPage() {
         const q = query(usersRef, where('role', '==', 'student'), orderBy('username', 'asc'));
         const querySnapshot = await getDocs(q);
 
-        const fetchedStudents = querySnapshot.docs.map(doc => ({
+        let fetchedStudents = querySnapshot.docs.map(doc => ({
           uid: doc.id,
           ...doc.data(),
         })) as UserProfile[];
+        
+        // Filter out blocked users if viewerUserProfile is available
+        if (viewerUserProfile && viewerUserProfile.blockedUserIds && viewerUserProfile.blockedUserIds.length > 0) {
+            fetchedStudents = fetchedStudents.filter(student => !viewerUserProfile.blockedUserIds?.includes(student.uid));
+        }
+
         setStudents(fetchedStudents);
       } catch (err: any) {
         console.error("Error fetching students:", err);
@@ -50,8 +59,12 @@ export default function BrowseHustlersPage() {
       }
     };
 
-    fetchStudents();
-  }, []);
+    // Fetch students only after authLoading is false, to ensure viewerUserProfile is potentially available
+    if (!authLoading) {
+        fetchStudents();
+    }
+
+  }, [authLoading, viewerUserProfile]);
 
   const filteredStudents = useMemo(() => {
     if (selectedSkillsFilter.length === 0) {
@@ -73,8 +86,10 @@ export default function BrowseHustlersPage() {
     setSelectedSkillsFilter([]);
     setIsFilterPopoverOpen(false); 
   };
+  
+  const pageIsLoading = authLoading || isLoading;
 
-  if (isLoading) {
+  if (pageIsLoading) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -167,3 +182,4 @@ export default function BrowseHustlersPage() {
     </div>
   );
 }
+

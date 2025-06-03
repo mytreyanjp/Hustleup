@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, AlertTriangle } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -19,11 +19,13 @@ import { StarRating } from '@/components/ui/star-rating';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger as AlertDialogTriggerShad } from "@/components/ui/alert-dialog"; // Renamed to avoid conflict
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 
 interface StudentPost {
@@ -69,8 +71,12 @@ export default function PublicProfilePage() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [isLoadingClientGigs, setIsLoadingClientGigs] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
   const [isFollowingThisUser, setIsFollowingThisUser] = useState(false);
   const [isFollowProcessing, setIsFollowProcessing] = useState(false);
+  const [isBlockedByViewer, setIsBlockedByViewer] = useState(false);
+  const [isBlockProcessing, setIsBlockProcessing] = useState(false);
+
 
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
@@ -81,6 +87,7 @@ export default function PublicProfilePage() {
   const [reportReason, setReportReason] = useState<ReportReason | ''>('');
   const [reportDetails, setReportDetails] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [showBlockConfirmDialog, setShowBlockConfirmDialog] = useState(false);
 
 
   useEffect(() => {
@@ -107,11 +114,13 @@ export default function PublicProfilePage() {
                totalRatings: docSnap.data().totalRatings || 0,
                following: docSnap.data().following || [],
                followersCount: docSnap.data().followersCount || 0,
+               blockedUserIds: docSnap.data().blockedUserIds || [],
             } as UserProfile;
            setProfile(fetchedProfile);
 
-           if (viewerUserProfile && viewerUserProfile.following) {
-             setIsFollowingThisUser(viewerUserProfile.following.includes(fetchedProfile.uid));
+           if (viewerUserProfile) {
+             setIsFollowingThisUser(viewerUserProfile.following?.includes(fetchedProfile.uid) || false);
+             setIsBlockedByViewer(viewerUserProfile.blockedUserIds?.includes(fetchedProfile.uid) || false);
            }
 
 
@@ -204,14 +213,53 @@ export default function PublicProfilePage() {
         setProfile(prev => prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null);
       }
       if (refreshUserProfile) await refreshUserProfile();
-    } catch (err: any)
-       {
+    } catch (err: any) {
       console.error("Error following/unfollowing user:", err);
       toast({ title: "Error", description: `Could not complete action: ${err.message}. For production, consider Cloud Functions for counter updates.`, variant: "destructive" });
     } finally {
       setIsFollowProcessing(false);
     }
   };
+  
+  const handleShareProfile = () => {
+    if (typeof window !== "undefined") {
+        navigator.clipboard.writeText(window.location.href)
+            .then(() => {
+                toast({ title: "Link Copied!", description: "Profile URL copied to clipboard." });
+            })
+            .catch(err => {
+                toast({ title: "Error", description: "Could not copy link.", variant: "destructive" });
+            });
+    }
+  };
+
+  const handleBlockUnblockUser = async () => {
+    if (!viewerUser || !viewerUserProfile || !profile || !db) {
+        toast({ title: "Error", description: "Action cannot be completed.", variant: "destructive" });
+        return;
+    }
+    setIsBlockProcessing(true);
+    const viewerUserDocRef = doc(db, 'users', viewerUser.uid);
+    try {
+        if (isBlockedByViewer) {
+            await updateDoc(viewerUserDocRef, { blockedUserIds: arrayRemove(profile.uid) });
+            toast({ title: "User Unblocked", description: `${profile.companyName || profile.username} has been unblocked.` });
+            setIsBlockedByViewer(false);
+        } else {
+            await updateDoc(viewerUserDocRef, { blockedUserIds: arrayUnion(profile.uid) });
+            toast({ title: "User Blocked", description: `${profile.companyName || profile.username} has been blocked.` });
+            setIsBlockedByViewer(true);
+        }
+        if (refreshUserProfile) await refreshUserProfile();
+    } catch (err: any) {
+        console.error("Error blocking/unblocking user:", err);
+        toast({ title: "Error", description: `Could not ${isBlockedByViewer ? 'unblock' : 'block'} user: ${err.message}`, variant: "destructive" });
+    } finally {
+        setIsBlockProcessing(false);
+        setShowBlockConfirmDialog(false);
+    }
+  };
+
 
   const handleOpenFollowingModal = async () => {
     if (!profile || !profile.following || profile.following.length === 0) {
@@ -326,6 +374,32 @@ export default function PublicProfilePage() {
   if (!profile) {
     return <div className="text-center py-10 text-muted-foreground">Profile not found.</div>;
   }
+  
+  if (viewerUserProfile && viewerUserProfile.blockedUserIds?.includes(userId)) {
+    return (
+      <div className="max-w-xl mx-auto py-8 text-center space-y-4">
+         <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2 self-start absolute top-20 left-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
+        <Card className="glass-card p-8">
+            <CardHeader>
+                <UserX className="mx-auto h-16 w-16 text-destructive mb-3"/>
+                <CardTitle>User Blocked</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">You have blocked this user. To see their profile, you need to unblock them.</p>
+            </CardContent>
+            <CardFooter>
+                <Button onClick={() => handleBlockUnblockUser()} disabled={isBlockProcessing} className="w-full">
+                    {isBlockProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Unblock User
+                </Button>
+            </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
 
   const isOwnProfile = viewerUser?.uid === profile.uid;
   const displayName = profile.role === 'client'
@@ -337,7 +411,7 @@ export default function PublicProfilePage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
-        <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2">
+        <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2 self-start">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
 
@@ -348,64 +422,51 @@ export default function PublicProfilePage() {
                   <AvatarImage src={profile.profilePictureUrl} alt={displayName} />
                    <AvatarFallback>{getInitials(profile.email, profile.username, profile.companyName)}</AvatarFallback>
                </Avatar>
-               <div className="sm:flex-1 space-y-2 text-center sm:text-left">
+               <div className="sm:flex-1 space-y-2 text-center sm:text-left w-full">
                    <div className='flex flex-row items-center justify-between gap-2'>
                         <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
                             {displayName}
                             {profile.role === 'student' && <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                         </h1>
-                        {!isOwnProfile && viewerUser && (
-                            <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive h-8 w-8 sm:h-9 sm:w-9">
-                                        <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
-                                        <span className="sr-only">Report User</span>
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                    <AlertDialogTitle>Report {displayName}</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        Help us keep HustleUp safe. If this user is violating our community guidelines, please let us know.
-                                    </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <div className="space-y-4 py-2">
-                                        <div>
-                                            <Label htmlFor="reportReason" className="text-sm font-medium">Reason for reporting</Label>
-                                            <Select value={reportReason} onValueChange={(value) => setReportReason(value as ReportReason)}>
-                                                <SelectTrigger id="reportReason" className="w-full mt-1">
-                                                    <SelectValue placeholder="Select a reason" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {REPORT_REASONS.map(reason => (
-                                                        <SelectItem key={reason} value={reason}>{reason}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div>
-                                            <Label htmlFor="reportDetails" className="text-sm font-medium">Additional Details (Optional)</Label>
-                                            <Textarea
-                                                id="reportDetails"
-                                                placeholder="Provide more information about the issue..."
-                                                value={reportDetails}
-                                                onChange={(e) => setReportDetails(e.target.value)}
-                                                rows={3}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                    </div>
-                                    <AlertDialogFooter>
-                                    <AlertDialogCancel disabled={isSubmittingReport}>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleSubmitReport} disabled={isSubmittingReport || !reportReason}>
-                                        {isSubmittingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Submit Report
-                                    </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        )}
+                        {/* 3-dot menu */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 data-[state=open]:bg-muted shrink-0">
+                                    <MoreVertical className="h-5 w-5" />
+                                    <span className="sr-only">Profile Options</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onSelect={handleShareProfile} className="cursor-pointer">
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    <span>Share Profile</span>
+                                </DropdownMenuItem>
+                                {viewerUser && viewerUser.uid !== profile.uid && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <AlertDialogTriggerShad asChild>
+                                          <DropdownMenuItem 
+                                            onSelect={(e) => { e.preventDefault(); setShowReportDialog(true); }} 
+                                            className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                                          >
+                                            <ShieldAlert className="mr-2 h-4 w-4" />
+                                            <span>Report Account</span>
+                                          </DropdownMenuItem>
+                                        </AlertDialogTriggerShad>
+                                         <AlertDialogTriggerShad asChild>
+                                          <DropdownMenuItem 
+                                            onSelect={(e) => { e.preventDefault(); setShowBlockConfirmDialog(true);}} 
+                                            className={cn("cursor-pointer", isBlockedByViewer ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
+                                           >
+                                            {isBlockedByViewer ? <UserCheck className="mr-2 h-4 w-4" /> : <UserX className="mr-2 h-4 w-4" />}
+                                            <span>{isBlockedByViewer ? "Unblock Account" : "Block Account"}</span>
+                                          </DropdownMenuItem>
+                                         </AlertDialogTriggerShad>
+                                    </>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                    </div>
 
                     <div className="flex flex-col sm:flex-row items-center sm:justify-start gap-2 pt-1">
@@ -646,6 +707,77 @@ export default function PublicProfilePage() {
             </>
         )}
       </Card>
+
+      {/* Report Dialog */}
+      <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Report {displayName}</AlertDialogTitle>
+            <AlertDialogDescription>
+                Help us keep HustleUp safe. If this user is violating our community guidelines, please let us know.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 py-2">
+                <div>
+                    <Label htmlFor="reportReason" className="text-sm font-medium">Reason for reporting</Label>
+                    <Select value={reportReason} onValueChange={(value) => setReportReason(value as ReportReason)}>
+                        <SelectTrigger id="reportReason" className="w-full mt-1">
+                            <SelectValue placeholder="Select a reason" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {REPORT_REASONS.map(reason => (
+                                <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label htmlFor="reportDetails" className="text-sm font-medium">Additional Details (Optional)</Label>
+                    <Textarea
+                        id="reportDetails"
+                        placeholder="Provide more information about the issue..."
+                        value={reportDetails}
+                        onChange={(e) => setReportDetails(e.target.value)}
+                        rows={3}
+                        className="mt-1"
+                    />
+                </div>
+            </div>
+            <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmittingReport}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSubmitReport} disabled={isSubmittingReport || !reportReason}>
+                {isSubmittingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Submit Report
+            </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Block/Unblock Confirm Dialog */}
+        <AlertDialog open={showBlockConfirmDialog} onOpenChange={setShowBlockConfirmDialog}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        {isBlockedByViewer
+                            ? `Unblocking ${displayName} will allow you to see their content and interact with them again.`
+                            : `Blocking ${displayName} will prevent you from seeing their gigs, posts, and chatting with them. They will not be notified.`}
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setShowBlockConfirmDialog(false)} disabled={isBlockProcessing}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                        onClick={handleBlockUnblockUser}
+                        disabled={isBlockProcessing}
+                        className={isBlockedByViewer ? "" : "bg-destructive hover:bg-destructive/90"}
+                    >
+                        {isBlockProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isBlockedByViewer ? "Unblock" : "Block"}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
 
       {/* Followers Modal */}
       <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>

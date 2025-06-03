@@ -78,6 +78,12 @@ export default function BrowseGigsPage() {
           isFromFollowedClient: false, 
         })) as Gig[];
 
+        // Filter out gigs from blocked clients if viewer is a student
+        if (currentUser && role === 'student' && userProfile && userProfile.blockedUserIds && userProfile.blockedUserIds.length > 0) {
+          allOpenGigs = allOpenGigs.filter(gig => !userProfile.blockedUserIds?.includes(gig.clientId));
+        }
+
+
         if (!authLoading && currentUser && role === 'student' && userProfile) {
           const followedClientIds = userProfile.following || [];
           const studentSkillsLower = (userProfile.skills as Skill[])?.map(s => s.toLowerCase()) || [];
@@ -340,3 +346,4 @@ export default function BrowseGigsPage() {
   );
 }
     
+

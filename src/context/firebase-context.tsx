@@ -33,7 +33,8 @@ export interface UserProfile extends DocumentData {
   // Follower/Following system
   following?: string[]; // Array of UIDs this user is following
   followersCount?: number; // Number of users following this user
-  // followingCount can be derived from following.length
+  
+  blockedUserIds?: string[]; // Array of UIDs this user has blocked
 }
 
 interface FirebaseContextType {
@@ -43,7 +44,7 @@ interface FirebaseContextType {
   role: UserRole;
   refreshUserProfile: () => Promise<void>;
   totalUnreadChats: number;
-  clientUnreadNotificationCount: number; // New for client notifications
+  clientUnreadNotificationCount: number;
   firebaseActuallyInitialized: boolean;
   initializationError: string | null;
 }
@@ -91,6 +92,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             followersCount: docSnap.data().followersCount || 0,
             personalEmail: docSnap.data().personalEmail || '',
             personalPhone: docSnap.data().personalPhone || '',
+            blockedUserIds: docSnap.data().blockedUserIds || [],
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client') {
@@ -113,6 +115,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             followersCount: 0,
             personalEmail: '',
             personalPhone: '',
+            blockedUserIds: [],
           };
           setUserProfile(basicProfile);
           setRole(null);
@@ -130,6 +133,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           followersCount: 0,
           personalEmail: '',
           personalPhone: '',
+          blockedUserIds: [],
         });
         setRole(null);
       }
