@@ -3,13 +3,13 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, AlertTriangle } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -20,6 +20,10 @@ import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 
 interface StudentPost {
@@ -38,6 +42,18 @@ interface ClientGig {
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   createdAt: Timestamp;
 }
+
+const REPORT_REASONS = [
+  "Spam or Misleading",
+  "Inappropriate Content or Profile",
+  "Harassment or Hate Speech",
+  "Scam or Fraudulent Activity",
+  "Impersonation",
+  "Intellectual Property Violation",
+  "Other",
+] as const;
+
+type ReportReason = typeof REPORT_REASONS[number];
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -60,6 +76,11 @@ export default function PublicProfilePage() {
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [modalUserList, setModalUserList] = useState<UserProfile[]>([]);
   const [isLoadingModalList, setIsLoadingModalList] = useState(false);
+
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportReason, setReportReason] = useState<ReportReason | ''>('');
+  const [reportDetails, setReportDetails] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
 
   useEffect(() => {
@@ -248,6 +269,40 @@ export default function PublicProfilePage() {
     }
   };
 
+  const handleSubmitReport = async () => {
+    if (!viewerUser || !viewerUserProfile || !profile || !db) {
+      toast({ title: "Error", description: "Cannot submit report. Missing user data or database connection.", variant: "destructive" });
+      return;
+    }
+    if (!reportReason) {
+      toast({ title: "Reason Required", description: "Please select a reason for reporting.", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingReport(true);
+    try {
+      const reportData = {
+        reportedUserId: profile.uid,
+        reportedUsername: profile.username || profile.email || 'Unknown Profile',
+        reporterUserId: viewerUser.uid,
+        reporterUsername: viewerUserProfile.username || viewerUser.email?.split('@')[0] || 'Anonymous Reporter',
+        reason: reportReason,
+        details: reportDetails.trim() || '',
+        reportedAt: serverTimestamp(),
+        status: 'pending_review',
+      };
+      await addDoc(collection(db, 'account_reports'), reportData);
+      toast({ title: "Report Submitted", description: "Thank you for helping keep HustleUp safe. Your report has been received." });
+      setShowReportDialog(false);
+      setReportReason('');
+      setReportDetails('');
+    } catch (err: any) {
+      console.error("Error submitting report:", err);
+      toast({ title: "Report Failed", description: `Could not submit report: ${err.message}`, variant: "destructive" });
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -317,6 +372,54 @@ export default function PublicProfilePage() {
                                         <MessageSquare className="mr-1 h-4 w-4" /> Contact
                                     </Link>
                                 </Button>
+                                <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="outline" size="sm" className="w-full sm:w-auto text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/50 hover:border-destructive">
+                                            <AlertTriangle className="mr-1 h-4 w-4" /> Report
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                        <AlertDialogTitle>Report {displayName}</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Help us keep HustleUp safe. If this user is violating our community guidelines, please let us know.
+                                        </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <div className="space-y-4 py-2">
+                                            <div>
+                                                <Label htmlFor="reportReason" className="text-sm font-medium">Reason for reporting</Label>
+                                                <Select value={reportReason} onValueChange={(value) => setReportReason(value as ReportReason)}>
+                                                    <SelectTrigger id="reportReason" className="w-full mt-1">
+                                                        <SelectValue placeholder="Select a reason" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {REPORT_REASONS.map(reason => (
+                                                            <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="reportDetails" className="text-sm font-medium">Additional Details (Optional)</Label>
+                                                <Textarea
+                                                    id="reportDetails"
+                                                    placeholder="Provide more information about the issue..."
+                                                    value={reportDetails}
+                                                    onChange={(e) => setReportDetails(e.target.value)}
+                                                    rows={3}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                        </div>
+                                        <AlertDialogFooter>
+                                        <AlertDialogCancel disabled={isSubmittingReport}>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={handleSubmitReport} disabled={isSubmittingReport || !reportReason}>
+                                            {isSubmittingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Submit Report
+                                        </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </div>
                         )}
                    </div>
