@@ -45,7 +45,7 @@ const portfolioLinkSchema = z.object({
 const profileSchema = z.object({
   username: z.string().min(3, { message: 'Username must be at least 3 characters' }).max(30, {message: 'Username cannot exceed 30 characters'}),
   bio: z.string().max(500, { message: 'Bio cannot exceed 500 characters' }).optional().or(z.literal('')),
-  skills: z.array(z.string()).max(15, { message: 'Maximum 15 skills allowed' }).optional(),
+  skills: z.array(z.string()).max(20, { message: 'Maximum 20 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
 });
 
@@ -427,10 +427,10 @@ export default function StudentProfilePage() {
                           selected={(field.value as Skill[]) || []}
                           onChange={field.onChange}
                           placeholder="Select your skills"
-                          maxSkills={15}
+                          maxSkills={20}
                         />
                       </FormControl>
-                      <FormDescription>List your key skills (max 15).</FormDescription>
+                      <FormDescription>List your key skills (max 20).</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
