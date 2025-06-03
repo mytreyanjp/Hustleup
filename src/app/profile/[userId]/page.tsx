@@ -18,9 +18,9 @@ import Image from 'next/image';
 import { StarRating } from '@/components/ui/star-rating';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger as AlertDialogTriggerShad } from "@/components/ui/alert-dialog"; // Renamed to avoid conflict
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -429,44 +429,37 @@ export default function PublicProfilePage() {
                             {profile.role === 'student' && <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                         </h1>
-                        {/* 3-dot menu */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 data-[state=open]:bg-muted shrink-0">
-                                    <MoreVertical className="h-5 w-5" />
-                                    <span className="sr-only">Profile Options</span>
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onSelect={handleShareProfile} className="cursor-pointer">
-                                    <Copy className="mr-2 h-4 w-4" />
-                                    <span>Share Profile</span>
-                                </DropdownMenuItem>
-                                {viewerUser && viewerUser.uid !== profile.uid && (
-                                    <>
-                                        <DropdownMenuSeparator />
-                                        <AlertDialogTriggerShad asChild>
-                                          <DropdownMenuItem 
-                                            onSelect={(e) => { e.preventDefault(); setShowReportDialog(true); }} 
-                                            className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
-                                          >
-                                            <ShieldAlert className="mr-2 h-4 w-4" />
-                                            <span>Report Account</span>
-                                          </DropdownMenuItem>
-                                        </AlertDialogTriggerShad>
-                                         <AlertDialogTriggerShad asChild>
-                                          <DropdownMenuItem 
-                                            onSelect={(e) => { e.preventDefault(); setShowBlockConfirmDialog(true);}} 
-                                            className={cn("cursor-pointer", isBlockedByViewer ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
-                                           >
-                                            {isBlockedByViewer ? <UserCheck className="mr-2 h-4 w-4" /> : <UserX className="mr-2 h-4 w-4" />}
-                                            <span>{isBlockedByViewer ? "Unblock Account" : "Block Account"}</span>
-                                          </DropdownMenuItem>
-                                         </AlertDialogTriggerShad>
-                                    </>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        {!isOwnProfile && viewerUser && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 data-[state=open]:bg-muted shrink-0">
+                                        <MoreVertical className="h-5 w-5" />
+                                        <span className="sr-only">Profile Options</span>
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem onSelect={handleShareProfile} className="cursor-pointer">
+                                        <Copy className="mr-2 h-4 w-4" />
+                                        <span>Share Profile</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem 
+                                        onSelect={() => setShowReportDialog(true)} 
+                                        className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                                    >
+                                        <ShieldAlert className="mr-2 h-4 w-4" />
+                                        <span>Report Account</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                        onSelect={() => setShowBlockConfirmDialog(true)} 
+                                        className={cn("cursor-pointer", isBlockedByViewer ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
+                                    >
+                                        {isBlockedByViewer ? <UserCheck className="mr-2 h-4 w-4" /> : <UserX className="mr-2 h-4 w-4" />}
+                                        <span>{isBlockedByViewer ? "Unblock Account" : "Block Account"}</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
                    </div>
 
                     <div className="flex flex-col sm:flex-row items-center sm:justify-start gap-2 pt-1">
