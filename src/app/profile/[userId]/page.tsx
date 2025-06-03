@@ -349,12 +349,66 @@ export default function PublicProfilePage() {
                    <AvatarFallback>{getInitials(profile.email, profile.username, profile.companyName)}</AvatarFallback>
                </Avatar>
                <div className="sm:flex-1 space-y-2 text-center sm:text-left">
-                   <div className='flex flex-col sm:flex-row items-center sm:justify-between gap-2'>
+                   <div className='flex flex-row items-center justify-between gap-2'>
                         <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
                             {displayName}
                             {profile.role === 'student' && <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                         </h1>
+                        {!isOwnProfile && viewerUser && (
+                            <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive h-8 w-8 sm:h-9 sm:w-9">
+                                        <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
+                                        <span className="sr-only">Report User</span>
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                    <AlertDialogTitle>Report {displayName}</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Help us keep HustleUp safe. If this user is violating our community guidelines, please let us know.
+                                    </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <div className="space-y-4 py-2">
+                                        <div>
+                                            <Label htmlFor="reportReason" className="text-sm font-medium">Reason for reporting</Label>
+                                            <Select value={reportReason} onValueChange={(value) => setReportReason(value as ReportReason)}>
+                                                <SelectTrigger id="reportReason" className="w-full mt-1">
+                                                    <SelectValue placeholder="Select a reason" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {REPORT_REASONS.map(reason => (
+                                                        <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="reportDetails" className="text-sm font-medium">Additional Details (Optional)</Label>
+                                            <Textarea
+                                                id="reportDetails"
+                                                placeholder="Provide more information about the issue..."
+                                                value={reportDetails}
+                                                onChange={(e) => setReportDetails(e.target.value)}
+                                                rows={3}
+                                                className="mt-1"
+                                            />
+                                        </div>
+                                    </div>
+                                    <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={isSubmittingReport}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleSubmitReport} disabled={isSubmittingReport || !reportReason}>
+                                        {isSubmittingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Submit Report
+                                    </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
+                   </div>
+
+                    <div className="flex flex-col sm:flex-row items-center sm:justify-start gap-2 pt-1">
                         {isOwnProfile ? (
                             <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
                                 <Link href={profile.role === 'student' ? `/student/profile` : `/client/profile/edit`}>
@@ -362,7 +416,7 @@ export default function PublicProfilePage() {
                                 </Link>
                             </Button>
                         ) : viewerUser && profile.role && (
-                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <>
                                 <Button size="sm" onClick={handleFollowToggle} disabled={isFollowProcessing} className="w-full sm:w-auto">
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
@@ -372,59 +426,11 @@ export default function PublicProfilePage() {
                                         <MessageSquare className="mr-1 h-4 w-4" /> Contact
                                     </Link>
                                 </Button>
-                                <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="outline" size="sm" className="w-full sm:w-auto text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/50 hover:border-destructive">
-                                            <AlertTriangle className="mr-1 h-4 w-4" /> Report
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                        <AlertDialogTitle>Report {displayName}</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            Help us keep HustleUp safe. If this user is violating our community guidelines, please let us know.
-                                        </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <div className="space-y-4 py-2">
-                                            <div>
-                                                <Label htmlFor="reportReason" className="text-sm font-medium">Reason for reporting</Label>
-                                                <Select value={reportReason} onValueChange={(value) => setReportReason(value as ReportReason)}>
-                                                    <SelectTrigger id="reportReason" className="w-full mt-1">
-                                                        <SelectValue placeholder="Select a reason" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {REPORT_REASONS.map(reason => (
-                                                            <SelectItem key={reason} value={reason}>{reason}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="reportDetails" className="text-sm font-medium">Additional Details (Optional)</Label>
-                                                <Textarea
-                                                    id="reportDetails"
-                                                    placeholder="Provide more information about the issue..."
-                                                    value={reportDetails}
-                                                    onChange={(e) => setReportDetails(e.target.value)}
-                                                    rows={3}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                        </div>
-                                        <AlertDialogFooter>
-                                        <AlertDialogCancel disabled={isSubmittingReport}>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleSubmitReport} disabled={isSubmittingReport || !reportReason}>
-                                            {isSubmittingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                            Submit Report
-                                        </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </div>
+                            </>
                         )}
-                   </div>
+                    </div>
 
-                    <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground">
+                    <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground pt-2">
                         <button onClick={handleOpenFollowersModal} className="flex items-center gap-1 hover:underline focus:outline-none">
                             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="font-semibold text-foreground">{profile.followersCount || 0}</span> Followers
@@ -724,4 +730,6 @@ export default function PublicProfilePage() {
     </div>
   );
 }
+    
+
     
