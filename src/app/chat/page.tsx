@@ -110,17 +110,14 @@ export default function ChatPage() {
   }, [emojiPickerRef]);
 
 
-  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string) => {
+  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string, targetUserRole?: 'student' | 'client' | null) => {
     if (!user || !userProfile || !db) return null;
 
     if (userProfile.blockedUserIds?.includes(targetUserId)) {
         toast({ title: "Chat Blocked", description: "You have blocked this user. Unblock them to start a chat.", variant: "destructive" });
-        router.push('/chat'); // Go back to chat list or a safe page
+        router.push('/chat');
         return null;
     }
-    // Also check if the target user has blocked the current user (if such a field exists and is readable)
-    // For now, this focuses on the current user's block list.
-
 
     const chatId = getChatId(user.uid, targetUserId);
     const chatDocRef = doc(db, 'chats', chatId);
@@ -130,7 +127,7 @@ export default function ChatPage() {
       if (chatSnap.exists()) {
         const existingChatData = chatSnap.data() as ChatMetadata;
         let updateRequired = false;
-        const updates: Partial<ChatMetadata> & {updatedAt?: any} = { updatedAt: serverTimestamp() };
+        const updates: Partial<ChatMetadata> & {updatedAt?: any, lastMessageTimestamp?: any, createdAt?: any} = { updatedAt: serverTimestamp() };
 
         if (gigIdForContext && existingChatData.gigId !== gigIdForContext) {
             updates.gigId = gigIdForContext;
@@ -139,8 +136,24 @@ export default function ChatPage() {
              updates.gigId = gigIdForContext;
              updateRequired = true;
         }
-
-        if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
+        
+        const isClientInitiatingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
+        if (isClientInitiatingWithStudent && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
+            updates.chatStatus = 'accepted';
+            updates.lastMessage = "Chat is now active.";
+            updates.lastMessageTimestamp = serverTimestamp();
+            updates.lastMessageSenderId = 'system'; 
+            updates.lastMessageReadBy = [];
+            updateRequired = true;
+            
+            const messagesColRef = collection(chatDocRef, 'messages');
+            addDoc(messagesColRef, {
+                senderId: 'system',
+                text: 'This chat has been automatically activated by the client.',
+                timestamp: serverTimestamp(),
+                messageType: 'system_gig_connection_activated',
+            }).catch(console.error);
+        } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
             updates.chatStatus = 'accepted';
             updates.lastMessage = "Chat is now active via gig link.";
             updates.lastMessageTimestamp = serverTimestamp();
@@ -159,6 +172,16 @@ export default function ChatPage() {
         
         if (updateRequired) {
             await updateDoc(chatDocRef, updates);
+            // Optimistically update local state
+            const clientSideUpdates = { ...updates };
+            if (clientSideUpdates.updatedAt === serverTimestamp()) clientSideUpdates.updatedAt = Timestamp.now();
+            if (clientSideUpdates.lastMessageTimestamp === serverTimestamp()) clientSideUpdates.lastMessageTimestamp = Timestamp.now();
+            if (clientSideUpdates.createdAt === serverTimestamp()) clientSideUpdates.createdAt = Timestamp.now();
+
+            setChats(prev => prev.map(chat => chat.id === chatId ? {
+                ...chat,
+                ...clientSideUpdates
+            } as ChatMetadata : chat));
         }
         setSelectedChatId(chatId);
         return chatId;
@@ -183,7 +206,8 @@ export default function ChatPage() {
           newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
         }
 
-        if (gigIdForContext) {
+        const isClientInitiatingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
+        if (isClientInitiatingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
           newChatData.chatStatus = 'accepted';
           newChatData.gigId = gigIdForContext;
           newChatData.lastMessage = 'Chat started.';
@@ -197,9 +221,26 @@ export default function ChatPage() {
           newChatData.lastMessageSenderId = user.uid;
           newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
           newChatData.lastMessageReadBy = [user.uid];
+           if (gigIdForContext) newChatData.gigId = gigIdForContext; // Still associate gigId if present
         }
 
         await setDoc(chatDocRef, newChatData);
+        
+        // Optimistically add to local state
+        const localNewChatData: ChatMetadata = {
+            ...newChatData,
+            id: chatId,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            lastMessageTimestamp: newChatData.lastMessageTimestamp === serverTimestamp() ? Timestamp.now() : (newChatData.lastMessageTimestamp as Timestamp | null),
+        };
+        setChats(prevChats => {
+            if (prevChats.find(c => c.id === chatId)) { // Avoid duplicates if snapshot comes fast
+                return prevChats.map(c => c.id === chatId ? localNewChatData : c);
+            }
+            return [localNewChatData, ...prevChats];
+        });
+
         setSelectedChatId(chatId);
         return chatId;
       }
@@ -208,7 +249,7 @@ export default function ChatPage() {
       toast({ title: "Chat Error", description: "Could not start or find the chat.", variant: "destructive" });
       return null;
     }
-  }, [user, userProfile, toast, router]);
+  }, [user, userProfile, toast, router, setChats]); // Added setChats
 
 
   useEffect(() => {
@@ -220,7 +261,6 @@ export default function ChatPage() {
     const gigIdForChatContext = searchParams.get('gigId');
     const preselectChatId = searchParams.get('chatId');
 
-    // New profile share params
     const shareProfileUserId = searchParams.get('shareUserId');
     const shareProfileUsername = searchParams.get('shareUsername');
     const shareProfilePicUrl = searchParams.get('shareUserProfilePictureUrl');
@@ -233,10 +273,10 @@ export default function ChatPage() {
         profilePictureUrl: shareProfilePicUrl ? decodeURIComponent(shareProfilePicUrl) : undefined,
         userRole: shareProfileRole,
       });
-      setMessage(''); // Clear message input for shared content
+      setMessage(''); 
       toast({ title: "Profile Ready to Share", description: "Select a chat and send your message." });
       if (typeof window !== 'undefined') {
-        router.replace('/chat', { scroll: false }); // Clear query params
+        router.replace('/chat', { scroll: false }); 
       }
     } else if (shareGigId && shareGigTitle) {
       setPendingGigShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
@@ -272,12 +312,11 @@ export default function ChatPage() {
             return;
           }
           setTargetUserForNewChat(targetUserData);
-          await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined);
+          await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined, targetUserData.role);
         } else {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
         }
-        // Clear all relevant query parameters after processing
         const paramsToRemove = ['userId', 'gigId', 'shareGigId', 'shareGigTitle', 'shareUserId', 'shareUsername', 'shareUserProfilePictureUrl', 'shareUserRole', 'chatId'];
         let currentUrl = new URL(window.location.href);
         let paramsChanged = false;
@@ -293,7 +332,6 @@ export default function ChatPage() {
       };
       fetchTargetUserAndCreateChat();
     } else if (!shareGigId && !targetUserId && !preselectChatId && (searchParams.toString() !== '') && typeof window !== 'undefined') {
-        // Generic cleanup if some params were present but not handled above
         router.replace('/chat', { scroll: false });
     }
   }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router, toast]);
@@ -318,16 +356,12 @@ export default function ChatPage() {
         ...docSnap.data(),
       })) as ChatMetadata[];
 
-      // Filter out chats with users blocked by the current user
       if (userProfile && userProfile.blockedUserIds && userProfile.blockedUserIds.length > 0) {
         fetchedChats = fetchedChats.filter(chat => {
           const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
           return !(otherParticipantId && userProfile.blockedUserIds?.includes(otherParticipantId));
         });
       }
-      // TODO: Also consider filtering if the *other* user has blocked the current user,
-      // if `blockedUserIds` is made public or if a separate "blocksMe" list is maintained.
-
       setChats(fetchedChats);
       setIsLoadingChats(false);
     }, (error) => {
@@ -337,7 +371,7 @@ export default function ChatPage() {
     });
 
     return () => unsubscribe();
-  }, [user, userProfile, toast]); // Added userProfile to dependencies
+  }, [user, userProfile, toast]); 
 
   useEffect(() => {
     if (!selectedChatId || !user || !db) {
@@ -443,7 +477,7 @@ export default function ChatPage() {
 
     const currentChatDetails = chats.find(c => c.id === selectedChatId);
     if (!currentChatDetails) {
-        toast({ title: "Cannot Send", description: "Chat details not found.", variant: "destructive"});
+        toast({ title: "Cannot Send", description: "Chat details not found or not yet loaded.", variant: "destructive"});
         return;
     }
     
@@ -530,7 +564,7 @@ export default function ChatPage() {
       batchOp.set(doc(messagesColRef), newMessageContent);
 
       const chatUpdateData: Partial<ChatMetadata> & {updatedAt: any, lastMessageTimestamp: any} = {
-        lastMessage: lastMessageText.substring(0, 100), // Firestore limit
+        lastMessage: lastMessageText.substring(0, 100), 
         lastMessageTimestamp: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
@@ -644,7 +678,7 @@ export default function ChatPage() {
           key={msg.id}
           className={`flex mb-1 ${msg.senderId === user?.uid ? 'justify-end' : msg.senderId === 'system' ? 'justify-center' : 'justify-start'}`}
         >
-          {msg.sharedGigId && msg.sharedGigTitle ? ( // GIG SHARING CARD
+          {msg.sharedGigId && msg.sharedGigTitle ? ( 
              <Link
                 href={`/gigs/${msg.sharedGigId}`}
                 target="_blank"
@@ -701,7 +735,7 @@ export default function ChatPage() {
                     {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                  </p>
               </Link>
-          ) : msg.sharedUserId && msg.sharedUsername ? ( // PROFILE SHARING CARD
+          ) : msg.sharedUserId && msg.sharedUsername ? ( 
              <Link
                 href={`/profile/${msg.sharedUserId}`}
                 target="_blank"
@@ -757,7 +791,7 @@ export default function ChatPage() {
                     {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                  </p>
               </Link>
-          ) : ( // REGULAR MESSAGE BUBBLE
+          ) : ( 
             <div 
               className={cn(
                 "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
@@ -818,7 +852,6 @@ export default function ChatPage() {
   const otherUserProfilePicture = otherUserId ? selectedChatDetails?.participantProfilePictures?.[otherUserId] : undefined;
   
   const isOtherUserBlockedByCurrentUser = otherUserId && userProfile?.blockedUserIds?.includes(otherUserId);
-  // Add state to check if current user is blocked by otherUser, fetch this when selecting a chat.
   const [isCurrentUserBlockedByOther, setIsCurrentUserBlockedByOther] = useState(false);
 
   useEffect(() => {
@@ -1141,3 +1174,4 @@ export default function ChatPage() {
     </div>
   );
 }
+
