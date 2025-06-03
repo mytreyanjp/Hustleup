@@ -43,11 +43,18 @@ interface FirebaseContextType {
   role: UserRole;
   refreshUserProfile: () => Promise<void>;
   totalUnreadChats: number;
+  clientUnreadNotificationCount: number; // New for client notifications
   firebaseActuallyInitialized: boolean;
   initializationError: string | null;
 }
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
+
+interface GigForNotificationCount {
+  id: string;
+  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+}
 
 export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -57,6 +64,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [firebaseActuallyInitializedState, setFirebaseActuallyInitializedState] = useState(false);
   const [initializationErrorState, setInitializationErrorState] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
+  const [clientUnreadNotificationCount, setClientUnreadNotificationCount] = useState(0);
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
     if (!db) {
@@ -233,11 +241,38 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user]);
 
+  // Effect for client notification count
+  useEffect(() => {
+    if (user && role === 'client' && db) {
+      const gigsRef = collection(db, "gigs");
+      const q = query(gigsRef, where("clientId", "==", user.uid), where("status", "==", "open"));
+      
+      const unsubscribeClientNotifications = onSnapshot(q, (querySnapshot) => {
+        let pendingApplicants = 0;
+        querySnapshot.forEach((doc) => {
+          const gig = doc.data() as GigForNotificationCount;
+          if (gig.applicants) {
+            gig.applicants.forEach(applicant => {
+              if (!applicant.status || applicant.status === 'pending') {
+                pendingApplicants++;
+              }
+            });
+          }
+        });
+        setClientUnreadNotificationCount(pendingApplicants);
+      }, (error) => {
+        console.error("Error fetching client gig notifications:", error);
+        setClientUnreadNotificationCount(0);
+      });
 
-  // Note: Removed the direct rendering of global loader/error from here.
-  // Consumers of the context (like AppBody) will handle this.
+      return () => unsubscribeClientNotifications();
+    } else {
+      setClientUnreadNotificationCount(0); // Reset if not client or not logged in
+    }
+  }, [user, role]);
 
-  const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats, firebaseActuallyInitialized: firebaseActuallyInitializedState, initializationError: initializationErrorState };
+
+  const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats, clientUnreadNotificationCount, firebaseActuallyInitialized: firebaseActuallyInitializedState, initializationError: initializationErrorState };
 
   return (
     <FirebaseContext.Provider value={value}>
@@ -253,4 +288,6 @@ export const useFirebase = () => {
   }
   return context;
 };
+    
+
     

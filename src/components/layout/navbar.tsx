@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -38,7 +38,7 @@ interface SuggestedGig {
 }
 
 export default function Navbar() {
-  const { user, userProfile, loading, role, totalUnreadChats } = useFirebase();
+  const { user, userProfile, loading, role, totalUnreadChats, clientUnreadNotificationCount } = useFirebase();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [isClient, setIsClient] = useState(false);
@@ -244,8 +244,9 @@ export default function Navbar() {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
               </svg>
-              <span className="font-bold inline-block">HustleUp</span>
+              <span className="font-bold inline-block">Hustle Up</span>
             </Link>
+            {!isMobile && ( // Hide desktop nav items on mobile
             <nav className="items-center space-x-2 sm:space-x-4 hidden md:flex">
               <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
                 <Compass className="mr-1 h-4 w-4" />
@@ -273,9 +274,9 @@ export default function Navbar() {
                 </Link>
               )}
             </nav>
+            )}
           </div>
         )}
-        {/* Spacer div if logo is hidden on mobile search view to maintain justify-between for right side */}
         {(isMobile && isMobileSearchVisible) && <div />}
 
 
@@ -289,7 +290,7 @@ export default function Navbar() {
                   <Link href="/gigs/browse" className="text-muted-foreground hover:text-primary p-1.5" aria-label="Explore Gigs">
                     <Compass className="h-5 w-5" />
                   </Link>
-                  {/* Theme toggle is in user menu, no need for a separate one here if user is logged in */}
+                  <ModeToggle />
                 </>
               ) : isMobileSearchVisible ? (
                 // Mobile + Search Active (not login page): Show Back button + Search Bar
@@ -300,16 +301,25 @@ export default function Navbar() {
                   {SearchBarComponent}
                 </div>
               ) : (
-                // Mobile + Default (not login, not search active): Show Search Icon
+                // Mobile + Default (not login, not search active): Show Search Icon (and Notifications if client)
                 <>
                   <Button variant="ghost" size="icon" onClick={handleShowMobileSearch} aria-label="Open search" className="h-8 w-8">
                     <SearchIcon className="h-5 w-5" />
                   </Button>
+                  {isClient && user && role === 'client' && (
+                    <Link href="/client/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
+                      <Bell className="h-5 w-5" />
+                      {clientUnreadNotificationCount > 0 && (
+                         <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
+                           {clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}
+                         </span>
+                      )}
+                    </Link>
+                  )}
                 </>
               )}
 
-              {/* User/Auth Buttons for Mobile: Only shown if NOT search active OR if on login page */}
-              { (!isMobileSearchVisible || isLoginPage) && (
+              { (!isMobileSearchVisible) && (
                 isClient ? (
                   loading ? (<Skeleton className="h-8 w-8 rounded-full" />) :
                   user ? (
@@ -349,6 +359,11 @@ export default function Navbar() {
                         {role === 'client' && (
                           <>
                             <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
+                             <DropdownMenuItem asChild><Link href="/client/notifications">
+                                <Bell className="mr-2 h-4 w-4" />
+                                <span>Notifications</span>
+                                {clientUnreadNotificationCount > 0 && <span className="ml-auto text-xs bg-destructive text-destructive-foreground h-4 w-4 rounded-full flex items-center justify-center">{clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}</span>}
+                            </Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
                           </>
@@ -381,9 +396,7 @@ export default function Navbar() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
-                    // Not logged in: show Login/Signup buttons and Theme toggle if on login page
                     <>
-                      {isLoginPage && <ModeToggle />}
                       {!isLoginPage && (
                         <>
                            <Button variant="ghost" asChild size="sm" className="text-xs px-2"><Link href="/auth/login">Log In</Link></Button>
@@ -399,7 +412,17 @@ export default function Navbar() {
             // Desktop View
             <>
               {SearchBarComponent}
-              <ModeToggle />
+              {isClient && user && role === 'client' && (
+                <Link href="/client/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
+                    <Bell className="h-5 w-5" />
+                    {clientUnreadNotificationCount > 0 && (
+                        <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
+                        {clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}
+                        </span>
+                    )}
+                </Link>
+              )}
+              {!isMobile && <ModeToggle />} 
               {isClient ? (
                 loading ? (<Skeleton className="h-8 w-8 rounded-full" />) :
                 user ? (
@@ -413,7 +436,6 @@ export default function Navbar() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-52 sm:w-56" align="end" forceMount>
-                      {/* Same dropdown content as mobile */}
                       <DropdownMenuLabel className="font-normal">
                         <div className="flex flex-col space-y-1">
                           <p className="text-sm font-medium leading-none truncate">
@@ -440,6 +462,11 @@ export default function Navbar() {
                       {role === 'client' && (
                         <>
                           <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
+                           <DropdownMenuItem asChild><Link href="/client/notifications">
+                                <Bell className="mr-2 h-4 w-4" />
+                                <span>Notifications</span>
+                                {clientUnreadNotificationCount > 0 && <span className="ml-auto text-xs bg-destructive text-destructive-foreground h-4 w-4 rounded-full flex items-center justify-center">{clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}</span>}
+                            </Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
                         </>
@@ -485,3 +512,6 @@ export default function Navbar() {
     </header>
   );
 }
+
+
+    
