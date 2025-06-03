@@ -11,7 +11,9 @@ import { FirebaseProvider, useFirebase } from '@/context/firebase-context';
 import Navbar from '@/components/layout/navbar';
 import FooterNav from '@/components/layout/footer-nav';
 import { Loader2 } from 'lucide-react';
-import React from 'react';
+import React, { useRef, useMemo } from 'react'; // Added useRef, useMemo
+import { useRouter, usePathname } from 'next/navigation'; // Added
+import { useIsMobile } from '@/hooks/use-mobile'; // Added
 
 const inter = Inter({
   variable: '--font-inter',
@@ -20,19 +22,132 @@ const inter = Inter({
 
 
 function AppBody({ children }: { children: React.ReactNode }) {
-  const { role, loading: firebaseContextLoading, firebaseActuallyInitialized, initializationError } = useFirebase(); 
+  const { user, role, loading: firebaseContextLoading, firebaseActuallyInitialized, initializationError } = useFirebase(); 
   const [isClientHydrated, setIsClientHydrated] = React.useState(false);
+
+  const router = useRouter(); // Added
+  const pathname = usePathname(); // Added
+  const isMobile = useIsMobile(); // Added
+
+  const touchStartXRef = useRef<number>(0);
+  const touchStartYRef = useRef<number>(0);
+  const touchCurrentXRef = useRef<number>(0);
+  const touchCurrentYRef = useRef<number>(0);
+  const isIntentionalHorizontalSwipeRef = useRef<boolean>(false);
+  const SWIPE_THRESHOLD = 75; // Min pixels for a swipe to navigate
+  const INITIAL_DRAG_THRESHOLD = 10; // Min pixels to determine swipe intent
 
   React.useEffect(() => {
     setIsClientHydrated(true);
   }, []);
 
   let roleThemeClass = '';
-  if (role === 'client') {
-    roleThemeClass = 'theme-client';
-  } else if (role === 'student') {
+  if (role === 'student') {
     roleThemeClass = 'theme-student';
+  } else if (role === 'client') {
+    roleThemeClass = 'theme-client';
   }
+
+  const orderedFooterPaths = useMemo(() => {
+    const paths: string[] = [];
+    if (!user || !isMobile) return []; // Swipe nav only for logged-in mobile users
+
+    paths.push("/gigs/browse"); // Explore
+    if (role === 'student') {
+      paths.push("/student/works");
+    } else if (role === 'client') {
+      paths.push("/hustlers/browse");
+      paths.push("/client/gigs/new");
+    }
+    paths.push("/chat");
+    
+    let dashboardUrl = "/";
+    if (role === 'student') dashboardUrl = '/student/profile';
+    else if (role === 'client') dashboardUrl = '/client/dashboard';
+    paths.push(dashboardUrl);
+    
+    return paths;
+  }, [role, user, isMobile]);
+
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLElement>) => {
+    touchStartXRef.current = e.targetTouches[0].clientX;
+    touchStartYRef.current = e.targetTouches[0].clientY;
+    touchCurrentXRef.current = e.targetTouches[0].clientX;
+    touchCurrentYRef.current = e.targetTouches[0].clientY;
+    isIntentionalHorizontalSwipeRef.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLElement>) => {
+    if (!touchStartXRef.current || !touchStartYRef.current) return;
+
+    touchCurrentXRef.current = e.targetTouches[0].clientX;
+    touchCurrentYRef.current = e.targetTouches[0].clientY;
+
+    if (!isIntentionalHorizontalSwipeRef.current) {
+      const deltaX = touchCurrentXRef.current - touchStartXRef.current;
+      const deltaY = touchCurrentYRef.current - touchStartYRef.current;
+
+      if (Math.abs(deltaX) > INITIAL_DRAG_THRESHOLD || Math.abs(deltaY) > INITIAL_DRAG_THRESHOLD) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          isIntentionalHorizontalSwipeRef.current = true;
+        } else {
+          // It's a vertical scroll, reset start points to ignore this gesture for horizontal nav
+          touchStartXRef.current = 0;
+          touchStartYRef.current = 0;
+        }
+      }
+    }
+    
+    if (isIntentionalHorizontalSwipeRef.current && e.cancelable) {
+      e.preventDefault(); // Prevent vertical scroll if horizontal swipe is intended
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isIntentionalHorizontalSwipeRef.current || !touchStartXRef.current) {
+      // Reset if not an intentional swipe or no start point
+      touchStartXRef.current = 0; touchStartYRef.current = 0;
+      isIntentionalHorizontalSwipeRef.current = false;
+      return;
+    }
+
+    const deltaX = touchCurrentXRef.current - touchStartXRef.current;
+
+    if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
+      if (orderedFooterPaths.length === 0) return;
+
+      let currentIndex = orderedFooterPaths.findIndex(p => pathname === p);
+      // If not exact match, check for parent path match (e.g. /gigs/browse from /gigs/browse/details)
+      if (currentIndex === -1) {
+          currentIndex = orderedFooterPaths.findIndex(p => pathname.startsWith(p + '/') && p !== '/');
+      }
+       // If still -1, it means current page isn't a primary footer nav item, find closest one.
+      if (currentIndex === -1) {
+        // This part is tricky. For simplicity, we'll only navigate if on a footer path.
+        // console.warn("Swipe navigation: Current path not directly in footer nav items.");
+      }
+
+
+      if (currentIndex !== -1) {
+          let newIndex = currentIndex;
+          if (deltaX > 0) { // Swipe Right (to previous item)
+            newIndex = Math.max(0, currentIndex - 1);
+          } else { // Swipe Left (to next item)
+            newIndex = Math.min(orderedFooterPaths.length - 1, currentIndex + 1);
+          }
+    
+          if (newIndex !== currentIndex && orderedFooterPaths[newIndex]) {
+            router.push(orderedFooterPaths[newIndex]);
+          }
+      }
+    }
+    
+    touchStartXRef.current = 0;
+    touchStartYRef.current = 0;
+    isIntentionalHorizontalSwipeRef.current = false;
+  };
+
 
   // Wait for client hydration and Firebase context to be definitively loaded or errored
   if (!isClientHydrated || firebaseContextLoading) {
@@ -84,7 +199,12 @@ function AppBody({ children }: { children: React.ReactNode }) {
   return (
     <div className={cn("relative flex min-h-screen flex-col", roleThemeClass)}>
       <Navbar />
-      <main className="flex-1 container mx-auto px-4 py-8 md:pb-8 pb-20">
+      <main 
+        className="flex-1 container mx-auto px-4 py-8 md:pb-8 pb-20"
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      >
         {children}
       </main>
       <FooterNav />
@@ -120,3 +240,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+    
