@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -599,57 +599,103 @@ export default function ChatPage() {
           key={msg.id}
           className={`flex mb-1 ${msg.senderId === user?.uid ? 'justify-end' : msg.senderId === 'system' ? 'justify-center' : 'justify-start'}`}
         >
-          <div 
-            className={cn(
-              "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
-               msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 
-               msg.senderId === 'system' ? 'bg-muted/70 text-muted-foreground text-xs italic' : 'bg-secondary dark:bg-muted'
-            )}
-          >
-             {msg.messageType?.startsWith('system_') && <p className="text-center">{msg.text}</p>}
-             {!msg.messageType?.startsWith('system_') && msg.isDetailShareRequest && (
-               <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
-                  <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
-               </div>
-             )}
-             {!msg.messageType?.startsWith('system_') && msg.isDetailsShared && msg.sharedContactInfo && (
-              <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
-                  <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
-                  {msg.sharedContactInfo.email && (
-                      <div className="flex items-center gap-1.5 text-sm">
-                         <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                         <span className="break-all">{msg.sharedContactInfo.email}</span>
-                      </div>
-                  )}
-                  {msg.sharedContactInfo.phone && (
-                      <div className="flex items-center gap-1.5 text-sm mt-0.5">
-                         <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                         <span className="break-all">{msg.sharedContactInfo.phone}</span>
-                      </div>
-                  )}
-                   {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
-              </div>
-             )}
-            {!msg.messageType?.startsWith('system_') && msg.sharedGigId && msg.sharedGigTitle && (
-              <Link href={`/gigs/${msg.sharedGigId}`} target="_blank" rel="noopener noreferrer"
-                    className={`block p-2.5 my-1 rounded-md border hover:shadow-md transition-shadow ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80 hover:bg-primary/70' : 'border-border bg-background/70 hover:bg-accent/70'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Link2 className={`h-4 w-4 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
-                  <h4 className={`font-semibold text-sm break-all ${msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'}`}>{msg.sharedGigTitle}</h4>
+          {msg.sharedGigId && msg.sharedGigTitle ? (
+             <Link
+                href={`/gigs/${msg.sharedGigId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'block p-3 my-1 rounded-lg shadow-sm max-w-[70%] min-w-0 overflow-hidden',
+                  msg.senderId === user?.uid
+                    ? 'bg-primary/90 border border-primary-foreground/20 hover:bg-primary/80 text-primary-foreground'
+                    : 'bg-card border border-border hover:bg-accent/60 text-card-foreground'
+                )}
+              >
+                <div className="flex items-start gap-2.5">
+                  <Briefcase
+                    className={cn(
+                      'h-5 w-5 shrink-0 mt-0.5',
+                      msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                    )}
+                  />
+                  <div className="flex-grow min-w-0">
+                    <h4
+                      className={cn(
+                        'font-semibold text-sm break-words',
+                        msg.senderId === user?.uid ? 'text-primary-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {msg.sharedGigTitle}
+                    </h4>
+                    {msg.text && (
+                      <p
+                        className={cn(
+                          'text-xs mt-1 whitespace-pre-wrap break-words',
+                          msg.senderId === user?.uid ? 'text-primary-foreground/90' : 'text-foreground/80'
+                        )}
+                      >
+                        {msg.text}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p className={`text-xs ${msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground underline' : 'text-primary hover:underline'}`}>
-                  View Gig Details
-                </p>
-                 {msg.text && <p className={`text-xs mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap ${msg.senderId === user?.uid ? 'text-primary-foreground/95' : 'text-foreground/95'}`}>{msg.text}</p>}
+                <div className={cn(
+                    "mt-2.5 pt-2.5 border-t border-dashed flex justify-end items-center",
+                    msg.senderId === user?.uid ? 'border-primary-foreground/50' : 'border-border/70'
+                    )}>
+                  <span
+                    className={cn(
+                      'text-xs font-medium',
+                      msg.senderId === user?.uid ? 'text-primary-foreground/90 hover:text-primary-foreground' : 'text-primary hover:text-primary/80'
+                    )}
+                  >
+                    View Gig Details &rarr;
+                  </span>
+                </div>
+                 <p className={`text-xs mt-1.5 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
+                    {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                 </p>
               </Link>
-            )}
-            {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
-            {msg.senderId !== 'system' && (
-               <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
-                  {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
-               </p>
-            )}
-          </div>
+          ) : (
+            <div 
+              className={cn(
+                "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
+                 msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 
+                 msg.senderId === 'system' ? 'bg-muted/70 text-muted-foreground text-xs italic' : 'bg-secondary dark:bg-muted'
+              )}
+            >
+               {msg.messageType?.startsWith('system_') && <p className="text-center">{msg.text}</p>}
+               {!msg.messageType?.startsWith('system_') && msg.isDetailShareRequest && (
+                 <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
+                    <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
+                 </div>
+               )}
+               {!msg.messageType?.startsWith('system_') && msg.isDetailsShared && msg.sharedContactInfo && (
+                <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
+                    <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
+                    {msg.sharedContactInfo.email && (
+                        <div className="flex items-center gap-1.5 text-sm">
+                           <MailIcon className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
+                           <span className="break-all">{msg.sharedContactInfo.email}</span>
+                        </div>
+                    )}
+                    {msg.sharedContactInfo.phone && (
+                        <div className="flex items-center gap-1.5 text-sm mt-0.5">
+                           <Phone className={`h-3.5 w-3.5 ${msg.senderId === user?.uid ? 'text-primary-foreground/80' : 'text-muted-foreground'}`} />
+                           <span className="break-all">{msg.sharedContactInfo.phone}</span>
+                        </div>
+                    )}
+                     {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
+                </div>
+               )}
+              {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
+              {msg.senderId !== 'system' && (
+                 <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
+                    {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                 </p>
+              )}
+            </div>
+          )}
         </div>
       );
     });
@@ -982,5 +1028,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
-
