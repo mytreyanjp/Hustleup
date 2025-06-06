@@ -187,7 +187,7 @@ export default function ChatPage() {
                 ...existingChatData,
                 ...clientSideUpdates,
                 id: chatId,
-                chatStatus: updates.chatStatus || existingChatData.chatStatus, // Ensure chatStatus from updates is prioritized
+                chatStatus: updates.chatStatus || existingChatData.chatStatus || (isClientInteractingWithStudent ? 'accepted' : undefined), 
             };
              if (isClientInteractingWithStudent && updatedLocalChat.chatStatus !== 'accepted') {
                 updatedLocalChat.chatStatus = 'accepted';
@@ -198,11 +198,17 @@ export default function ChatPage() {
         }
         
         // Ensure chatStatus is 'accepted' for client-student interaction even if no other update was required
+        // Also, ensure the returned object has chatStatus if it was undefined on the fetched data
         if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
             setSelectedChatId(chatId);
             return chatWithForcedStatus;
+        } else if (existingChatData.chatStatus === undefined && isClientInteractingWithStudent) {
+             const chatWithDefinedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
+             setSelectedChatId(chatId);
+             return chatWithDefinedStatus;
         }
+
 
         setSelectedChatId(chatId);
         return { ...existingChatData, id: chatId };
@@ -1010,7 +1016,7 @@ export default function ChatPage() {
             )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0 flex flex-col flex-grow">
+        <CardContent className="p-0 flex flex-col flex-grow min-h-0 overflow-hidden">
            <div className="relative p-2 border-b">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -1021,7 +1027,7 @@ export default function ChatPage() {
               onChange={(e) => setChatSearchTerm(e.target.value)}
             />
           </div>
-          <ScrollArea className="flex-grow min-h-0"> {/* Added min-h-0 here */}
+          <ScrollArea className="flex-grow min-h-0">
             <div className="p-2 space-y-1">
                 {isLoadingChats && (
                 <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
