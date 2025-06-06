@@ -187,7 +187,11 @@ export default function ChatPage() {
                 ...existingChatData,
                 ...clientSideUpdates,
                 id: chatId,
+                chatStatus: updates.chatStatus || existingChatData.chatStatus, // Ensure chatStatus from updates is prioritized
             };
+             if (isClientInteractingWithStudent && updatedLocalChat.chatStatus !== 'accepted') {
+                updatedLocalChat.chatStatus = 'accepted';
+            }
             setChats(prev => prev.map(chat => chat.id === chatId ? updatedLocalChat : chat));
             setSelectedChatId(chatId);
             return updatedLocalChat;
@@ -1017,7 +1021,7 @@ export default function ChatPage() {
               onChange={(e) => setChatSearchTerm(e.target.value)}
             />
           </div>
-          <ScrollArea className="flex-grow">
+          <ScrollArea className="flex-grow min-h-0"> {/* Added min-h-0 here */}
             <div className="p-2 space-y-1">
                 {isLoadingChats && (
                 <div className="p-4 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
@@ -1052,7 +1056,7 @@ export default function ChatPage() {
                             <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                         </Avatar>
                     </Link>
-                    <div className="flex-grow overflow-hidden min-w-0"> {/* Added min-w-0 here */}
+                    <div className="flex-grow overflow-hidden min-w-0">
                         {otherParticipantId ? (
                         <Link href={`/profile/${otherParticipantId}`} passHref
                             onClick={(e) => e.stopPropagation()}
