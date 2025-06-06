@@ -679,4 +679,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-
