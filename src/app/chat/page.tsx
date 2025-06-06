@@ -480,7 +480,7 @@ export default function ChatPage() {
     });
 
     return () => unsubscribe();
-  }, [user, userProfile, toast, db]); // Added db to dependency array
+  }, [user, userProfile, toast, db]); 
 
   useEffect(() => {
     if (!selectedChatId || !user || !userProfile || !db) {
@@ -502,7 +502,7 @@ export default function ChatPage() {
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
 
-      const currentCommittedUserProfile = userProfile;
+      const currentCommittedUserProfile = userProfile; 
       if (!user || !db || !currentCommittedUserProfile) {
           if(!user) console.warn("Message status update skipped: User not available at msg snapshot time.");
           if(!db) console.warn("Message status update skipped: DB not available at msg snapshot time.");
@@ -545,6 +545,7 @@ export default function ChatPage() {
     });
 
     const fetchGigContextForChat = async () => {
+        if (!db) return;
         const chatDocRef = doc(db, 'chats', selectedChatId);
         const chatSnap = await getDoc(chatDocRef);
         if (chatSnap.exists()) {
@@ -566,6 +567,7 @@ export default function ChatPage() {
 
 
     const markChatAsRead = async () => {
+      if (!db) return;
       const chatDocRef = doc(db, 'chats', selectedChatId);
       try {
         const chatSnap = await getDoc(chatDocRef);
@@ -591,7 +593,7 @@ export default function ChatPage() {
     }
 
     return () => unsubscribeMessages();
-  }, [selectedChatId, user, userProfile, toast, db]); // Added db to dependency array
+  }, [selectedChatId, user, userProfile]);
 
 
   useEffect(() => {
