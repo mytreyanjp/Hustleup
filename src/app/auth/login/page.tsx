@@ -136,16 +136,7 @@ export default function LoginPage() {
         router.push('/auth/complete-profile');
       }
     } catch (error: any) {
-      console.error(`${providerName} Sign-In error (raw):`, error);
-      console.error(`${providerName} Sign-In error code:`, error.code);
-      console.error(`${providerName} Sign-In error message:`, error.message);
-      if (error.customData) {
-        console.error(`${providerName} Sign-In error customData:`, error.customData);
-      }
-      if (error.credential) { 
-        console.error(`${providerName} Sign-In error credential:`, JSON.stringify(error.credential));
-      }
-
+      // Removed explicit console.error here
       let errorMessage = `${providerName} Sign-In failed. Please try again.`;
       if (error.code) {
         switch (error.code) {
@@ -169,7 +160,7 @@ export default function LoginPage() {
             errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it to the authorized domains in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
           case 'auth/invalid-credential':
-             errorMessage = `Sign-in with ${providerName} failed due to an invalid credential. This often means there's a misconfiguration in your Firebase project for the ${providerName} sign-in method, or an issue with your ${providerName} developer account setup. Please double-check your Firebase console settings and the ${providerName} developer portal configuration. Raw error: ${error.message || 'No specific message from provider.'}`;
+             errorMessage = `Sign-in with ${providerName} failed. This often means there's a misconfiguration in your Firebase project for the ${providerName} sign-in method, or an issue with your ${providerName} developer account setup. Please double-check your Firebase console settings and the ${providerName} developer portal configuration. Raw error: ${error.message || 'No specific message from provider.'}`;
              break;
           case 'auth/oauth-provider-error': 
              errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
