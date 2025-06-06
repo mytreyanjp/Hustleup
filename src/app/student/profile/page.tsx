@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIcon, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIconLucide, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -273,7 +273,7 @@ export default function StudentProfilePage() {
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
       setIsEditing(false);
-      setShowAvatarGrid(false); 
+      setShowAvatarGrid(false);
     } catch (error: any) {
       console.error('Profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -285,7 +285,7 @@ export default function StudentProfilePage() {
   const handleCancelEdit = () => {
     populateFormAndPreview(userProfile);
     setIsEditing(false);
-    setShowAvatarGrid(false); 
+    setShowAvatarGrid(false);
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null) => {
@@ -298,7 +298,7 @@ export default function StudentProfilePage() {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
     form.setValue("imageUrl", ""); // Clear URL if predefined is selected
-    setShowAvatarGrid(false); 
+    setShowAvatarGrid(false);
   };
 
   const handleOpenFollowingModal = async () => {
@@ -447,7 +447,9 @@ export default function StudentProfilePage() {
                   name="imageUrl"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Or Enter Image URL</FormLabel>
+                      <FormLabel className="flex items-center gap-1">
+                         <LinkIconLucide className="h-4 w-4 text-muted-foreground" /> Or Enter Image URL
+                      </FormLabel>
                       <FormControl>
                         <Input 
                           placeholder="https://example.com/image.png" 
