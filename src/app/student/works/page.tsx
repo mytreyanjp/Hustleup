@@ -48,6 +48,9 @@ interface WorkGig {
   budget: number;
   currency: string;
   numberOfReports?: number;
+  paymentRequestsCount?: number;
+  lastPaymentRequestedAt?: Timestamp;
+  studentPaymentRequestPending?: boolean;
   status: 'in-progress';
   progressReports?: ProgressReport[];
   // For internal processing
@@ -69,8 +72,6 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     const hasPendingReview = gig.progressReports.some(r => r.studentSubmission && r.clientStatus === 'pending_review');
     if (hasPendingReview) return 'pending-review';
     
-    // Check if any report is not yet submitted AND its deadline (if set) has passed
-    // OR if all reports are approved.
     const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
     if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
         return 'in-progress'; // All reports done and approved, awaiting final gig completion/payment
@@ -94,13 +95,9 @@ const getNextUpcomingDeadline = (gig: WorkGig): Timestamp | null => {
                 nextDeadline = futureReportDeadlines[0].deadline;
             }
         } else {
-            // If all reports are done or their deadlines passed, but some not approved (and not rejected)
-            // the effective "next" deadline is still the gig deadline for overall completion.
-            // If some reports are rejected, the next deadline is less clear cut, but gig deadline is a fallback.
              const unapprovedUnrejectedFutureReports = gig.progressReports
                 .filter(r => r.deadline && r.deadline.toMillis() >= now.toMillis() && r.clientStatus !== 'approved' && r.clientStatus !== 'rejected');
              if (unapprovedUnrejectedFutureReports.length === 0) {
-                // All report deadlines passed, or reports approved/rejected. Stick with gig deadline.
              }
         }
     }
@@ -126,6 +123,10 @@ export default function StudentWorksPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<EffectiveStatusType | 'all'>('all');
   const [sortBy, setSortBy] = useState<'default' | 'deadlineAsc' | 'deadlineDesc'>('default');
+
+  const [showPaymentRequestDialog, setShowPaymentRequestDialog] = useState(false);
+  const [paymentRequestGig, setPaymentRequestGig] = useState<WorkGig | null>(null);
+  const [isRequestingPayment, setIsRequestingPayment] = useState(false);
 
 
   const fetchActiveGigs = useCallback(async () => {
@@ -171,6 +172,9 @@ export default function StudentWorksPage() {
           id: gigDoc.id, title: gigData.title || "Untitled Gig", clientId: gigData.clientId, clientUsername, clientCompanyName,
           deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
           numberOfReports: numReports, status: gigData.status,
+          paymentRequestsCount: gigData.paymentRequestsCount || 0,
+          lastPaymentRequestedAt: gigData.lastPaymentRequestedAt || null,
+          studentPaymentRequestPending: gigData.studentPaymentRequestPending || false,
           progressReports: completeProgressReports,
         } as WorkGig;
       });
@@ -180,7 +184,6 @@ export default function StudentWorksPage() {
           effectiveStatus: getEffectiveGigStatus(gig),
           nextUpcomingDeadline: getNextUpcomingDeadline(gig)
       })));
-      // Initially collapse all gigs that don't require immediate action or aren't pending review
       setCollapsedGigs(new Set(resolvedGigs.filter(g => getEffectiveGigStatus(g) === 'in-progress').map(gig => gig.id)));
 
     } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
@@ -190,22 +193,23 @@ export default function StudentWorksPage() {
   useEffect(() => {
     if (!authLoading && (!user || role !== 'student')) {
       router.push('/auth/login?redirect=/student/works');
-    } else if (user && role === 'student') {
+      return;
+    } 
+    if (user && role === 'student') {
       fetchActiveGigs();
     }
   }, [user, authLoading, role, router, fetchActiveGigs]);
 
   const processedGigs = useMemo(() => {
-    let gigsToProcess = [...activeGigs];
+    if (!activeGigs) return []; // Defensive check
+    let gigsToProcess = [...activeGigs]; 
 
-    // Enrich with effective status and next deadline if not already done (e.g., after report submission)
     gigsToProcess = gigsToProcess.map(gig => ({
         ...gig,
         effectiveStatus: getEffectiveGigStatus(gig),
         nextUpcomingDeadline: getNextUpcomingDeadline(gig)
     }));
 
-    // Filter by search term
     if (searchTerm.trim()) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       gigsToProcess = gigsToProcess.filter(gig =>
@@ -215,14 +219,11 @@ export default function StudentWorksPage() {
       );
     }
 
-    // Filter by status
     if (filterStatus !== 'all') {
       gigsToProcess = gigsToProcess.filter(gig => gig.effectiveStatus === filterStatus);
     }
 
-    // Sort
     gigsToProcess.sort((a, b) => {
-      // Primary sort by effective status
       const statusOrder: Record<EffectiveStatusType, number> = {
         'action-required': 1,
         'pending-review': 2,
@@ -232,7 +233,6 @@ export default function StudentWorksPage() {
       const statusB = statusOrder[b.effectiveStatus!];
       if (statusA !== statusB) return statusA - statusB;
 
-      // Secondary sort by deadline based on sortBy
       const deadlineA = a.nextUpcomingDeadline?.toMillis() || Infinity;
       const deadlineB = b.nextUpcomingDeadline?.toMillis() || Infinity;
 
@@ -241,7 +241,6 @@ export default function StudentWorksPage() {
       } else if (sortBy === 'deadlineDesc') {
         return deadlineB - deadlineA;
       }
-      // Default secondary sort (if sortBy is 'default') is nearest deadline first
       return deadlineA - deadlineB;
     });
 
@@ -316,12 +315,37 @@ export default function StudentWorksPage() {
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
       setCurrentSubmittingGigId(null);
-      fetchActiveGigs(); // Re-fetch to update effective statuses and sorting
+      fetchActiveGigs(); 
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
     } finally {
       setIsSubmittingReport(false);
+    }
+  };
+  
+  const handleRequestPayment = async () => {
+    if (!paymentRequestGig || !user || !db) {
+        toast({title: "Error", description: "Cannot request payment. Missing gig info or user session.", variant: "destructive"});
+        return;
+    }
+    setIsRequestingPayment(true);
+    try {
+        const gigDocRef = doc(db, 'gigs', paymentRequestGig.id);
+        await updateDoc(gigDocRef, {
+            paymentRequestsCount: (paymentRequestGig.paymentRequestsCount || 0) + 1,
+            lastPaymentRequestedAt: serverTimestamp(),
+            studentPaymentRequestPending: true,
+        });
+        toast({ title: "Payment Requested!", description: "The client has been notified of your payment request."});
+        setShowPaymentRequestDialog(false);
+        setPaymentRequestGig(null);
+        fetchActiveGigs(); // Re-fetch to update UI
+    } catch (error: any) {
+        console.error("Error requesting payment:", error);
+        toast({ title: "Error", description: `Could not request payment: ${error.message}`, variant: "destructive"});
+    } finally {
+        setIsRequestingPayment(false);
     }
   };
 
@@ -374,7 +398,6 @@ export default function StudentWorksPage() {
         <Button variant="outline" asChild size="sm" className="sm:text-sm"><Link href="/gigs/browse">Find More Gigs</Link></Button>
       </div>
 
-      {/* Filter and Search Controls */}
       <Card className="glass-card p-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
           <div className="sm:col-span-1">
@@ -441,6 +464,9 @@ export default function StudentWorksPage() {
             const isCollapsed = collapsedGigs.has(gig.id);
             const effectiveStatusLabel = getEffectiveStatusLabel(gig.effectiveStatus);
             const effectiveStatusVariant = getEffectiveStatusBadgeVariant(gig.effectiveStatus);
+            const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0 ? (gig.progressReports?.filter(r => r.clientStatus === 'approved').length === gig.numberOfReports) : true;
+            const requestsUsed = gig.paymentRequestsCount || 0;
+            const canRequestPayment = allReportsApproved && requestsUsed < 5 && !gig.studentPaymentRequestPending;
 
             return (
             <Card key={gig.id} className="glass-card">
@@ -455,8 +481,6 @@ export default function StudentWorksPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 self-start sm:self-center">
-                    {/* Overall status of gig is 'in-progress' on this page, so primary badge is less critical */}
-                    {/* <Badge variant="secondary" className="capitalize text-xs">{gig.status}</Badge>  */}
                     <Button variant="ghost" size="icon" onClick={() => toggleGigCollapse(gig.id)} className="h-8 w-8">
                         {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
                         <span className="sr-only">{isCollapsed ? 'Expand' : 'Collapse'}</span>
@@ -466,7 +490,7 @@ export default function StudentWorksPage() {
               <div
                 className={cn(
                   "transition-all duration-300 ease-in-out overflow-hidden",
-                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" // Increased max-h
+                  isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" 
                 )}
               >
                 <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
@@ -524,9 +548,29 @@ export default function StudentWorksPage() {
                     </div>
                   )}
                 </CardContent>
-                <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
-                  <Button size="sm" asChild><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
-                  <Button variant="outline" size="sm" asChild><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
+                <CardFooter className="flex flex-col sm:flex-row items-start sm:items-stretch gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
+                    <div className="flex-grow space-y-2 sm:space-y-0 sm:flex sm:gap-2">
+                        <Button size="sm" asChild className="w-full sm:w-auto"><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
+                        <Button variant="outline" size="sm" asChild className="w-full sm:w-auto"><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
+                    </div>
+                    {gig.studentPaymentRequestPending ? (
+                        <Button size="sm" variant="secondary" disabled className="w-full sm:w-auto mt-2 sm:mt-0">
+                            Payment Requested ({formatDistanceToNow(gig.lastPaymentRequestedAt!.toDate(), { addSuffix: true })})
+                        </Button>
+                    ) : canRequestPayment ? (
+                        <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}
+                            className="w-full sm:w-auto mt-2 sm:mt-0"
+                        >
+                            Request Payment ({requestsUsed}/5 left)
+                        </Button>
+                    ) : (
+                         <Button size="sm" variant="outline" disabled className="w-full sm:w-auto mt-2 sm:mt-0" title={!allReportsApproved ? "All reports must be approved first" : "Max payment requests reached"}>
+                            Request Payment {requestsUsed >= 5 ? '(Limit Reached)' : `(${requestsUsed}/5 left)`}
+                        </Button>
+                    )}
                 </CardFooter>
               </div>
             </Card>
@@ -556,7 +600,26 @@ export default function StudentWorksPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showPaymentRequestDialog} onOpenChange={setShowPaymentRequestDialog}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Confirm Payment Request</DialogTitle>
+                <DialogDescription>
+                    You are about to request payment for the gig: "{paymentRequestGig?.title}".
+                    You have used {paymentRequestGig?.paymentRequestsCount || 0} of 5 available requests for this gig.
+                    The client will be notified.
+                </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+                <Button variant="ghost" onClick={() => setShowPaymentRequestDialog(false)} disabled={isRequestingPayment}>Cancel</Button>
+                <Button onClick={handleRequestPayment} disabled={isRequestingPayment}>
+                    {isRequestingPayment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Confirm Request
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
-
