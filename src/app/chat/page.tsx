@@ -480,7 +480,7 @@ export default function ChatPage() {
     });
 
     return () => unsubscribe();
-  }, [user, userProfile, toast]); 
+  }, [user, userProfile, toast, db]); // Added db to dependency array
 
   useEffect(() => {
     if (!selectedChatId || !user || !userProfile || !db) {
@@ -502,7 +502,14 @@ export default function ChatPage() {
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
 
-      // Mark messages as delivered and read by current user
+      const currentCommittedUserProfile = userProfile;
+      if (!user || !db || !currentCommittedUserProfile) {
+          if(!user) console.warn("Message status update skipped: User not available at msg snapshot time.");
+          if(!db) console.warn("Message status update skipped: DB not available at msg snapshot time.");
+          if(!currentCommittedUserProfile) console.warn("Message status update skipped: User profile not available for receipt logic at msg snapshot time.");
+          return;
+      }
+
       const batch = writeBatch(db);
       let updatesMade = false;
       fetchedMessages.forEach(msg => {
@@ -510,12 +517,12 @@ export default function ChatPage() {
           const msgRef = doc(db, 'chats', selectedChatId, 'messages', msg.id);
           let messageUpdates: Partial<ChatMessage> = {};
           if (!msg.deliveredToRecipientAt) {
+            console.log(`Current user (${user.uid}) is marking message ${msg.id} (from ${msg.senderId}) as DELIVERED for chat ${selectedChatId}`);
             messageUpdates.deliveredToRecipientAt = Timestamp.now();
             updatesMade = true;
           }
-          if (userProfile.readReceiptsEnabled && !msg.readByRecipientAt) {
-            // For now, this doesn't check the other user's preference for sending receipts.
-            // That's a refinement for later.
+          if (currentCommittedUserProfile.readReceiptsEnabled && !msg.readByRecipientAt) {
+            console.log(`Current user (${user.uid}, receipts: ${currentCommittedUserProfile.readReceiptsEnabled}) is marking message ${msg.id} (from ${msg.senderId}) as READ for chat ${selectedChatId}`);
             messageUpdates.readByRecipientAt = Timestamp.now();
             updatesMade = true;
           }
@@ -525,7 +532,10 @@ export default function ChatPage() {
         }
       });
       if (updatesMade) {
-        batch.commit().catch(err => console.error("Error batch updating message statuses:", err));
+        console.log(`Current user (${user.uid}) attempting to commit batch updates for chat ${selectedChatId}`);
+        batch.commit()
+          .then(() => console.log(`Current user (${user.uid}): Batch commit SUCCESS for chat ${selectedChatId} message status updates.`))
+          .catch(err => console.error(`Error batch updating message statuses for chat ${selectedChatId} by user ${user.uid}:`, err));
       }
 
     }, (error) => {
@@ -581,7 +591,7 @@ export default function ChatPage() {
     }
 
     return () => unsubscribeMessages();
-  }, [selectedChatId, user, userProfile, toast]);
+  }, [selectedChatId, user, userProfile, toast, db]); // Added db to dependency array
 
 
   useEffect(() => {
@@ -794,9 +804,11 @@ export default function ChatPage() {
     });
   }, [chats, chatSearchTerm, user]);
 
-  // Moved declaration of _selectedChatDetails here
-  const _selectedChatDetails = chats.find(c => c.id === selectedChatId) || 
-                              (transientChatOverride?.id === selectedChatId ? transientChatOverride : null);
+  const _selectedChatDetails = useMemo(() => {
+    return chats.find(c => c.id === selectedChatId) || 
+           (transientChatOverride?.id === selectedChatId ? transientChatOverride : null);
+  }, [chats, selectedChatId, transientChatOverride]);
+
 
   const processedMessagesWithDates = useMemo(() => {
     const elements: React.ReactNode[] = [];
@@ -988,9 +1000,9 @@ export default function ChatPage() {
                     {msg.senderId === user?.uid && (
                         <>
                             {msg.readByRecipientAt && shouldShowBlueTicks ? (
-                                <Check className="h-3.5 w-3.5 text-blue-400 -mr-0.5" /> // Second blue tick
+                                <Check className="h-3.5 w-3.5 text-blue-400 -mr-0.5" /> 
                             ) : msg.deliveredToRecipientAt ? (
-                                <Check className="h-3.5 w-3.5 text-primary-foreground/70 -mr-0.5" /> // Second grey tick
+                                <Check className="h-3.5 w-3.5 text-primary-foreground/70 -mr-0.5" /> 
                             ) : null}
                             <Check className={cn("h-3.5 w-3.5", msg.readByRecipientAt && shouldShowBlueTicks ? "text-blue-400" : "text-primary-foreground/70", msg.deliveredToRecipientAt || msg.readByRecipientAt ? "-ml-1.5" : "")} />
                         </>
@@ -1028,7 +1040,7 @@ export default function ChatPage() {
         const otherUserSnap = await getDoc(otherUserDocRef);
         if (otherUserSnap.exists()) {
           const otherUserData = otherUserSnap.data() as UserProfile;
-          setOtherParticipantProfiles(prev => ({...prev, [otherUserId]: otherUserData})); // Cache profile
+          setOtherParticipantProfiles(prev => ({...prev, [otherUserId]: otherUserData})); 
           setIsCurrentUserBlockedByOther(otherUserData.blockedUserIds?.includes(user.uid) || false);
         } else {
           setIsCurrentUserBlockedByOther(false);
@@ -1040,7 +1052,7 @@ export default function ChatPage() {
     if (selectedChatId) {
       checkBlockedStatus();
     }
-  }, [selectedChatId, otherUserId, user]);
+  }, [selectedChatId, otherUserId, user, db]);
 
 
   const canShareDetails = userProfile?.role === 'client' &&
@@ -1344,3 +1356,4 @@ export default function ChatPage() {
   );
 }
 
+    
