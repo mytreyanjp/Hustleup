@@ -129,12 +129,12 @@ export default function StudentWorksPage() {
   const [isRequestingPayment, setIsRequestingPayment] = useState(false);
 
 
-  const fetchActiveGigs = useCallback(async () => {
-    if (!user || !db) return;
+  const fetchActiveGigs = useCallback(async (currentUserId: string) => {
+    if (!currentUserId || !db) return; // Added check for currentUserId
     setIsLoading(true); setError(null);
     try {
       const gigsRef = collection(db, "gigs");
-      const q = query( gigsRef, where("selectedStudentId", "==", user.uid), where("status", "==", "in-progress"), orderBy("createdAt", "desc") );
+      const q = query( gigsRef, where("selectedStudentId", "==", currentUserId), where("status", "==", "in-progress"), orderBy("createdAt", "desc") );
       const querySnapshot = await getDocs(q);
       const fetchedGigsPromises = querySnapshot.docs.map(async (gigDoc) => {
         const gigData = gigDoc.data();
@@ -179,36 +179,41 @@ export default function StudentWorksPage() {
         } as WorkGig;
       });
       const resolvedGigs = await Promise.all(fetchedGigsPromises);
-      setActiveGigs(resolvedGigs.map(gig => ({
+      const gigsWithEffectiveStatus = resolvedGigs.map(gig => ({
           ...gig,
           effectiveStatus: getEffectiveGigStatus(gig),
           nextUpcomingDeadline: getNextUpcomingDeadline(gig)
-      })));
-      setCollapsedGigs(new Set(resolvedGigs.filter(g => getEffectiveGigStatus(g) === 'in-progress').map(gig => gig.id)));
+      }));
+      setActiveGigs(gigsWithEffectiveStatus);
+      // Initialize collapsed state based on initial effective status
+      setCollapsedGigs(new Set(gigsWithEffectiveStatus.filter(g => g.effectiveStatus === 'in-progress').map(gig => gig.id)));
 
     } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
     } finally { setIsLoading(false); }
-  }, [user]);
+  }, []); // Removed db from dependencies as it's stable
 
   useEffect(() => {
-    if (!authLoading && (!user || role !== 'student')) {
-      router.push('/auth/login?redirect=/student/works');
-      return;
-    } 
-    if (user && role === 'student') {
-      fetchActiveGigs();
+    if (!authLoading) {
+      if (!user || role !== 'student') {
+        router.push('/auth/login?redirect=/student/works');
+      } else if (user && role === 'student') { // Ensure user is available
+        fetchActiveGigs(user.uid); // Pass user.uid directly
+      }
     }
   }, [user, authLoading, role, router, fetchActiveGigs]);
 
   const processedGigs = useMemo(() => {
-    if (!activeGigs) return []; // Defensive check
+    if (!activeGigs) return [];
     let gigsToProcess = [...activeGigs]; 
 
+    // Re-calculate effectiveStatus and nextUpcomingDeadline if not already on the object
+    // or if it needs to be fresh based on some other criteria (not strictly needed here if fetchActiveGigs sets it)
     gigsToProcess = gigsToProcess.map(gig => ({
         ...gig,
-        effectiveStatus: getEffectiveGigStatus(gig),
-        nextUpcomingDeadline: getNextUpcomingDeadline(gig)
+        effectiveStatus: gig.effectiveStatus || getEffectiveGigStatus(gig),
+        nextUpcomingDeadline: gig.nextUpcomingDeadline || getNextUpcomingDeadline(gig)
     }));
+
 
     if (searchTerm.trim()) {
       const lowerSearchTerm = searchTerm.toLowerCase();
@@ -241,6 +246,7 @@ export default function StudentWorksPage() {
       } else if (sortBy === 'deadlineDesc') {
         return deadlineB - deadlineA;
       }
+      // Default sort by deadline ascending if statuses are the same
       return deadlineA - deadlineB;
     });
 
@@ -296,13 +302,14 @@ export default function StudentWorksPage() {
           ...progressReports[reportIndex],
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: null,
-          reviewedAt: null,
+          clientFeedback: null, // Reset client feedback on new submission
+          reviewedAt: null,    // Reset reviewedAt
         };
       } else {
+        // This case should ideally not happen if reports are pre-initialized for the gig
         progressReports.push({
           reportNumber: currentReportNumber as number,
-          deadline: null,
+          deadline: null, // Or fetch actual deadline if available
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null,
@@ -315,7 +322,7 @@ export default function StudentWorksPage() {
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
       setCurrentSubmittingGigId(null);
-      fetchActiveGigs(); 
+      if(user) fetchActiveGigs(user.uid); // Re-fetch gigs for the current user
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -340,7 +347,7 @@ export default function StudentWorksPage() {
         toast({ title: "Payment Requested!", description: "The client has been notified of your payment request."});
         setShowPaymentRequestDialog(false);
         setPaymentRequestGig(null);
-        fetchActiveGigs(); // Re-fetch to update UI
+        if(user) fetchActiveGigs(user.uid); // Re-fetch to update UI
     } catch (error: any) {
         console.error("Error requesting payment:", error);
         toast({ title: "Error", description: `Could not request payment: ${error.message}`, variant: "destructive"});
@@ -567,7 +574,7 @@ export default function StudentWorksPage() {
                             Request Payment ({requestsUsed}/5 left)
                         </Button>
                     ) : (
-                         <Button size="sm" variant="outline" disabled className="w-full sm:w-auto mt-2 sm:mt-0" title={!allReportsApproved ? "All reports must be approved first" : "Max payment requests reached"}>
+                         <Button size="sm" variant="outline" disabled className="w-full sm:w-auto mt-2 sm:mt-0" title={!allReportsApproved ? "All reports must be approved first" : (requestsUsed >=5 ? "Max payment requests reached" : "Payment request criteria not met")}>
                             Request Payment {requestsUsed >= 5 ? '(Limit Reached)' : `(${requestsUsed}/5 left)`}
                         </Button>
                     )}
@@ -623,3 +630,4 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+
