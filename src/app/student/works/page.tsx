@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 // import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -190,14 +190,14 @@ export default function StudentWorksPage() {
 
     } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
     } finally { setIsLoading(false); }
-  }, []); // Removed db from dependencies as it's stable
+  }, []); 
 
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'student') {
         router.push('/auth/login?redirect=/student/works');
-      } else if (user && role === 'student') { // Ensure user is available
-        fetchActiveGigs(user.uid); // Pass user.uid directly
+      } else if (user && role === 'student') { 
+        fetchActiveGigs(user.uid); 
       }
     }
   }, [user, authLoading, role, router, fetchActiveGigs]);
@@ -302,8 +302,8 @@ export default function StudentWorksPage() {
           ...progressReports[reportIndex],
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: null, // Reset client feedback on new submission
-          reviewedAt: null,    // Reset reviewedAt
+          clientFeedback: null, 
+          reviewedAt: null,    
         };
       } else {
         // This case should ideally not happen if reports are pre-initialized for the gig
