@@ -794,6 +794,10 @@ export default function ChatPage() {
     });
   }, [chats, chatSearchTerm, user]);
 
+  // Moved declaration of _selectedChatDetails here
+  const _selectedChatDetails = chats.find(c => c.id === selectedChatId) || 
+                              (transientChatOverride?.id === selectedChatId ? transientChatOverride : null);
+
   const processedMessagesWithDates = useMemo(() => {
     const elements: React.ReactNode[] = [];
     let lastMessageDateString: string | null = null;
@@ -1009,9 +1013,6 @@ export default function ChatPage() {
   if (!user) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
-
-  const _selectedChatDetails = chats.find(c => c.id === selectedChatId) || 
-                              (transientChatOverride?.id === selectedChatId ? transientChatOverride : null);
 
   const otherUserId = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
   const otherUsername = otherUserId ? _selectedChatDetails?.participantUsernames[otherUserId] : 'User';
