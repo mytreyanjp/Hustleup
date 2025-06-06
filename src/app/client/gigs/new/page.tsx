@@ -88,6 +88,7 @@ export default function NewGigPage() {
 
   const { control, watch, setValue } = form;
   const numberOfReportsValue = watch("numberOfReports", 0);
+  const overallGigDeadline = watch("deadline");
   const { fields: reportDeadlineFields, append: appendReportDeadline, remove: removeReportDeadline } = useFieldArray({
     control,
     name: "reportDeadlines"
@@ -95,7 +96,7 @@ export default function NewGigPage() {
 
   useEffect(() => {
     const currentDeadlinesCount = reportDeadlineFields.length;
-    const targetCount = Number(numberOfReportsValue || 0); // Ensure targetCount is a number
+    const targetCount = Number(numberOfReportsValue || 0); 
 
     if (targetCount > currentDeadlinesCount) {
       for (let i = currentDeadlinesCount; i < targetCount; i++) {
@@ -346,7 +347,7 @@ export default function NewGigPage() {
                 )}
               />
             
-            {numberOfReportsValue > 0 && (
+            {numberOfReportsValue > 0 && overallGigDeadline && (
                 <Card className="pt-4 border-dashed">
                     <CardHeader className="p-2 pt-0">
                         <CardTitle className="text-lg">Set Progress Report Deadlines</CardTitle>

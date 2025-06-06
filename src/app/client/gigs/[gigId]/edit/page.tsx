@@ -109,6 +109,7 @@ export default function EditGigPage() {
 
   const { control, watch, setValue, reset } = form;
   const numberOfReportsValue = watch("numberOfReports", 0);
+  const overallGigDeadline = watch("deadline");
   const { fields: reportDeadlineFields, append: appendReportDeadline, remove: removeReportDeadline, replace: replaceReportDeadlines } = useFieldArray({
     control,
     name: "reportDeadlines"
@@ -125,7 +126,7 @@ export default function EditGigPage() {
       const newDeadlinesSubset = reportDeadlineFields.slice(0, targetCount);
       replaceReportDeadlines(newDeadlinesSubset);
     }
-  }, [numberOfReportsValue, appendReportDeadline, replaceReportDeadlines, reportDeadlineFields.length]); 
+  }, [numberOfReportsValue, reportDeadlineFields.length, appendReportDeadline, replaceReportDeadlines]); 
 
 
   const fetchAndSetGigData = useCallback(async () => {
@@ -448,7 +449,7 @@ export default function EditGigPage() {
                 )}
               />
               
-            {numberOfReportsValue > 0 && (
+            {numberOfReportsValue > 0 && overallGigDeadline && (
                 <Card className="pt-4 border-dashed">
                     <CardHeader className="p-2 pt-0">
                         <CardTitle className="text-lg">Set Progress Report Deadlines</CardTitle>
