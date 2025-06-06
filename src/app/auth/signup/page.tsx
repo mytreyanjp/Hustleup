@@ -299,7 +299,7 @@ export default function SignupPage() {
             errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it to the authorized domains in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
           case 'auth/invalid-credential':
-             errorMessage = `Invalid credential provided for ${providerName} Sign-In. This might indicate a configuration issue with the provider on the Firebase or ${providerName} developer console. Full error: ${error.message}`;
+             errorMessage = `Sign-up with ${providerName} failed due to an invalid credential. This often means there's a misconfiguration in your Firebase project for the ${providerName} sign-in method, or an issue with your ${providerName} developer account setup. Please double-check your Firebase console settings and the ${providerName} developer portal configuration. Raw error: ${error.message || 'No specific message from provider.'}`;
              break;
           case 'auth/oauth-provider-error': 
              errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
