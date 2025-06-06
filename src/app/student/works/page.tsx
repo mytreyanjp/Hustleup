@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp, onSnapshot, DocumentData } from 'firebase/firestore'; // Added onSnapshot
 import { db, storage } from '@/config/firebase';
 // import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -128,86 +128,101 @@ export default function StudentWorksPage() {
   const [paymentRequestGig, setPaymentRequestGig] = useState<WorkGig | null>(null);
   const [isRequestingPayment, setIsRequestingPayment] = useState(false);
 
-
-  const fetchActiveGigs = useCallback(async (currentUserId: string) => {
-    if (!currentUserId || !db) return; // Added check for currentUserId
-    setIsLoading(true); setError(null);
-    try {
-      const gigsRef = collection(db, "gigs");
-      const q = query( gigsRef, where("selectedStudentId", "==", currentUserId), where("status", "==", "in-progress"), orderBy("createdAt", "desc") );
-      const querySnapshot = await getDocs(q);
-      const fetchedGigsPromises = querySnapshot.docs.map(async (gigDoc) => {
-        const gigData = gigDoc.data();
-        let clientUsername = gigData.clientUsername || 'Client';
-        let clientCompanyName: string | undefined = undefined;
-        if (gigData.clientId && db) {
-          try {
-            const clientDocRef = doc(db, 'users', gigData.clientId);
-            const clientDocSnap = await getDoc(clientDocRef);
-            if (clientDocSnap.exists()) {
-              const clientProfile = clientDocSnap.data() as UserProfile;
-              clientUsername = clientProfile.username || clientUsername;
-              clientCompanyName = clientProfile.companyName;
-            }
-          } catch (clientProfileError) { console.error("Error fetching client profile:", clientProfileError); }
-        }
-
-        const numReports = gigData.numberOfReports || 0;
-        const completeProgressReports: ProgressReport[] = [];
-        if (numReports > 0) {
-            for (let i = 0; i < numReports; i++) {
-                const existingReport = (gigData.progressReports as ProgressReport[])?.find(pr => pr.reportNumber === i + 1);
-                completeProgressReports.push({
-                    reportNumber: i + 1,
-                    deadline: existingReport?.deadline || null,
-                    studentSubmission: existingReport?.studentSubmission || null,
-                    clientStatus: existingReport?.clientStatus || null,
-                    clientFeedback: existingReport?.clientFeedback || null,
-                    reviewedAt: existingReport?.reviewedAt || null,
-                });
-            }
-        }
-
-        return {
-          id: gigDoc.id, title: gigData.title || "Untitled Gig", clientId: gigData.clientId, clientUsername, clientCompanyName,
-          deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
-          numberOfReports: numReports, status: gigData.status,
-          paymentRequestsCount: gigData.paymentRequestsCount || 0,
-          lastPaymentRequestedAt: gigData.lastPaymentRequestedAt || null,
-          studentPaymentRequestPending: gigData.studentPaymentRequestPending || false,
-          progressReports: completeProgressReports,
-        } as WorkGig;
-      });
-      const resolvedGigs = await Promise.all(fetchedGigsPromises);
-      const gigsWithEffectiveStatus = resolvedGigs.map(gig => ({
-          ...gig,
-          effectiveStatus: getEffectiveGigStatus(gig),
-          nextUpcomingDeadline: getNextUpcomingDeadline(gig)
-      }));
-      setActiveGigs(gigsWithEffectiveStatus);
-      // Initialize collapsed state based on initial effective status
-      setCollapsedGigs(new Set(gigsWithEffectiveStatus.filter(g => g.effectiveStatus === 'in-progress').map(gig => gig.id)));
-
-    } catch (err: any) { console.error("Error fetching active gigs:", err); setError("Failed to load your active works. This might be due to a missing Firestore index.");
-    } finally { setIsLoading(false); }
-  }, []); 
-
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'student') {
         router.push('/auth/login?redirect=/student/works');
-      } else if (user && role === 'student') { 
-        fetchActiveGigs(user.uid); 
+        return;
+      }
+      if (user && db) {
+        setIsLoading(true);
+        setError(null);
+
+        const gigsRef = collection(db, "gigs");
+        const q = query(
+          gigsRef,
+          where("selectedStudentId", "==", user.uid),
+          where("status", "==", "in-progress"),
+          orderBy("createdAt", "desc")
+        );
+
+        const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+          const fetchedGigsPromises = querySnapshot.docs.map(async (gigDoc) => {
+            const gigData = gigDoc.data() as DocumentData;
+            let clientUsername = gigData.clientUsername || 'Client';
+            let clientCompanyName: string | undefined = undefined;
+            if (gigData.clientId && db) {
+              try {
+                const clientDocRef = doc(db, 'users', gigData.clientId);
+                const clientDocSnap = await getDoc(clientDocRef);
+                if (clientDocSnap.exists()) {
+                  const clientProfile = clientDocSnap.data() as UserProfile;
+                  clientUsername = clientProfile.username || clientUsername;
+                  clientCompanyName = clientProfile.companyName;
+                }
+              } catch (clientProfileError) { console.error("Error fetching client profile:", clientProfileError); }
+            }
+
+            const numReports = gigData.numberOfReports || 0;
+            const completeProgressReports: ProgressReport[] = [];
+            if (numReports > 0) {
+              for (let i = 0; i < numReports; i++) {
+                const existingReport = (gigData.progressReports as ProgressReport[])?.find(pr => pr.reportNumber === i + 1);
+                completeProgressReports.push({
+                  reportNumber: i + 1,
+                  deadline: existingReport?.deadline || null,
+                  studentSubmission: existingReport?.studentSubmission || null,
+                  clientStatus: existingReport?.clientStatus || null,
+                  clientFeedback: existingReport?.clientFeedback || null,
+                  reviewedAt: existingReport?.reviewedAt || null,
+                });
+              }
+            }
+
+            return {
+              id: gigDoc.id, title: gigData.title || "Untitled Gig", clientId: gigData.clientId, clientUsername, clientCompanyName,
+              deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
+              numberOfReports: numReports, status: gigData.status,
+              paymentRequestsCount: gigData.paymentRequestsCount || 0,
+              lastPaymentRequestedAt: gigData.lastPaymentRequestedAt || null,
+              studentPaymentRequestPending: gigData.studentPaymentRequestPending || false,
+              progressReports: completeProgressReports,
+            } as WorkGig;
+          });
+
+          try {
+            const resolvedGigs = await Promise.all(fetchedGigsPromises);
+            const gigsWithEffectiveStatus = resolvedGigs.map(gig => ({
+              ...gig,
+              effectiveStatus: getEffectiveGigStatus(gig),
+              nextUpcomingDeadline: getNextUpcomingDeadline(gig)
+            }));
+            setActiveGigs(gigsWithEffectiveStatus);
+            setCollapsedGigs(prevCollapsed => new Set(gigsWithEffectiveStatus.filter(g => g.effectiveStatus === 'in-progress' && !prevCollapsed.has(g.id)).map(g => g.id)));
+          } catch (resolveError) {
+             console.error("Error resolving gig details:", resolveError);
+             setError("Failed to process some gig details.");
+          } finally {
+            setIsLoading(false);
+          }
+        }, (err: any) => {
+          console.error("Error fetching active gigs with onSnapshot:", err);
+          setError("Failed to load your active works. This might be due to a missing Firestore index.");
+          setIsLoading(false);
+        });
+
+        return () => unsubscribe(); // Cleanup listener on unmount
+      } else {
+         setIsLoading(false); // Handle case where user or db is not available
       }
     }
-  }, [user, authLoading, role, router, fetchActiveGigs]);
+  }, [user, authLoading, role, router]);
+
 
   const processedGigs = useMemo(() => {
     if (!activeGigs) return [];
     let gigsToProcess = [...activeGigs]; 
 
-    // Re-calculate effectiveStatus and nextUpcomingDeadline if not already on the object
-    // or if it needs to be fresh based on some other criteria (not strictly needed here if fetchActiveGigs sets it)
     gigsToProcess = gigsToProcess.map(gig => ({
         ...gig,
         effectiveStatus: gig.effectiveStatus || getEffectiveGigStatus(gig),
@@ -246,7 +261,6 @@ export default function StudentWorksPage() {
       } else if (sortBy === 'deadlineDesc') {
         return deadlineB - deadlineA;
       }
-      // Default sort by deadline ascending if statuses are the same
       return deadlineA - deadlineB;
     });
 
@@ -306,10 +320,9 @@ export default function StudentWorksPage() {
           reviewedAt: null,    
         };
       } else {
-        // This case should ideally not happen if reports are pre-initialized for the gig
         progressReports.push({
           reportNumber: currentReportNumber as number,
-          deadline: null, // Or fetch actual deadline if available
+          deadline: null, 
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null,
@@ -322,7 +335,7 @@ export default function StudentWorksPage() {
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
       setCurrentSubmittingGigId(null);
-      if(user) fetchActiveGigs(user.uid); // Re-fetch gigs for the current user
+      // No need to manually call fetchActiveGigs, onSnapshot will update the state
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -347,7 +360,7 @@ export default function StudentWorksPage() {
         toast({ title: "Payment Requested!", description: "The client has been notified of your payment request."});
         setShowPaymentRequestDialog(false);
         setPaymentRequestGig(null);
-        if(user) fetchActiveGigs(user.uid); // Re-fetch to update UI
+        // No need to manually call fetchActiveGigs, onSnapshot will update
     } catch (error: any) {
         console.error("Error requesting payment:", error);
         toast({ title: "Error", description: `Could not request payment: ${error.message}`, variant: "destructive"});
@@ -562,7 +575,7 @@ export default function StudentWorksPage() {
                     </div>
                     {gig.studentPaymentRequestPending ? (
                         <Button size="sm" variant="secondary" disabled className="w-full sm:w-auto mt-2 sm:mt-0">
-                            Payment Requested ({formatDistanceToNow(gig.lastPaymentRequestedAt!.toDate(), { addSuffix: true })})
+                            Payment Requested ({gig.lastPaymentRequestedAt ? formatDistanceToNow(gig.lastPaymentRequestedAt.toDate(), { addSuffix: true }) : 'Pending'})
                         </Button>
                     ) : canRequestPayment ? (
                         <Button
@@ -630,4 +643,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-

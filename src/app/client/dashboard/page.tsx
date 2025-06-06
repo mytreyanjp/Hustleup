@@ -8,7 +8,7 @@ import { PlusCircle, Users, CreditCard, Briefcase, Loader2, FileText } from 'luc
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, Timestamp, DocumentData } from 'firebase/firestore'; // Added onSnapshot
 import { db } from '@/config/firebase';
 
 interface Gig {
@@ -25,7 +25,6 @@ export default function ClientDashboardPage() {
   const [pendingApplicantsCount, setPendingApplicantsCount] = useState<number | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
-  // Protect route: Redirect if not loading, not logged in, or not a client
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'client') {
@@ -35,46 +34,45 @@ export default function ClientDashboardPage() {
   }, [user, role, authLoading, router]);
 
   useEffect(() => {
-    if (user && role === 'client') {
-      const fetchDashboardStats = async () => {
-        setIsLoadingStats(true);
-        try {
-          const gigsRef = collection(db, "gigs");
-          const q = query(gigsRef, where("clientId", "==", user.uid));
-          const querySnapshot = await getDocs(q);
+    if (user && role === 'client' && db) {
+      setIsLoadingStats(true);
+      const gigsRef = collection(db, "gigs");
+      const q = query(gigsRef, where("clientId", "==", user.uid));
 
-          let activeGigs = 0;
-          let pendingApplicants = 0;
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        let activeGigs = 0;
+        let pendingApplicants = 0;
 
-          querySnapshot.forEach((doc) => {
-            const gig = doc.data() as Gig;
-            if (gig.status === 'open' || gig.status === 'in-progress') {
-              activeGigs++;
-            }
-            if (gig.status === 'open' && gig.applicants) {
-              gig.applicants.forEach(applicant => {
-                if (applicant.status === 'pending' || !applicant.status) {
-                  pendingApplicants++;
-                }
-              });
-            }
-          });
+        querySnapshot.forEach((doc) => {
+          const gig = doc.data() as Gig;
+          if (gig.status === 'open' || gig.status === 'in-progress') {
+            activeGigs++;
+          }
+          if (gig.status === 'open' && gig.applicants) {
+            gig.applicants.forEach(applicant => {
+              if (applicant.status === 'pending' || !applicant.status) {
+                pendingApplicants++;
+              }
+            });
+          }
+        });
 
-          setActiveGigsCount(activeGigs);
-          setPendingApplicantsCount(pendingApplicants);
-        } catch (error) {
-          console.error("Error fetching dashboard stats:", error);
-          // Optionally set error state to display in UI
-        } finally {
-          setIsLoadingStats(false);
-        }
-      };
-      fetchDashboardStats();
+        setActiveGigsCount(activeGigs);
+        setPendingApplicantsCount(pendingApplicants);
+        setIsLoadingStats(false);
+      }, (error) => {
+        console.error("Error fetching dashboard stats with onSnapshot:", error);
+        setIsLoadingStats(false);
+        // Optionally set error state to display in UI
+      });
+
+      return () => unsubscribe(); // Cleanup listener on unmount
+    } else {
+      setIsLoadingStats(false); // Ensure loading state is false if user/db not ready
     }
   }, [user, role]);
 
 
-  // Show loading state from context or stats loading
   if (authLoading || (isLoadingStats && user && role === 'client')) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
@@ -83,8 +81,6 @@ export default function ClientDashboardPage() {
     );
   }
 
-  // If context is loaded, but user is not a client (or not logged in), show placeholder.
-  // The useEffect above will handle the redirect.
   if (!user || role !== 'client') {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
@@ -112,7 +108,7 @@ export default function ClientDashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
             <div className="text-2xl sm:text-3xl font-bold">
-                {activeGigsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : activeGigsCount}
+                {activeGigsCount === null && isLoadingStats ? <Loader2 className="h-7 w-7 animate-spin" /> : activeGigsCount}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Gigs that are open or in-progress.
@@ -130,7 +126,7 @@ export default function ClientDashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
             <div className="text-2xl sm:text-3xl font-bold">
-                {pendingApplicantsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : pendingApplicantsCount}
+                {pendingApplicantsCount === null && isLoadingStats ? <Loader2 className="h-7 w-7 animate-spin" /> : pendingApplicantsCount}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Students awaiting review for your open gigs.

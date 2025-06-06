@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useFirebase } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, Timestamp, DocumentData } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,62 +36,61 @@ export default function ClientNotificationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchNotifications = useCallback(async () => {
-    if (!user || !db) return;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const gigsRef = collection(db, 'gigs');
-      const q = query(
-        gigsRef,
-        where("clientId", "==", user.uid),
-        where("status", "==", "open") // Only consider open gigs
-      );
-      const querySnapshot = await getDocs(q);
-      const fetchedGigs: GigWithPendingApplicants[] = [];
-
-      querySnapshot.forEach((doc) => {
-        const gigData = doc.data();
-        const applicants = gigData.applicants as ApplicantDetails[] | undefined;
-        const pendingApplicantsList = applicants?.filter(app => !app.status || app.status === 'pending') || [];
-
-        if (pendingApplicantsList.length > 0) {
-          fetchedGigs.push({
-            id: doc.id,
-            title: gigData.title || "Untitled Gig",
-            createdAt: gigData.createdAt,
-            pendingApplicants: pendingApplicantsList.sort((a,b) => b.appliedAt.toMillis() - a.appliedAt.toMillis()), // Sort newest applicant first for this gig
-            totalApplicantsOnGig: applicants?.length || 0,
-          });
-        }
-      });
-
-      // Sort gigs by the most recent application across all pending applicants
-      fetchedGigs.sort((a, b) => {
-        const lastAppA = a.pendingApplicants[0]?.appliedAt.toMillis() || 0;
-        const lastAppB = b.pendingApplicants[0]?.appliedAt.toMillis() || 0;
-        return lastAppB - lastAppA;
-      });
-      
-      setNotifyingGigs(fetchedGigs);
-    } catch (err: any) {
-      console.error("Error fetching notifications:", err);
-      setError("Failed to load notifications. Please try again later. This might be due to a missing Firestore index.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'client') {
         router.push('/auth/login?redirect=/client/notifications');
+        return;
+      }
+      if (user && db) {
+        setIsLoading(true);
+        setError(null);
+
+        const gigsRef = collection(db, 'gigs');
+        const q = query(
+          gigsRef,
+          where("clientId", "==", user.uid),
+          where("status", "==", "open") // Only consider open gigs
+        );
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+          const fetchedGigs: GigWithPendingApplicants[] = [];
+          querySnapshot.forEach((doc) => {
+            const gigData = doc.data() as DocumentData;
+            const applicants = gigData.applicants as ApplicantDetails[] | undefined;
+            const pendingApplicantsList = applicants?.filter(app => !app.status || app.status === 'pending') || [];
+            
+            if (pendingApplicantsList.length > 0) {
+              fetchedGigs.push({
+                id: doc.id,
+                title: gigData.title || "Untitled Gig",
+                createdAt: gigData.createdAt,
+                pendingApplicants: pendingApplicantsList.sort((a,b) => b.appliedAt.toMillis() - a.appliedAt.toMillis()),
+                totalApplicantsOnGig: applicants?.length || 0,
+              });
+            }
+          });
+
+          fetchedGigs.sort((a, b) => {
+            const lastAppA = a.pendingApplicants[0]?.appliedAt.toMillis() || 0;
+            const lastAppB = b.pendingApplicants[0]?.appliedAt.toMillis() || 0;
+            return lastAppB - lastAppA;
+          });
+          
+          setNotifyingGigs(fetchedGigs);
+          setIsLoading(false);
+        }, (err: any) => {
+          console.error("Error fetching notifications with onSnapshot:", err);
+          setError("Failed to load notifications. Please try again later. This might be due to a missing Firestore index.");
+          setIsLoading(false);
+        });
+
+        return () => unsubscribe(); // Cleanup listener on unmount
       } else {
-        fetchNotifications();
+        setIsLoading(false); // Handle case where user or db is not available after auth check
       }
     }
-  }, [user, role, authLoading, router, fetchNotifications]);
+  }, [user, role, authLoading, router]);
 
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
@@ -118,7 +117,7 @@ export default function ClientNotificationsPage() {
     <div className="space-y-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
       <p className="text-muted-foreground">
-        Here are your gigs with new applicants waiting for review.
+        Here are your gigs with new applicants waiting for review. This page updates in real-time.
       </p>
 
       {notifyingGigs.length === 0 ? (
@@ -189,5 +188,3 @@ export default function ClientNotificationsPage() {
     </div>
   );
 }
-
-    
