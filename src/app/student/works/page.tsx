@@ -512,20 +512,22 @@ export default function StudentWorksPage() {
 
               return (
               <Card key={gig.id} className="glass-card">
-                <CardHeader className="flex flex-col sm:flex-row justify-between items-start p-4 sm:p-6 gap-2">
+                <CardHeader 
+                  className="flex flex-col sm:flex-row justify-between items-start p-4 sm:p-6 gap-2 cursor-pointer hover:bg-accent/20 transition-colors"
+                  onClick={() => toggleGigCollapse(gig.id)}
+                >
                   <div className="flex-grow">
-                    <Link href={`/gigs/${gig.id}`} className="hover:underline">
+                    <Link href={`/gigs/${gig.id}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
                         <CardTitle className="text-lg sm:text-xl">{gig.title}</CardTitle>
                     </Link>
-                    <CardDescription className="text-xs sm:text-sm"> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline">{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
+                    <CardDescription className="text-xs sm:text-sm"> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
                     <div className="mt-1">
                        <Badge variant={effectiveStatusVariant} size="sm" className="capitalize text-xs">{effectiveStatusLabel}</Badge>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-start sm:self-center">
-                      <Button variant="ghost" size="icon" onClick={() => toggleGigCollapse(gig.id)} className="h-8 w-8">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={isCollapsed ? 'Expand' : 'Collapse'}>
                           {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
-                          <span className="sr-only">{isCollapsed ? 'Expand' : 'Collapse'}</span>
                       </Button>
                   </div>
                 </CardHeader>
