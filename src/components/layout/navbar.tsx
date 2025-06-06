@@ -253,9 +253,14 @@ export default function Navbar() {
                 {isClient && role === 'student' ? 'Explore' : 'Gigs'}
               </Link>
               {isClient && role === 'client' && (
-                <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                  <HustlersIcon className="mr-1 h-4 w-4" /> Hustlers
-                </Link>
+                <>
+                  <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+                    <HustlersIcon className="mr-1 h-4 w-4" /> Hustlers
+                  </Link>
+                  <Link href="/client/gigs" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
+                    <Briefcase className="mr-1 h-4 w-4" /> My Gigs
+                  </Link>
+                </>
               )}
               {isClient && role === 'student' && (
                 <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
@@ -301,20 +306,25 @@ export default function Navbar() {
                   {SearchBarComponent}
                 </div>
               ) : (
-                // Mobile + Default (not login, not search active): Show Search Icon (and Notifications if client)
+                // Mobile + Default (not login, not search active): Show Search Icon (and Notifications/MyGigs if client)
                 <>
                   <Button variant="ghost" size="icon" onClick={handleShowMobileSearch} aria-label="Open search" className="h-8 w-8">
                     <SearchIcon className="h-5 w-5" />
                   </Button>
                   {isClient && user && role === 'client' && (
-                    <Link href="/client/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
-                      <Bell className="h-5 w-5" />
-                      {clientUnreadNotificationCount > 0 && (
-                         <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
-                           {clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}
-                         </span>
-                      )}
-                    </Link>
+                    <>
+                      <Link href="/client/gigs" className="text-muted-foreground hover:text-primary p-1.5" aria-label="My Gigs">
+                        <Briefcase className="h-5 w-5" />
+                      </Link>
+                      <Link href="/client/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
+                        <Bell className="h-5 w-5" />
+                        {clientUnreadNotificationCount > 0 && (
+                           <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
+                             {clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}
+                           </span>
+                        )}
+                      </Link>
+                    </>
                   )}
                 </>
               )}
@@ -512,6 +522,3 @@ export default function Navbar() {
     </header>
   );
 }
-
-
-    
