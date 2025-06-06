@@ -115,16 +115,16 @@ export default function EditGigPage() {
 
    useEffect(() => {
     const currentDeadlinesCount = reportDeadlineFields.length;
-    const targetCount = numberOfReportsValue || 0;
+    const targetCount = Number(numberOfReportsValue || 0);
 
     if (targetCount > currentDeadlinesCount) {
-      const newDeadlines = Array(targetCount - currentDeadlinesCount).fill(null);
-      appendReportDeadline(newDeadlines);
+      const newDeadlinesArray = Array(targetCount - currentDeadlinesCount).fill(null);
+      appendReportDeadline(newDeadlinesArray);
     } else if (targetCount < currentDeadlinesCount) {
-      const newDeadlines = reportDeadlineFields.slice(0, targetCount);
-      replaceReportDeadlines(newDeadlines);
+      const newDeadlinesSubset = reportDeadlineFields.slice(0, targetCount);
+      replaceReportDeadlines(newDeadlinesSubset);
     }
-  }, [numberOfReportsValue, reportDeadlineFields, appendReportDeadline, replaceReportDeadlines]);
+  }, [numberOfReportsValue, appendReportDeadline, replaceReportDeadlines, reportDeadlineFields.length]); // reportDeadlineFields.length ensures effect runs if length changes externally
 
 
   const fetchAndSetGigData = useCallback(async () => {
@@ -517,3 +517,4 @@ export default function EditGigPage() {
     </div>
   );
 }
+
