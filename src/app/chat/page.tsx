@@ -125,6 +125,8 @@ export default function ChatPage() {
 
     try {
       const chatSnap = await getDoc(chatDocRef);
+      const isClientInteractingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
+      
       if (chatSnap.exists()) {
         let existingChatData = { ...chatSnap.data(), id: chatId } as ChatMetadata;
         let updateRequired = false;
@@ -138,11 +140,8 @@ export default function ChatPage() {
              updateRequired = true;
         }
         
-        const isClientInteractingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
-        
         if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
-            updates.chatStatus = 'accepted'; // Ensure it's accepted
-            // Add system message only if it was explicitly pending/rejected or status was missing
+            updates.chatStatus = 'accepted'; 
             if (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected' || existingChatData.chatStatus === undefined) {
                 updates.lastMessage = "Chat is now active.";
                 updates.lastMessageTimestamp = serverTimestamp();
@@ -161,7 +160,6 @@ export default function ChatPage() {
                 }).catch(console.error);
             }
         } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
-            // This handles activation via gig link if not already client-student direct activation
             updates.chatStatus = 'accepted';
             updates.lastMessage = "Chat is now active via gig link.";
             updates.lastMessageTimestamp = serverTimestamp();
@@ -187,7 +185,7 @@ export default function ChatPage() {
 
             const updatedLocalChat: ChatMetadata = {
                 ...existingChatData,
-                ...clientSideUpdates, // This ensures chatStatus is overwritten if in updates
+                ...clientSideUpdates,
                 id: chatId,
             };
             setChats(prev => prev.map(chat => chat.id === chatId ? updatedLocalChat : chat));
@@ -195,17 +193,15 @@ export default function ChatPage() {
             return updatedLocalChat;
         }
         
-        // If no update was required, but it's client-student and status is missing, ensure local object has 'accepted'
-        if (isClientInteractingWithStudent && existingChatData.chatStatus === undefined) {
+        // Ensure chatStatus is 'accepted' for client-student interaction even if no other update was required
+        if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
-            // No actual Firestore update here, just ensuring the returned object for transient override is correct.
-            // It's a bit of a patch; ideally, old docs should be migrated or the `updateRequired` logic made more complex.
             setSelectedChatId(chatId);
             return chatWithForcedStatus;
         }
 
         setSelectedChatId(chatId);
-        return existingChatData; // existingChatData already has id
+        return { ...existingChatData, id: chatId };
 
       } else { // Chat doesn't exist, create new
         const newChatData: ChatMetadata = {
@@ -228,8 +224,7 @@ export default function ChatPage() {
           newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
         }
 
-        const isClientInitiatingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
-        if (isClientInitiatingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
+        if (isClientInteractingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
           newChatData.chatStatus = 'accepted';
           newChatData.gigId = gigIdForContext;
           newChatData.lastMessage = 'Chat started.';
@@ -297,25 +292,13 @@ export default function ChatPage() {
       setMessage(''); 
       toast({ title: "Profile Ready to Share", description: "Select a chat and send your message." });
       
-      if (user.uid !== shareProfileUserId) { // Auto-select/create chat for the profile being shared, if not sharing own profile
+      if (user.uid !== shareProfileUserId) { 
           const fetchTargetUserAndCreateChatForProfileShare = async () => {
             if (!db) {
                 toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
                 return;
             }
-            // The "target" for the chat is the person TO WHOM the profile is being shared.
-            // The `shareProfileUserId` is the person WHOSE profile is shared.
-            // If client shares student X's profile to student Y, targetUserId is Y, shareProfileUserId is X.
-            // For now, let's assume user wants to share TO the person whose profile they are viewing or selecting from a list.
-            // This part needs clarification if the UX is "share profile X with user Y".
-            // Current code path assumes you are on profile X, click share, and then need to pick a chat (or it auto-opens a chat WITH X).
-            // If you want to share X's profile TO a *different* user Y, the UI flow to select Y is not yet here.
-            // For now, we'll assume the `targetUserId` from a previous navigation or direct `userId` param is who we share TO.
-            // If `targetUserId` is empty, user must select a chat.
-
             const chatTargetId = targetUserId || preselectChatId?.split('_').find(id => id !== user.uid) || null; 
-            // If no explicit target for the chat, and we are sharing profile X, we need to prompt user to pick a chat.
-            // If `targetUserId` *is* the `shareProfileUserId`, it implies user is on Profile X page and wants to message X (to share X's profile TO X).
             
             if (chatTargetId) {
                  const targetUserDocRef = doc(db, 'users', chatTargetId);
@@ -339,10 +322,8 @@ export default function ChatPage() {
                  } else {
                    toast({ title: "User Not Found", description: "The user you're trying to chat with to share the profile doesn't exist.", variant: "destructive" });
                  }
-            } else if (user.uid === shareProfileUserId) { // Sharing own profile, but to whom?
-                 // Let user pick a chat. No auto-open.
-            } else { // Sharing someone else's profile, but no target chat selected.
-                // Try to open a chat with the person whose profile is being shared if no other target.
+            } else if (user.uid === shareProfileUserId) { 
+            } else { 
                 const targetUserDocRef = doc(db, 'users', shareProfileUserId);
                 const targetUserSnap = await getDoc(targetUserDocRef);
                 if (targetUserSnap.exists()) {
@@ -368,7 +349,7 @@ export default function ChatPage() {
       if (typeof window !== 'undefined') { 
         const currentUrl = new URL(window.location.href);
         ['shareUserId', 'shareUsername', 'shareUserProfilePictureUrl', 'shareUserRole'].forEach(param => currentUrl.searchParams.delete(param));
-        if (targetUserId) currentUrl.searchParams.delete('userId'); // Also remove userId if it was used for chat target
+        if (targetUserId) currentUrl.searchParams.delete('userId'); 
         router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
       }
     } else if (shareGigId && shareGigTitle) {
@@ -1071,7 +1052,7 @@ export default function ChatPage() {
                             <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                         </Avatar>
                     </Link>
-                    <div className="flex-grow overflow-hidden">
+                    <div className="flex-grow overflow-hidden min-w-0"> {/* Added min-w-0 here */}
                         {otherParticipantId ? (
                         <Link href={`/profile/${otherParticipantId}`} passHref
                             onClick={(e) => e.stopPropagation()}
