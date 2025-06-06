@@ -47,6 +47,7 @@ const profileSchema = z.object({
   bio: z.string().max(500, { message: 'Bio cannot exceed 500 characters' }).optional().or(z.literal('')),
   skills: z.array(z.string()).max(20, { message: 'Maximum 20 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
+  imageUrl: z.string().url({ message: "Please enter a valid image URL." }).max(2048, { message: "Image URL is too long."}).optional().or(z.literal('')),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -102,6 +103,7 @@ export default function StudentProfilePage() {
       bio: '',
       skills: [],
       portfolioLinks: [],
+      imageUrl: '',
     },
   });
 
@@ -110,6 +112,20 @@ export default function StudentProfilePage() {
     name: "portfolioLinks"
   });
 
+  const watchedImageUrl = form.watch("imageUrl");
+
+  useEffect(() => {
+    if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
+      setImagePreview(watchedImageUrl);
+      setSelectedPredefinedAvatar(null); // Clear predefined selection if URL is used
+    } else if (!watchedImageUrl && selectedPredefinedAvatar) {
+      setImagePreview(selectedPredefinedAvatar);
+    } else if (!watchedImageUrl && !selectedPredefinedAvatar) {
+      setImagePreview(userProfile?.profilePictureUrl || null);
+    }
+  }, [watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form.formState.errors.imageUrl]);
+
+
   const populateFormAndPreview = useCallback((profile: UserProfile | null) => {
     if (profile) {
       form.reset({
@@ -117,16 +133,23 @@ export default function StudentProfilePage() {
         bio: profile.bio || '',
         skills: (profile.skills as Skill[]) || [],
         portfolioLinks: profile.portfolioLinks?.map(link => ({ value: link })) || [],
+        imageUrl: PREDEFINED_AVATARS.some(avatar => avatar.url === profile.profilePictureUrl) ? '' : profile.profilePictureUrl || '',
       });
-      setImagePreview(profile.profilePictureUrl || null);
-      setSelectedPredefinedAvatar(null);
-      setShowAvatarGrid(false); // Ensure grid is hidden when form populates
+      if (PREDEFINED_AVATARS.some(avatar => avatar.url === profile.profilePictureUrl)) {
+        setSelectedPredefinedAvatar(profile.profilePictureUrl || null);
+        setImagePreview(profile.profilePictureUrl || null);
+      } else {
+        setSelectedPredefinedAvatar(null);
+        setImagePreview(profile.profilePictureUrl || null);
+      }
+      setShowAvatarGrid(false);
     } else if (user) {
       form.reset({
         username: user.email?.split('@')[0] || '',
         bio: '',
         skills: [],
         portfolioLinks: [],
+        imageUrl: '',
       });
       setImagePreview(null);
       setSelectedPredefinedAvatar(null);
@@ -238,7 +261,9 @@ export default function StudentProfilePage() {
         updatedAt: Timestamp.now(),
       };
 
-      if (selectedPredefinedAvatar) {
+      if (data.imageUrl) {
+        updateData.profilePictureUrl = data.imageUrl;
+      } else if (selectedPredefinedAvatar) {
         updateData.profilePictureUrl = selectedPredefinedAvatar;
       } else {
         updateData.profilePictureUrl = userProfile?.profilePictureUrl || '';
@@ -248,7 +273,7 @@ export default function StudentProfilePage() {
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
       setIsEditing(false);
-      setShowAvatarGrid(false); // Hide grid after saving
+      setShowAvatarGrid(false); 
     } catch (error: any) {
       console.error('Profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -260,7 +285,7 @@ export default function StudentProfilePage() {
   const handleCancelEdit = () => {
     populateFormAndPreview(userProfile);
     setIsEditing(false);
-    setShowAvatarGrid(false); // Hide grid on cancel
+    setShowAvatarGrid(false); 
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null) => {
@@ -272,7 +297,8 @@ export default function StudentProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
-    setShowAvatarGrid(false); // Close grid after selection
+    form.setValue("imageUrl", ""); // Clear URL if predefined is selected
+    setShowAvatarGrid(false); 
   };
 
   const handleOpenFollowingModal = async () => {
@@ -344,7 +370,7 @@ export default function StudentProfilePage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
             <div className="relative group shrink-0">
               <Avatar className="h-24 w-24 sm:h-32 sm:w-32 text-4xl border-2 border-muted shadow-md">
-                <AvatarImage src={imagePreview || userProfile?.profilePictureUrl || undefined} alt={userProfile?.username || 'User'} />
+                <AvatarImage src={imagePreview || undefined} alt={userProfile?.username || 'User'} />
                 <AvatarFallback>{getInitials(user?.email, userProfile?.username)}</AvatarFallback>
               </Avatar>
               {isEditing && (
@@ -389,7 +415,7 @@ export default function StudentProfilePage() {
                 
                 {showAvatarGrid && (
                   <FormItem>
-                    <FormLabel>Choose an Avatar</FormLabel>
+                    <FormLabel>Choose a Predefined Avatar</FormLabel>
                     <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-2">
                       {PREDEFINED_AVATARS.map((avatar) => (
                         <button
@@ -398,7 +424,7 @@ export default function StudentProfilePage() {
                           onClick={() => handleSelectPredefinedAvatar(avatar.url)}
                           className={cn(
                             "rounded-lg overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 aspect-square",
-                            imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                            imagePreview === avatar.url && !watchedImageUrl ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
                           )}
                           title={`Select avatar: ${avatar.hint}`}
                         >
@@ -413,9 +439,32 @@ export default function StudentProfilePage() {
                         </button>
                       ))}
                     </div>
-                     <FormDescription className="mt-1">Or keep your current picture. File uploads are disabled.</FormDescription>
                   </FormItem>
                 )}
+
+                <FormField
+                  control={form.control}
+                  name="imageUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Or Enter Image URL</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="https://example.com/image.png" 
+                          {...field} 
+                          onChange={(e) => {
+                            field.onChange(e);
+                            if (e.target.value) setSelectedPredefinedAvatar(null);
+                          }}
+                        />
+                      </FormControl>
+                      <FormDescription>Paste a direct link to an image from the web.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <p className="text-xs text-muted-foreground text-center">File uploads are currently disabled. Use a URL or a predefined avatar.</p>
+
 
                 <FormField
                   control={form.control} name="username"

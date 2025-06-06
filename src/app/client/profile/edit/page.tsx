@@ -27,6 +27,7 @@ const clientProfileEditSchema = z.object({
   companyDescription: z.string().min(20, "Company description must be at least 20 characters").max(500, "Company description cannot exceed 500 characters"),
   personalEmail: z.string().email({ message: 'Invalid email format' }).max(100).optional().or(z.literal('')),
   personalPhone: z.string().regex(/^\+?[1-9]\d{1,14}$/, { message: 'Invalid phone number format (e.g., +1234567890)' }).max(20).optional().or(z.literal('')),
+  imageUrl: z.string().url({ message: "Please enter a valid image URL." }).max(2048, { message: "Image URL is too long."}).optional().or(z.literal('')),
 });
 
 type ClientProfileEditFormValues = z.infer<typeof clientProfileEditSchema>;
@@ -69,8 +70,23 @@ export default function EditClientProfilePage() {
       companyDescription: '',
       personalEmail: '',
       personalPhone: '',
+      imageUrl: '',
     },
   });
+
+  const watchedImageUrl = form.watch("imageUrl");
+
+  useEffect(() => {
+    if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
+      setImagePreview(watchedImageUrl);
+      setSelectedPredefinedAvatar(null); 
+    } else if (!watchedImageUrl && selectedPredefinedAvatar) {
+      setImagePreview(selectedPredefinedAvatar);
+    } else if (!watchedImageUrl && !selectedPredefinedAvatar) {
+      setImagePreview(userProfile?.profilePictureUrl || null);
+    }
+  }, [watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form.formState.errors.imageUrl]);
+
 
   const populateFormAndPreview = useCallback((profile: UserProfile | null) => {
     if (profile) {
@@ -81,9 +97,16 @@ export default function EditClientProfilePage() {
         companyDescription: profile.companyDescription || '',
         personalEmail: profile.personalEmail || '',
         personalPhone: profile.personalPhone || '',
+        imageUrl: PREDEFINED_AVATARS.some(avatar => avatar.url === profile.profilePictureUrl) ? '' : profile.profilePictureUrl || '',
       });
-      setImagePreview(profile.profilePictureUrl || null);
-      setSelectedPredefinedAvatar(null);
+      if (PREDEFINED_AVATARS.some(avatar => avatar.url === profile.profilePictureUrl)) {
+        setSelectedPredefinedAvatar(profile.profilePictureUrl || null);
+        setImagePreview(profile.profilePictureUrl || null);
+      } else {
+        setSelectedPredefinedAvatar(null);
+        setImagePreview(profile.profilePictureUrl || null);
+      }
+      setShowAvatarGrid(false);
     } else if (user) {
        form.reset({
         username: user.email?.split('@')[0] || '',
@@ -92,9 +115,11 @@ export default function EditClientProfilePage() {
         companyDescription: '',
         personalEmail: '',
         personalPhone: '',
+        imageUrl: '',
       });
       setImagePreview(null);
       setSelectedPredefinedAvatar(null);
+      setShowAvatarGrid(false);
     }
   }, [form, user]);
 
@@ -126,7 +151,9 @@ export default function EditClientProfilePage() {
         updatedAt: Timestamp.now(),
       };
 
-      if (selectedPredefinedAvatar) {
+      if (data.imageUrl) {
+        updateData.profilePictureUrl = data.imageUrl;
+      } else if (selectedPredefinedAvatar) {
         updateData.profilePictureUrl = selectedPredefinedAvatar;
       } else {
         updateData.profilePictureUrl = userProfile?.profilePictureUrl || '';
@@ -147,7 +174,8 @@ export default function EditClientProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
-    setShowAvatarGrid(false); // Close grid after selection
+    form.setValue("imageUrl", ""); // Clear URL if predefined is selected
+    setShowAvatarGrid(false); 
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
@@ -193,7 +221,7 @@ export default function EditClientProfilePage() {
 
             {showAvatarGrid && (
               <div className="w-full pt-4 border-t mt-4">
-                <p className="text-sm font-medium text-center mb-3">Choose an avatar</p>
+                <p className="text-sm font-medium text-center mb-3">Choose a Predefined Avatar</p>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                   {PREDEFINED_AVATARS.map((avatar) => (
                     <button
@@ -202,7 +230,7 @@ export default function EditClientProfilePage() {
                       onClick={() => handleSelectPredefinedAvatar(avatar.url)}
                       className={cn(
                         "rounded-lg overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 aspect-square",
-                        imagePreview === avatar.url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                        imagePreview === avatar.url && !watchedImageUrl ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
                       )}
                       title={`Select avatar: ${avatar.hint}`}
                     >
@@ -219,11 +247,37 @@ export default function EditClientProfilePage() {
                 </div>
               </div>
             )}
-            <p className="text-xs text-muted-foreground mt-2 text-center">File uploads are currently disabled.</p>
+             <p className="text-xs text-muted-foreground mt-2 text-center">File uploads are currently disabled.</p>
           </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
+             <FormField
+                control={form.control}
+                name="imageUrl"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <LinkIcon className="h-4 w-4 text-muted-foreground" /> Or Enter Image URL
+                    </FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="https://example.com/your-logo.png" 
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (e.target.value) setSelectedPredefinedAvatar(null); // Clear predefined if URL is typed
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>Paste a direct link to an image (e.g., your company logo).</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+
               <FormField
                 control={form.control}
                 name="username"
@@ -324,5 +378,3 @@ export default function EditClientProfilePage() {
     </div>
   );
 }
-
-    

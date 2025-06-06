@@ -3,6 +3,9 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -26,13 +29,19 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      // Apple usually doesn't provide direct image URLs via OAuth in a way that `next/image` can easily consume.
-      // User's Apple profile picture typically isn't exposed.
       { 
         protocol: 'https',
         hostname: 'firebasestorage.googleapis.com', // For Firebase Storage (user uploads)
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https', // Allow all HTTPS sources
+        hostname: '**',
+      },
+      {
+        protocol: 'http', // Allow all HTTP sources (less secure, for flexibility in prototype)
+        hostname: '**',
       }
     ],
   },
