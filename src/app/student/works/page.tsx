@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon } from 'lucide-react';
 import Link from 'next/link';
-import { format, formatDistanceToNow, isBefore } from 'date-fns';
+import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -49,13 +49,14 @@ interface WorkGig {
   currency: string;
   numberOfReports?: number;
   paymentRequestsCount?: number;
-  lastPaymentRequestedAt?: Timestamp;
+  lastPaymentRequestedAt?: Timestamp | null; // Ensure it can be null
   studentPaymentRequestPending?: boolean;
   status: 'in-progress';
   progressReports?: ProgressReport[];
   // For internal processing
   effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress';
   nextUpcomingDeadline?: Timestamp | null;
+  paymentRequestAvailableAt?: Timestamp | null; // When the next payment request can be made
 }
 
 type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress';
@@ -178,6 +179,13 @@ export default function StudentWorksPage() {
                 });
               }
             }
+            
+            let paymentRequestAvailableAtCalc: Timestamp | null = null;
+            if (gigData.lastPaymentRequestedAt && gigData.lastPaymentRequestedAt.toDate) {
+                const lastRequestDate = gigData.lastPaymentRequestedAt.toDate();
+                paymentRequestAvailableAtCalc = Timestamp.fromDate(addHours(lastRequestDate, 2));
+            }
+
 
             return {
               id: gigDoc.id, title: gigData.title || "Untitled Gig", clientId: gigData.clientId, clientUsername, clientCompanyName,
@@ -187,6 +195,7 @@ export default function StudentWorksPage() {
               lastPaymentRequestedAt: gigData.lastPaymentRequestedAt || null,
               studentPaymentRequestPending: gigData.studentPaymentRequestPending || false,
               progressReports: completeProgressReports,
+              paymentRequestAvailableAt: paymentRequestAvailableAtCalc,
             } as WorkGig;
           });
 
@@ -508,7 +517,18 @@ export default function StudentWorksPage() {
               const effectiveStatusVariant = getEffectiveStatusBadgeVariant(gig.effectiveStatus);
               const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0 ? (gig.progressReports?.filter(r => r.clientStatus === 'approved').length === gig.numberOfReports) : true;
               const requestsUsed = gig.paymentRequestsCount || 0;
-              const canRequestPayment = allReportsApproved && requestsUsed < 5 && !gig.studentPaymentRequestPending;
+              
+              const now = new Date();
+              const isCoolDownActive = gig.paymentRequestAvailableAt ? now < gig.paymentRequestAvailableAt.toDate() : false;
+              const coolDownTimeRemaining = gig.paymentRequestAvailableAt ? formatDistanceToNow(gig.paymentRequestAvailableAt.toDate(), { addSuffix: true, includeSeconds: true }) : "";
+
+              const canRequestPayment = allReportsApproved && requestsUsed < 5 && !gig.studentPaymentRequestPending && !isCoolDownActive;
+              const paymentButtonTitle = 
+                !allReportsApproved ? "All reports must be approved first" :
+                requestsUsed >= 5 ? "Maximum 5 payment requests reached" :
+                gig.studentPaymentRequestPending ? "A payment request is already pending with the client" :
+                isCoolDownActive ? `Next payment request available ${coolDownTimeRemaining}` :
+                "Request payment from client";
 
               return (
               <Card key={gig.id} className="glass-card">
@@ -597,24 +617,16 @@ export default function StudentWorksPage() {
                           <Button size="sm" asChild className="w-full sm:w-auto"><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
                           <Button variant="outline" size="sm" asChild className="w-full sm:w-auto"><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
                       </div>
-                      {gig.studentPaymentRequestPending ? (
-                          <Button size="sm" variant="secondary" disabled className="w-full sm:w-auto mt-2 sm:mt-0">
-                              Payment Requested ({gig.lastPaymentRequestedAt ? formatDistanceToNow(gig.lastPaymentRequestedAt.toDate(), { addSuffix: true }) : 'Pending'})
-                          </Button>
-                      ) : canRequestPayment ? (
-                          <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}
-                              className="w-full sm:w-auto mt-2 sm:mt-0"
-                          >
-                              Request Payment ({requestsUsed}/5 left)
-                          </Button>
-                      ) : (
-                           <Button size="sm" variant="outline" disabled className="w-full sm:w-auto mt-2 sm:mt-0" title={!allReportsApproved ? "All reports must be approved first" : (requestsUsed >=5 ? "Max payment requests reached" : "Payment request criteria not met")}>
-                              Request Payment {requestsUsed >= 5 ? '(Limit Reached)' : `(${requestsUsed}/5 left)`}
-                          </Button>
-                      )}
+                      <Button
+                          size="sm"
+                          variant={canRequestPayment ? "default" : "outline"}
+                          onClick={() => { if(canRequestPayment) {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}}
+                          disabled={!canRequestPayment}
+                          title={paymentButtonTitle}
+                          className="w-full sm:w-auto mt-2 sm:mt-0"
+                      >
+                          Request Payment {requestsUsed >= 5 && !gig.studentPaymentRequestPending ? '(Limit Reached)' : `(${requestsUsed}/5 left)`}
+                      </Button>
                   </CardFooter>
                 </div>
               </Card>
