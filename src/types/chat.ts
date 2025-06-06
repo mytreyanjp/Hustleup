@@ -27,6 +27,10 @@ export interface ChatMessage {
   sharedUsername?: string;
   sharedUserProfilePictureUrl?: string;
   sharedUserRole?: 'student' | 'client';
+
+  // Fields for read receipts
+  deliveredToRecipientAt?: Timestamp | null;
+  readByRecipientAt?: Timestamp | null;
 }
 
 export interface ChatMetadata {

@@ -165,6 +165,7 @@ export default function SignupPage() {
         totalRatings: 0,
         following: [],
         followersCount: 0,
+        readReceiptsEnabled: true, // Default for new profiles
       };
 
       if (data.role === 'student') {
@@ -209,6 +210,9 @@ export default function SignupPage() {
           case 'auth/configuration-not-found': 
              errorMessage = 'Firebase Authentication configuration is missing or incomplete. Please ensure Email/Password sign-in is enabled in your Firebase project.';
              setFirebaseError(errorMessage); 
+             break;
+          case 'auth/invalid-credential': // Added this specific error for OAuth issues during signup context too
+             errorMessage = `Sign-up failed due to an invalid credential configuration. This often means there's a misconfiguration in your Firebase project for the sign-in method, or an issue with your developer account setup for that provider. Please double-check your Firebase console settings and the provider's developer portal. Raw error: ${error.message || 'No specific message from provider.'}`;
              break;
           case 'auth/invalid-api-key': 
           case 'auth/api-key-not-valid':
@@ -266,7 +270,6 @@ export default function SignupPage() {
         router.push('/auth/complete-profile'); 
       }
     } catch (error: any) {
-      // Removed explicit console.error here
       let errorMessage = `${providerName} Sign-Up failed. Please try again.`;
       if (error.code) {
          switch (error.code) {
@@ -290,7 +293,7 @@ export default function SignupPage() {
             errorMessage = `The domain of this application is not authorized for ${providerName} Sign-In. Please add it to the authorized domains in your Firebase project console (Authentication -> Settings -> Authorized domains).`;
             break;
           case 'auth/invalid-credential':
-             errorMessage = `Sign-up with ${providerName} failed. This often means there's a misconfiguration in your Firebase project for the ${providerName} sign-in method, or an issue with your ${providerName} developer account setup. Please double-check your Firebase console settings and the ${providerName} developer portal configuration. Raw error: ${error.message || 'No specific message from provider.'}`;
+             errorMessage = `Sign-up with ${providerName} failed due to an invalid credential configuration. This often means there's a misconfiguration in your Firebase project for the ${providerName} sign-in method, or an issue with your ${providerName} developer account setup. Please double-check your Firebase console settings and the ${providerName} developer portal. Raw error: ${error.message || 'No specific message from provider.'}`;
              break;
           case 'auth/oauth-provider-error': 
              errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;

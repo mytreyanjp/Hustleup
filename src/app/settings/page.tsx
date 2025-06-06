@@ -6,9 +6,11 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Loader2, ArrowLeft, MessageSquare } from 'lucide-react';
 import { sendPasswordResetEmail, deleteUser as deleteFirebaseAuthUser } from 'firebase/auth';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -24,25 +26,30 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
-  const { user, loading } = useFirebase();
+  const { user, userProfile, loading, refreshUserProfile } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [readReceipts, setReadReceipts] = useState(true);
+  const [isUpdatingReceipts, setIsUpdatingReceipts] = useState(false);
+
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/auth/login?redirect=/settings');
     }
-  }, [user, loading, router]);
+    if (userProfile) {
+      setReadReceipts(userProfile.readReceiptsEnabled === undefined ? true : userProfile.readReceiptsEnabled);
+    }
+  }, [user, userProfile, loading, router]);
 
   if (loading) {
      return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  if (!user) {
-     // This state should ideally not be reached if the useEffect redirect works properly
-     return <div className="text-center py-10"><p>Redirecting to login...</p></div>;
+  if (!user || !userProfile) {
+     return <div className="text-center py-10"><p>Redirecting to login or loading profile...</p></div>;
   }
 
   const handleChangePassword = async () => {
@@ -81,6 +88,28 @@ export default function SettingsPage() {
       setIsChangingPassword(false);
     }
   };
+
+  const handleToggleReadReceipts = async (checked: boolean) => {
+    if (!user || !db) {
+        toast({ title: "Error", description: "User session or database unavailable.", variant: "destructive"});
+        return;
+    }
+    setIsUpdatingReceipts(true);
+    setReadReceipts(checked); // Optimistic update for UI responsiveness
+    try {
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, { readReceiptsEnabled: checked });
+        toast({ title: "Setting Updated", description: `Read receipts ${checked ? 'enabled' : 'disabled'}.`});
+        if (refreshUserProfile) await refreshUserProfile();
+    } catch (error: any) {
+        console.error("Error updating read receipts setting:", error);
+        setReadReceipts(!checked); // Revert UI on error
+        toast({ title: "Update Failed", description: "Could not save read receipts preference.", variant: "destructive" });
+    } finally {
+        setIsUpdatingReceipts(false);
+    }
+  };
+
 
   const handleDeleteAccount = async () => {
     if (!user || !auth || !db) {
@@ -135,6 +164,34 @@ export default function SettingsPage() {
        <h1 className="text-3xl font-bold tracking-tight mb-6">Account Settings</h1>
 
        <Card className="glass-card">
+        <CardHeader>
+          <CardTitle>Preferences</CardTitle>
+          <CardDescription>Manage your account preferences.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4">
+             <div>
+               <Label htmlFor="read-receipts-switch" className="font-medium flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                Chat Read Receipts
+               </Label>
+               <p className="text-sm text-muted-foreground">
+                 Allow others to see when you've read their messages. If disabled, you also won't see when others read your messages.
+               </p>
+             </div>
+             <Switch
+               id="read-receipts-switch"
+               checked={readReceipts}
+               onCheckedChange={handleToggleReadReceipts}
+               disabled={isUpdatingReceipts}
+               className="mt-2 sm:mt-0"
+             />
+           </div>
+        </CardContent>
+      </Card>
+
+
+       <Card className="glass-card mt-6">
         <CardHeader>
           <CardTitle>Security</CardTitle>
           <CardDescription>Manage your account security settings.</CardDescription>

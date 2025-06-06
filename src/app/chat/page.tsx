@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook } from 'lucide-react';
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook, Check } from 'lucide-react'; // Added Check
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -86,6 +86,7 @@ export default function ChatPage() {
   const [isAcceptingOrRejecting, setIsAcceptingOrRejecting] = useState(false);
   const [chatSearchTerm, setChatSearchTerm] = useState('');
   const [transientChatOverride, setTransientChatOverride] = useState<ChatMetadata | null>(null);
+  const [otherParticipantProfiles, setOtherParticipantProfiles] = useState<Record<string, UserProfile>>({});
 
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -157,6 +158,8 @@ export default function ChatPage() {
                     text: 'This chat has been automatically activated by the client.',
                     timestamp: serverTimestamp(),
                     messageType: 'system_gig_connection_activated',
+                    deliveredToRecipientAt: null,
+                    readByRecipientAt: null,
                 }).catch(console.error);
             }
         } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
@@ -173,6 +176,8 @@ export default function ChatPage() {
                 text: 'This chat has been automatically activated because you are now connected through a gig.',
                 timestamp: serverTimestamp(),
                 messageType: 'system_gig_connection_activated',
+                deliveredToRecipientAt: null,
+                readByRecipientAt: null,
             }).catch(console.error);
         }
         
@@ -197,8 +202,6 @@ export default function ChatPage() {
             return updatedLocalChat;
         }
         
-        // Ensure chatStatus is 'accepted' for client-student interaction even if no other update was required
-        // Also, ensure the returned object has chatStatus if it was undefined on the fetched data
         if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
             setSelectedChatId(chatId);
@@ -213,7 +216,7 @@ export default function ChatPage() {
         setSelectedChatId(chatId);
         return { ...existingChatData, id: chatId };
 
-      } else { // Chat doesn't exist, create new
+      } else { 
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -321,6 +324,7 @@ export default function ChatPage() {
                      return;
                    }
                    setTargetUserForNewChat(targetUserData);
+                   setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
                    const newOrUpdatedChat = await getOrCreateChat(chatTargetId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
                    if (newOrUpdatedChat) {
                        setSelectedChatId(newOrUpdatedChat.id);
@@ -343,6 +347,7 @@ export default function ChatPage() {
                         return;
                     }
                     setTargetUserForNewChat(targetUserData);
+                    setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
                     const newOrUpdatedChat = await getOrCreateChat(shareProfileUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
                     if (newOrUpdatedChat) {
                         setSelectedChatId(newOrUpdatedChat.id);
@@ -398,6 +403,7 @@ export default function ChatPage() {
             return;
           }
           setTargetUserForNewChat(targetUserData);
+          setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
           const newOrUpdatedChat = await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined, targetUserData.role);
           if (newOrUpdatedChat) {
             setSelectedChatId(newOrUpdatedChat.id);
@@ -456,6 +462,16 @@ export default function ChatPage() {
         });
       }
       setChats(fetchedChats);
+      // Fetch other participant profiles for read receipt status
+      fetchedChats.forEach(async (chat) => {
+        const otherId = chat.participants.find(pId => pId !== user.uid);
+        if (otherId && !otherParticipantProfiles[otherId]) {
+            const userDoc = await getDoc(doc(db, 'users', otherId));
+            if (userDoc.exists()) {
+                setOtherParticipantProfiles(prev => ({ ...prev, [otherId]: userDoc.data() as UserProfile }));
+            }
+        }
+      });
       setIsLoadingChats(false);
     }, (error) => {
       console.error("Error fetching chat list:", error);
@@ -467,7 +483,7 @@ export default function ChatPage() {
   }, [user, userProfile, toast]); 
 
   useEffect(() => {
-    if (!selectedChatId || !user || !db) {
+    if (!selectedChatId || !user || !userProfile || !db) {
       setMessages([]);
       setCurrentGigForChat(null);
       return;
@@ -485,6 +501,33 @@ export default function ChatPage() {
       })) as ChatMessage[];
       setMessages(fetchedMessages);
       setIsLoadingMessages(false);
+
+      // Mark messages as delivered and read by current user
+      const batch = writeBatch(db);
+      let updatesMade = false;
+      fetchedMessages.forEach(msg => {
+        if (msg.senderId !== user.uid) {
+          const msgRef = doc(db, 'chats', selectedChatId, 'messages', msg.id);
+          let messageUpdates: Partial<ChatMessage> = {};
+          if (!msg.deliveredToRecipientAt) {
+            messageUpdates.deliveredToRecipientAt = Timestamp.now();
+            updatesMade = true;
+          }
+          if (userProfile.readReceiptsEnabled && !msg.readByRecipientAt) {
+            // For now, this doesn't check the other user's preference for sending receipts.
+            // That's a refinement for later.
+            messageUpdates.readByRecipientAt = Timestamp.now();
+            updatesMade = true;
+          }
+          if (Object.keys(messageUpdates).length > 0) {
+            batch.update(msgRef, messageUpdates);
+          }
+        }
+      });
+      if (updatesMade) {
+        batch.commit().catch(err => console.error("Error batch updating message statuses:", err));
+      }
+
     }, (error) => {
       console.error(`Error fetching messages for chat ${selectedChatId}:`, error);
       toast({ title: "Message Error", description: "Could not load messages for this chat.", variant: "destructive" });
@@ -538,7 +581,7 @@ export default function ChatPage() {
     }
 
     return () => unsubscribeMessages();
-  }, [selectedChatId, user, toast]);
+  }, [selectedChatId, user, userProfile, toast]);
 
 
   useEffect(() => {
@@ -615,6 +658,8 @@ export default function ChatPage() {
     const newMessageContent: Omit<ChatMessage, 'id' | 'timestamp'> & { timestamp: any } = {
       senderId: user.uid,
       timestamp: serverTimestamp(),
+      deliveredToRecipientAt: null,
+      readByRecipientAt: null,
     };
 
     let lastMessageText = '';
@@ -720,6 +765,8 @@ export default function ChatPage() {
         text: systemMessageText,
         messageType: action === 'accepted' ? 'system_request_accepted' : 'system_request_rejected',
         timestamp: serverTimestamp(),
+        deliveredToRecipientAt: null,
+        readByRecipientAt: null,
       });
       await batch.commit();
       toast({ title: `Request ${action}`, description: `Chat request has been ${action}.` });
@@ -774,6 +821,11 @@ export default function ChatPage() {
           lastMessageDateString = currentDateString;
         }
       }
+      
+      const otherUserIdInChat = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
+      const otherUserInChatProfile = otherUserIdInChat ? otherParticipantProfiles[otherUserIdInChat] : null;
+      const shouldShowBlueTicks = userProfile?.readReceiptsEnabled && (otherUserInChatProfile?.readReceiptsEnabled === undefined || otherUserInChatProfile?.readReceiptsEnabled);
+
 
       elements.push(
         <div
@@ -927,9 +979,19 @@ export default function ChatPage() {
                )}
               {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId && !msg.sharedUserId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
               {msg.senderId !== 'system' && (
-                 <p className={`text-xs mt-1 text-right ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
-                    {msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
-                 </p>
+                 <div className={`text-xs mt-1 text-right flex items-center justify-end gap-1 ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
+                    <span>{msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}</span>
+                    {msg.senderId === user?.uid && (
+                        <>
+                            {msg.readByRecipientAt && shouldShowBlueTicks ? (
+                                <Check className="h-3.5 w-3.5 text-blue-400 -mr-0.5" /> // Second blue tick
+                            ) : msg.deliveredToRecipientAt ? (
+                                <Check className="h-3.5 w-3.5 text-primary-foreground/70 -mr-0.5" /> // Second grey tick
+                            ) : null}
+                            <Check className={cn("h-3.5 w-3.5", msg.readByRecipientAt && shouldShowBlueTicks ? "text-blue-400" : "text-primary-foreground/70", msg.deliveredToRecipientAt || msg.readByRecipientAt ? "-ml-1.5" : "")} />
+                        </>
+                    )}
+                 </div>
               )}
             </div>
           )}
@@ -937,7 +999,7 @@ export default function ChatPage() {
       );
     });
     return elements;
-  }, [messages, user]);
+  }, [messages, user, userProfile, otherParticipantProfiles, _selectedChatDetails]);
 
 
   if (authLoading && typeof window !== 'undefined') {
@@ -965,6 +1027,7 @@ export default function ChatPage() {
         const otherUserSnap = await getDoc(otherUserDocRef);
         if (otherUserSnap.exists()) {
           const otherUserData = otherUserSnap.data() as UserProfile;
+          setOtherParticipantProfiles(prev => ({...prev, [otherUserId]: otherUserData})); // Cache profile
           setIsCurrentUserBlockedByOther(otherUserData.blockedUserIds?.includes(user.uid) || false);
         } else {
           setIsCurrentUserBlockedByOther(false);

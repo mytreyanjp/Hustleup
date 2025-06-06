@@ -118,6 +118,7 @@ export default function CompleteProfilePage() {
         totalRatings: 0,
         following: [],
         followersCount: 0,
+        readReceiptsEnabled: true, // Default for new profiles
       };
 
       if (data.role === 'student') {

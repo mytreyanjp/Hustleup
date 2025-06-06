@@ -35,6 +35,7 @@ export interface UserProfile extends DocumentData {
   followersCount?: number; // Number of users following this user
   
   blockedUserIds?: string[]; // Array of UIDs this user has blocked
+  readReceiptsEnabled?: boolean; // For chat read receipts
 }
 
 interface FirebaseContextType {
@@ -55,6 +56,7 @@ interface GigForNotificationCount {
   id: string;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+  studentPaymentRequestPending?: boolean; // Added for payment request notifications
 }
 
 export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
@@ -93,6 +95,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalEmail: docSnap.data().personalEmail || '',
             personalPhone: docSnap.data().personalPhone || '',
             blockedUserIds: docSnap.data().blockedUserIds || [],
+            readReceiptsEnabled: docSnap.data().readReceiptsEnabled === undefined ? true : docSnap.data().readReceiptsEnabled, // Default to true if undefined
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client') {
@@ -116,6 +119,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalEmail: '',
             personalPhone: '',
             blockedUserIds: [],
+            readReceiptsEnabled: true,
           };
           setUserProfile(basicProfile);
           setRole(null);
@@ -134,6 +138,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           personalEmail: '',
           personalPhone: '',
           blockedUserIds: [],
+          readReceiptsEnabled: true,
         });
         setRole(null);
       }
@@ -252,18 +257,21 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       const q = query(gigsRef, where("clientId", "==", user.uid), where("status", "==", "open"));
       
       const unsubscribeClientNotifications = onSnapshot(q, (querySnapshot) => {
-        let pendingApplicants = 0;
+        let pendingCount = 0;
         querySnapshot.forEach((doc) => {
           const gig = doc.data() as GigForNotificationCount;
           if (gig.applicants) {
             gig.applicants.forEach(applicant => {
               if (!applicant.status || applicant.status === 'pending') {
-                pendingApplicants++;
+                pendingCount++;
               }
             });
           }
+          if (gig.studentPaymentRequestPending) { // Add count for pending payment requests
+            pendingCount++;
+          }
         });
-        setClientUnreadNotificationCount(pendingApplicants);
+        setClientUnreadNotificationCount(pendingCount);
       }, (error) => {
         console.error("Error fetching client gig notifications:", error);
         setClientUnreadNotificationCount(0);
