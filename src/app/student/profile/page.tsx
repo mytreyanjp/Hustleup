@@ -300,10 +300,32 @@ export default function StudentProfilePage() {
     }
   };
 
-  const handleOpenFollowersModal = () => {
-    setModalUserList([]);
+  const handleOpenFollowersModal = async () => {
+    if (!userProfile || !db) {
+        toast({ title: "Error", description: "Profile data not available.", variant: "destructive" });
+        return;
+    }
+    if (userProfile.followersCount === 0) {
+        setModalUserList([]);
+        setShowFollowersModal(true);
+        return;
+    }
+
+    setIsLoadingModalList(true);
     setShowFollowersModal(true);
-    setIsLoadingModalList(false);
+    try {
+        const followersQuery = query(collection(db, 'users'), where('following', 'array-contains', userProfile.uid));
+        const followersSnapshots = await getDocs(followersQuery);
+        const fetchedProfiles = followersSnapshots.docs
+            .map(snap => ({ uid: snap.id, ...snap.data() } as UserProfile));
+        setModalUserList(fetchedProfiles);
+    } catch (error: any) {
+        console.error("Error fetching followers list:", error);
+        toast({ title: "Error", description: `Could not load followers list: ${error.message}. Check for Firestore index requirements.`, variant: "destructive" });
+        setModalUserList([]);
+    } finally {
+        setIsLoadingModalList(false);
+    }
   };
 
 
@@ -618,16 +640,31 @@ export default function StudentProfilePage() {
               Users who follow you.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-          {userProfile && userProfile.followersCount === 0 ? (
+          <ScrollArea className="max-h-[300px] py-4">
+            {isLoadingModalList ? (
+              <div className="flex justify-center items-center h-20">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : modalUserList.length > 0 ? (
+              <ul className="space-y-3">
+                {modalUserList.map(userItem => (
+                  <li key={userItem.uid} className="flex items-center justify-between">
+                    <Link href={`/profile/${userItem.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowersModal(false)}>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} />
+                        <AvatarFallback>{getInitials(userItem.email, userItem.username)}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{userItem.companyName || userItem.username || 'User'}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : userProfile && userProfile.followersCount === 0 ? (
                 <p className="text-sm text-muted-foreground text-center">You have no followers yet.</p>
             ) : (
-                <p className="text-sm text-muted-foreground">
-                    Fetching a complete list of followers requires a more advanced backend setup for optimal performance.
-                    This feature will be enhanced in a future update.
-                </p>
+                 <p className="text-sm text-muted-foreground text-center">Could not load followers at this time.</p>
             )}
-          </div>
+          </ScrollArea>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="secondary">Close</Button>
@@ -679,7 +716,3 @@ export default function StudentProfilePage() {
     </div>
   );
 }
-
-    
-
-    
