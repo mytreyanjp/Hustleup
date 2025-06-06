@@ -22,7 +22,7 @@ import { Calendar as CalendarIcon, Loader2, Info, ArrowLeft, PlusCircle, Trash2 
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
-import type { ProgressReport } from '@/app/student/works/page'; // Assuming ProgressReport type is shareable
+import type { ProgressReport } from '@/app/student/works/page'; 
 
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
@@ -33,11 +33,6 @@ const gigSchema = z.object({
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
   reportDeadlines: z.array(z.date().nullable()).optional(),
 }).superRefine((data, ctx) => {
-    if (data.numberOfReports > 0 && data.reportDeadlines && data.reportDeadlines.length !== data.numberOfReports) {
-      // This is a bit complex to enforce strictly with useFieldArray's dynamic nature if not all fields are touched.
-      // The useEffect logic below aims to keep them in sync.
-      // We might add a UI hint or rely on the useEffect.
-    }
     if (data.numberOfReports === 0 && data.reportDeadlines && data.reportDeadlines.length > 0) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -45,7 +40,6 @@ const gigSchema = z.object({
             message: 'Report deadlines should not be set if number of reports is zero.',
         });
     }
-    // Further validation: each report deadline should be before or on the main gig deadline
     if (data.reportDeadlines && data.deadline) {
         data.reportDeadlines.forEach((rd, index) => {
             if (rd && rd > data.deadline) {
@@ -55,12 +49,16 @@ const gigSchema = z.object({
                     message: `Report deadline ${index + 1} cannot be after the main gig deadline.`,
                 });
             }
-            if (rd && index > 0 && data.reportDeadlines![index-1] && rd < data.reportDeadlines![index-1]!) {
-                 ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: [`reportDeadlines.${index}`],
-                    message: `Report deadline ${index + 1} cannot be before report deadline ${index}.`,
-                });
+            // Check sequential deadlines: Nth must be strictly after (N-1)th
+            if (rd && index > 0) {
+                const previousDeadline = data.reportDeadlines![index - 1];
+                if (previousDeadline && rd <= previousDeadline) { // Error if current is not strictly after previous
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: [`reportDeadlines.${index}`],
+                        message: `Report deadline ${index + 1} must be after report deadline ${index}.`,
+                    });
+                }
             }
         });
     }
@@ -85,7 +83,7 @@ export default function NewGigPage() {
       numberOfReports: 0,
       reportDeadlines: [],
     },
-    mode: 'onChange', // Useful for immediate feedback on reportDeadlines
+    mode: 'onChange', 
   });
 
   const { control, watch, setValue } = form;
@@ -97,7 +95,7 @@ export default function NewGigPage() {
 
   useEffect(() => {
     const currentDeadlinesCount = reportDeadlineFields.length;
-    const targetCount = numberOfReportsValue || 0;
+    const targetCount = Number(numberOfReportsValue || 0); // Ensure targetCount is a number
 
     if (targetCount > currentDeadlinesCount) {
       for (let i = currentDeadlinesCount; i < targetCount; i++) {
@@ -135,7 +133,6 @@ export default function NewGigPage() {
           progressReportsData.push({
             reportNumber: i + 1,
             deadline: data.reportDeadlines[i] ? Timestamp.fromDate(data.reportDeadlines[i]!) : null,
-            // studentSubmission, clientStatus etc. will be null/undefined initially
           });
         }
       }
@@ -151,7 +148,7 @@ export default function NewGigPage() {
         deadline: Timestamp.fromDate(data.deadline),
         requiredSkills: data.requiredSkills,
         numberOfReports: data.numberOfReports || 0,
-        progressReports: progressReportsData, // Save the structured progress reports
+        progressReports: progressReportsData, 
         currency: "INR", 
         status: 'open',
         createdAt: serverTimestamp(),
@@ -353,7 +350,7 @@ export default function NewGigPage() {
                 <Card className="pt-4 border-dashed">
                     <CardHeader className="p-2 pt-0">
                         <CardTitle className="text-lg">Set Progress Report Deadlines</CardTitle>
-                        <CardDescription className="text-xs">Optional: Set a deadline for each progress report. Deadlines must be on or before the overall gig deadline.</CardDescription>
+                        <CardDescription className="text-xs">Optional: Set a deadline for each progress report. Deadlines must be on or before the overall gig deadline and sequential.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4 p-2">
                         {reportDeadlineFields.map((item, index) => (
@@ -384,13 +381,18 @@ export default function NewGigPage() {
                                                     mode="single"
                                                     selected={field.value}
                                                     onSelect={(date) => {
-                                                        field.onChange(date || null); // Ensure null if cleared
-                                                        form.trigger(`reportDeadlines.${index}`); // Trigger validation for this field
-                                                        form.trigger('deadline'); // And potentially overall deadline
+                                                        field.onChange(date || null); 
+                                                        form.trigger(`reportDeadlines.${index}`); 
+                                                        form.trigger('deadline'); 
                                                     }}
-                                                    disabled={(date) =>
-                                                        date < new Date(new Date().setHours(0, 0, 0, 0)) || (form.getValues('deadline') ? date > form.getValues('deadline') : false)
-                                                    }
+                                                    disabled={(date) => {
+                                                        const mainDeadline = form.getValues('deadline');
+                                                        const previousReportDeadline = index > 0 ? form.getValues(`reportDeadlines.${index - 1}`) : null;
+                                                        let isDisabled = date < new Date(new Date().setHours(0, 0, 0, 0));
+                                                        if (mainDeadline) isDisabled = isDisabled || date > mainDeadline;
+                                                        if (previousReportDeadline) isDisabled = isDisabled || date <= previousReportDeadline; // Must be after previous
+                                                        return isDisabled;
+                                                    }}
                                                     initialFocus
                                                 />
                                             </PopoverContent>

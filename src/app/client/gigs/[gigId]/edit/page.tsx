@@ -22,7 +22,7 @@ import { Calendar as CalendarIcon, Loader2, ArrowLeft, Info, PlusCircle, Trash2 
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
-import type { ProgressReport } from '@/app/student/works/page'; // Assuming ProgressReport type is shareable
+import type { ProgressReport } from '@/app/student/works/page'; 
 
 
 // Schema for gig form validation
@@ -35,9 +35,6 @@ const gigSchema = z.object({
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
   reportDeadlines: z.array(z.date().nullable()).optional(),
 }).superRefine((data, ctx) => {
-    if (data.numberOfReports > 0 && data.reportDeadlines && data.reportDeadlines.length !== data.numberOfReports) {
-      // This can be complex with dynamic arrays. UI should manage the number of fields.
-    }
     if (data.numberOfReports === 0 && data.reportDeadlines && data.reportDeadlines.length > 0) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -54,12 +51,16 @@ const gigSchema = z.object({
                     message: `Report deadline ${index + 1} cannot be after the main gig deadline.`,
                 });
             }
-            if (rd && index > 0 && data.reportDeadlines![index-1] && rd < data.reportDeadlines![index-1]!) {
-                 ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: [`reportDeadlines.${index}`],
-                    message: `Report deadline ${index + 1} cannot be before report deadline ${index}.`,
-                });
+             // Check sequential deadlines: Nth must be strictly after (N-1)th
+            if (rd && index > 0) {
+                const previousDeadline = data.reportDeadlines![index - 1];
+                if (previousDeadline && rd <= previousDeadline) { // Error if current is not strictly after previous
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: [`reportDeadlines.${index}`],
+                        message: `Report deadline ${index + 1} must be after report deadline ${index}.`,
+                    });
+                }
             }
         });
     }
@@ -67,7 +68,7 @@ const gigSchema = z.object({
 
 type GigFormValues = z.infer<typeof gigSchema>;
 
-interface FetchedGigData { // For data fetched from Firestore
+interface FetchedGigData { 
   id: string;
   clientId: string;
   currency: string;
@@ -77,8 +78,8 @@ interface FetchedGigData { // For data fetched from Firestore
   deadline: Timestamp;
   requiredSkills: string[];
   numberOfReports?: number;
-  progressReports?: Partial<ProgressReport>[]; // Firestore progress reports
-  status: 'open' | 'in-progress' | 'completed' | 'closed'; // Added status
+  progressReports?: Partial<ProgressReport>[]; 
+  status: 'open' | 'in-progress' | 'completed' | 'closed'; 
 }
 
 export default function EditGigPage() {
@@ -124,7 +125,7 @@ export default function EditGigPage() {
       const newDeadlinesSubset = reportDeadlineFields.slice(0, targetCount);
       replaceReportDeadlines(newDeadlinesSubset);
     }
-  }, [numberOfReportsValue, appendReportDeadline, replaceReportDeadlines, reportDeadlineFields.length]); // reportDeadlineFields.length ensures effect runs if length changes externally
+  }, [numberOfReportsValue, appendReportDeadline, replaceReportDeadlines, reportDeadlineFields.length]); 
 
 
   const fetchAndSetGigData = useCallback(async () => {
@@ -146,7 +147,6 @@ export default function EditGigPage() {
           return;
         }
 
-        // Check if gig status allows editing
         if (gigData.status && (gigData.status === 'in-progress' || gigData.status === 'completed' || gigData.status === 'closed')) {
           setError(`This gig is ${gigData.status} and can no longer be edited.`);
           toast({
@@ -154,8 +154,8 @@ export default function EditGigPage() {
             description: `This gig is ${gigData.status} and can no longer be edited.`,
             variant: "destructive",
           });
-          router.push(`/client/gigs/${gigId}/manage`); // Redirect to manage page
-          setIsLoadingGig(false); // Stop loading as we are redirecting
+          router.push(`/client/gigs/${gigId}/manage`); 
+          setIsLoadingGig(false); 
           return;
         }
 
@@ -168,7 +168,7 @@ export default function EditGigPage() {
             }
         }
         
-        reset({ // Use reset to correctly populate all fields including field arrays
+        reset({ 
           title: gigData.title,
           description: gigData.description,
           budget: gigData.budget,
@@ -216,7 +216,6 @@ export default function EditGigPage() {
       if (!existingGigSnap.exists()) throw new Error("Gig not found for update.");
       const existingGigData = existingGigSnap.data() as FetchedGigData;
 
-      // Double check status before submitting, though UI should prevent this.
       if (existingGigData.status && (existingGigData.status === 'in-progress' || existingGigData.status === 'completed' || existingGigData.status === 'closed')) {
         toast({
           title: "Editing Not Allowed",
@@ -232,7 +231,6 @@ export default function EditGigPage() {
       const newProgressReports: Partial<ProgressReport>[] = [];
       if (data.numberOfReports && data.numberOfReports > 0 && data.reportDeadlines) {
           for (let i = 0; i < data.numberOfReports; i++) {
-              // Try to preserve existing submission/review data if report number still exists
               const existingReport = existingGigData.progressReports?.find(pr => pr.reportNumber === i + 1);
               newProgressReports.push({
                   reportNumber: i + 1,
@@ -454,7 +452,7 @@ export default function EditGigPage() {
                 <Card className="pt-4 border-dashed">
                     <CardHeader className="p-2 pt-0">
                         <CardTitle className="text-lg">Set Progress Report Deadlines</CardTitle>
-                        <CardDescription className="text-xs">Optional: Set a deadline for each progress report. Deadlines must be on or before the overall gig deadline.</CardDescription>
+                        <CardDescription className="text-xs">Optional: Set a deadline for each progress report. Deadlines must be on or before the overall gig deadline and sequential.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4 p-2">
                         {reportDeadlineFields.map((item, index) => (
@@ -489,9 +487,14 @@ export default function EditGigPage() {
                                                         form.trigger(`reportDeadlines.${index}`);
                                                         form.trigger('deadline');
                                                     }}
-                                                    disabled={(date) =>
-                                                        date < new Date(new Date().setHours(0, 0, 0, 0)) || (form.getValues('deadline') ? date > form.getValues('deadline') : false)
-                                                    }
+                                                    disabled={(date) => {
+                                                        const mainDeadline = form.getValues('deadline');
+                                                        const previousReportDeadline = index > 0 ? form.getValues(`reportDeadlines.${index - 1}`) : null;
+                                                        let isDisabled = date < new Date(new Date().setHours(0, 0, 0, 0));
+                                                        if (mainDeadline) isDisabled = isDisabled || date > mainDeadline;
+                                                        if (previousReportDeadline) isDisabled = isDisabled || date <= previousReportDeadline; // Must be after previous
+                                                        return isDisabled;
+                                                    }}
                                                     initialFocus
                                                 />
                                             </PopoverContent>
