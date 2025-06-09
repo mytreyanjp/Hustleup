@@ -87,12 +87,14 @@ export default function AdminSupportRequestsPage() {
     try {
       const requestDocRef = doc(db, 'admin_chat_requests', request.id);
       await updateDoc(requestDocRef, {
-        status: 'in_progress',
+        status: 'in_progress', // Mark as in_progress
         handledByAdminUid: adminUser.uid,
         handledByAdminUsername: adminProfile.username || adminUser.email?.split('@')[0] || 'Admin',
         handledAt: serverTimestamp(),
       });
-      toast({ title: "Chat Initiated", description: `Connecting you with ${request.requesterUsername}...` });
+      toast({ title: "Chat Initiated", description: `Connecting you with ${request.requesterUsername}. The chat will appear in your main chat list.` });
+      // Navigate to the chat page. The ChatPage logic will handle creating/opening the chat.
+      // The chat will naturally appear in the admin's chat list because they are now a participant.
       router.push(`/chat?userId=${request.requesterUid}`);
     } catch (err: any) {
       console.error("Error starting chat / updating request:", err);
@@ -135,7 +137,7 @@ export default function AdminSupportRequestsPage() {
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-lg sm:text-xl">Pending Support Chat Requests</CardTitle>
-          <CardDescription>Users waiting for an admin to start a chat.</CardDescription>
+          <CardDescription>Users waiting for an admin to start a chat. Clicking "Start Chat" will move the conversation to your main chat interface.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {requests.length === 0 ? (
@@ -155,6 +157,7 @@ export default function AdminSupportRequestsPage() {
                   <TableRow key={request.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
+                          {/* Assuming no profile picture for basic requests, can be enhanced */}
                           <UserCircle className="h-8 w-8 text-muted-foreground" />
                           <div>
                             <span className="font-medium truncate">{request.requesterUsername}</span>
@@ -193,5 +196,4 @@ export default function AdminSupportRequestsPage() {
     </div>
   );
 }
-
     
