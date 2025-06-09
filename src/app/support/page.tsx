@@ -6,7 +6,7 @@ import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Mail, HelpCircle, MessageSquarePlus, UserCircle, Send, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/config/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
@@ -15,7 +15,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useRouter } from 'next/navigation'; 
+import { useRouter } from 'next/navigation';
 
 interface AnswerEntry {
   answerText: string;
@@ -33,30 +33,11 @@ interface FAQEntry {
   answers: AnswerEntry[];
 }
 
-// ==========================================================================================
-// IMPORTANT CONFIGURATION FOR "CHAT WITH ADMIN TEAM" FEATURE:
-// ==========================================================================================
-// To enable users to chat with your admin team, you MUST replace the placeholder string
-// "YOUR_ACTUAL_ADMIN_UID_GOES_HERE" below with the Firebase UID of an actual admin user
-// in your project. This user will be the initial target for support chat requests.
-// Other admins in your system will also see these chats if they are in 'pending_admin_response'
-// status and will be able to respond.
-//
-// How to get an Admin UID:
-// 1. Go to your Firebase Console.
-// 2. Navigate to Authentication -> Users tab.
-// 3. Find a user account that has admin privileges in your application.
-// 4. Copy the "User UID" for that admin user.
-// 5. Paste it here, replacing "YOUR_ACTUAL_ADMIN_UID_GOES_HERE".
-// ==========================================================================================
-const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; // <--- REPLACE THIS!
-const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
-
 export default function SupportPage() {
   const supportEmail = "promoflixindia@gmail.com";
   const { user, userProfile, loading: authLoading, role } = useFirebase();
   const { toast } = useToast();
-  const router = useRouter(); 
+  const router = useRouter();
 
   const [faqs, setFaqs] = useState<FAQEntry[]>([]);
   const [isLoadingFaqs, setIsLoadingFaqs] = useState(true);
@@ -66,6 +47,10 @@ export default function SupportPage() {
   const [currentAnsweringFaqId, setCurrentAnsweringFaqId] = useState<string | null>(null);
   const [newAnswer, setNewAnswer] = useState('');
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+
+  const [showSupportChatRequestDialog, setShowSupportChatRequestDialog] = useState(false);
+  const [supportRequestMessage, setSupportRequestMessage] = useState('');
+  const [isSubmittingSupportRequest, setIsSubmittingSupportRequest] = useState(false);
 
   useEffect(() => {
     if (!db) return;
@@ -118,7 +103,7 @@ export default function SupportPage() {
     setIsSubmittingAnswer(true);
     try {
       const faqDocRef = doc(db, 'faqs', currentAnsweringFaqId);
-      const faqSnap = await getDoc(faqDocRef); 
+      const faqSnap = await getDoc(faqDocRef);
 
       if (!faqSnap.exists()) {
         toast({ title: "Error", description: "Question not found.", variant: "destructive" });
@@ -133,18 +118,18 @@ export default function SupportPage() {
         answerText: newAnswer.trim(),
         answeredByUid: user.uid,
         answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Anonymous',
-        answeredAt: Timestamp.now(), 
+        answeredAt: Timestamp.now(),
       };
 
       const updatedAnswers = [...existingAnswers, newAnswerObject];
-      
+
       await updateDoc(faqDocRef, {
         answers: updatedAnswers
       });
 
       toast({ title: "Answer Submitted!", description: "Thank you for your contribution." });
       setNewAnswer('');
-      setCurrentAnsweringFaqId(null); 
+      setCurrentAnsweringFaqId(null);
     } catch (error: any) {
       console.error("Error submitting answer:", error);
       toast({ title: "Error", description: `Could not submit answer: ${error.message}`, variant: "destructive" });
@@ -152,46 +137,48 @@ export default function SupportPage() {
       setIsSubmittingAnswer(false);
     }
   };
-  
+
+  const handleSubmitSupportRequest = async () => {
+    if (!user || !userProfile || !supportRequestMessage.trim() || !db) {
+      toast({ title: "Error", description: "Please log in and enter your query.", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingSupportRequest(true);
+    try {
+      await addDoc(collection(db, 'admin_chat_requests'), {
+        requesterUid: user.uid,
+        requesterUsername: userProfile.username || user.email?.split('@')[0] || 'User',
+        requesterEmail: user.email || 'No email',
+        initialMessage: supportRequestMessage.trim(),
+        requestedAt: serverTimestamp(),
+        status: 'pending', // Initial status
+        platformInfo: { // Optional: gather some platform info for context
+            userAgent: navigator.userAgent,
+            url: window.location.href,
+        }
+      });
+      toast({ title: "Support Request Sent!", description: "An admin will contact you via chat shortly." });
+      setSupportRequestMessage('');
+      setShowSupportChatRequestDialog(false);
+    } catch (error: any) {
+      console.error("Error submitting support request:", error);
+      toast({ title: "Request Failed", description: `Could not submit your request: ${error.message}`, variant: "destructive" });
+    } finally {
+      setIsSubmittingSupportRequest(false);
+    }
+  };
+
   const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'Just now';
     try {
       if (timestamp.toDate) {
         return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
       }
-      return 'A moment ago'; 
+      return 'A moment ago';
     } catch (e) {
       return 'Invalid date';
     }
   };
-
-  const handleChatWithAdmin = () => {
-    if (!user) {
-      toast({ title: "Login Required", description: "Please log in to chat with support.", variant: "destructive" });
-      router.push('/auth/login?redirect=/support');
-      return;
-    }
-    if (TARGET_ADMIN_UID_FOR_SUPPORT === "YOUR_ACTUAL_ADMIN_UID_GOES_HERE") {
-      toast({
-        title: "Admin Chat Not Configured",
-        description: "This feature is not fully set up. A developer needs to update TARGET_ADMIN_UID_FOR_SUPPORT in src/app/support/page.tsx (around line 26) with a valid admin user ID. For now, please contact support via email.",
-        variant: "destructive",
-        duration: 15000,
-      });
-      return;
-    }
-    if (user.uid === TARGET_ADMIN_UID_FOR_SUPPORT) {
-        toast({
-            title: "Action Info",
-            description: "Admins typically review user requests from their main chat list.",
-            variant: "default",
-        });
-        router.push('/chat');
-        return;
-    }
-    router.push(`/chat?userId=${TARGET_ADMIN_UID_FOR_SUPPORT}&adminChatRequest=true`);
-  };
-
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-8">
@@ -206,14 +193,14 @@ export default function SupportPage() {
         </p>
       </div>
 
-      {user && !authLoading && role !== 'admin' && ( 
+      {user && !authLoading && role !== 'admin' && (
         <Card className="glass-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MessageSquarePlus className="h-5 w-5" /> Ask a New Question</CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
-              placeholder="Type your question here..."
+              placeholder="Type your question here to ask the community..."
               value={newQuestion}
               onChange={(e) => setNewQuestion(e.target.value)}
               rows={3}
@@ -223,7 +210,7 @@ export default function SupportPage() {
           <CardFooter>
             <Button onClick={handleAskQuestion} disabled={isSubmittingQuestion || !newQuestion.trim()}>
               {isSubmittingQuestion && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Submit Question
+              Post Question
             </Button>
           </CardFooter>
         </Card>
@@ -269,11 +256,11 @@ export default function SupportPage() {
                     ) : (
                       <p className="text-sm text-muted-foreground italic pl-6">No answers yet.</p>
                     )}
-                    {user && !authLoading && userProfile?.role === 'admin' && ( 
+                    {user && !authLoading && userProfile?.role === 'admin' && (
                       <Dialog open={currentAnsweringFaqId === faq.id} onOpenChange={(isOpen) => !isOpen && setCurrentAnsweringFaqId(null)}>
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm" className="ml-6 mt-2" onClick={() => { setNewAnswer(''); setCurrentAnsweringFaqId(faq.id); }}>
-                            <MessageCircle className="mr-2 h-4 w-4" /> Add Answer
+                            <MessageSquarePlus className="mr-2 h-4 w-4" /> Add Answer
                           </Button>
                         </DialogTrigger>
                         <DialogContent>
@@ -330,34 +317,52 @@ export default function SupportPage() {
                  <a href={`mailto:${supportEmail}`}>Send Email</a>
             </Button>
           </div>
-          {user && role !== 'admin' && ( 
+
+          {user && role !== 'admin' && (
              <div className="flex flex-col gap-3 p-4 border rounded-lg">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <MessageCircle className="h-6 w-6 text-primary shrink-0" />
+                        <MessageSquarePlus className="h-6 w-6 text-primary shrink-0" />
                         <div>
                             <p className="font-semibold">Chat with Admin Team</p>
-                            <p className="text-sm text-muted-foreground">Get live help from our support staff.</p>
+                            <p className="text-sm text-muted-foreground">Submit a request to chat with our support staff.</p>
                         </div>
                     </div>
-                    <Button 
-                        variant="default" 
-                        size="sm" 
-                        onClick={handleChatWithAdmin} 
-                        className="w-full sm:w-auto mt-2 sm:mt-0"
-                        disabled={!isAdminChatConfigured && !authLoading}
-                    >
-                        Request Admin Chat
-                    </Button>
+                    <Dialog open={showSupportChatRequestDialog} onOpenChange={setShowSupportChatRequestDialog}>
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="default"
+                                size="sm"
+                                className="w-full sm:w-auto mt-2 sm:mt-0"
+                                disabled={authLoading || !user}
+                            >
+                                Request Admin Chat
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Request Chat with Admin Team</DialogTitle>
+                                <DialogDescription>
+                                Please briefly describe your issue or question. An admin will join a chat with you shortly.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <Textarea
+                                placeholder="Type your message here..."
+                                value={supportRequestMessage}
+                                onChange={(e) => setSupportRequestMessage(e.target.value)}
+                                rows={4}
+                                disabled={isSubmittingSupportRequest}
+                            />
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setShowSupportChatRequestDialog(false)} disabled={isSubmittingSupportRequest}>Cancel</Button>
+                                <Button onClick={handleSubmitSupportRequest} disabled={isSubmittingSupportRequest || !supportRequestMessage.trim()}>
+                                    {isSubmittingSupportRequest && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Send Request
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
-                {!isAdminChatConfigured && !authLoading && (
-                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-500 bg-amber-500/10 p-2 rounded-md mt-1">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>
-                            Admin chat is not fully configured. A developer needs to replace <strong>"YOUR_ACTUAL_ADMIN_UID_GOES_HERE"</strong> with a valid admin user ID in the file: <code>src/app/support/page.tsx</code> (around line 26).
-                        </span>
-                    </div>
-                )}
              </div>
            )}
           <p className="text-sm text-muted-foreground pt-2">
@@ -368,5 +373,3 @@ export default function SupportPage() {
     </div>
   );
 }
-
-    

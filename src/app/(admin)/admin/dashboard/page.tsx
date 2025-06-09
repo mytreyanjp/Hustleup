@@ -4,7 +4,7 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, ShieldCheck, Settings, Briefcase } from 'lucide-react';
+import { Users, ShieldCheck, Settings, Briefcase, HelpCircle } from 'lucide-react'; // Added HelpCircle
 import Link from 'next/link';
 
 export default function AdminDashboardPage() {
@@ -46,6 +46,21 @@ export default function AdminDashboardPage() {
             </p>
              <Button variant="outline" size="sm" className="text-sm w-full sm:w-auto" asChild>
                 <Link href="/admin/manage-gigs">Go to Manage Gigs</Link>
+             </Button>
+          </CardContent>
+        </Card>
+        
+        <Card className="glass-card">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+            <CardTitle className="text-sm font-medium">Support Chat Requests</CardTitle> {/* New Card */}
+            <HelpCircle className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
+            <p className="text-xs text-muted-foreground mt-1 mb-3">
+              View and respond to user support chat requests.
+            </p>
+             <Button variant="outline" size="sm" className="text-sm w-full sm:w-auto" asChild>
+                <Link href="/admin/support-requests">View Requests</Link>
              </Button>
           </CardContent>
         </Card>
