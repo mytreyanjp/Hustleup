@@ -436,7 +436,7 @@ export default function PublicProfilePage() {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
-                                    {viewerRole === 'admin' && ( // Share profile only for admins
+                                    {viewerRole === 'admin' && ( 
                                       <DropdownMenuItem 
                                         onSelect={handleShareProfileToChat} 
                                         className="cursor-pointer"
@@ -477,20 +477,16 @@ export default function PublicProfilePage() {
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
-                                {viewerRole === 'admin' && ( // Only Admins can initiate chat from profile
+                                {viewerRole === 'admin' && profile.role !== 'admin' && ( // Admins can chat with non-admins
                                   <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
                                       <Link href={`/chat?userId=${profile.uid}`}>
                                           <MessageSquare className="mr-1 h-4 w-4"/>Chat
                                       </Link>
                                   </Button>
                                 )}
+                                {/* Removed the "User Chat Disabled" button entirely for cleaner UI */}
                             </>
                         )}
-                         {viewerUser && profile.role && viewerRole !== 'admin' && profile.role !== 'admin' && (
-                            <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled>
-                                <MessageSquare className="mr-1 h-4 w-4"/> User Chat Disabled
-                            </Button>
-                         )}
                     </div>
 
                     <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground pt-2">
@@ -837,14 +833,14 @@ export default function PublicProfilePage() {
               </div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
-                {modalUserList.map(userItem => (
-                  <li key={userItem.uid} className="flex items-center justify-between">
-                    <Link href={`/profile/${userItem.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
+                {modalUserList.map((followedUser) => (
+                  <li key={followedUser.uid} className="flex items-center justify-between">
+                    <Link href={`/profile/${followedUser.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} />
-                        <AvatarFallback>{getInitials(userItem.email, userItem.username, userItem.companyName)}</AvatarFallback>
+                        <AvatarImage src={followedUser.profilePictureUrl} alt={followedUser.username} />
+                        <AvatarFallback>{getInitials(followedUser.email, followedUser.username, followedUser.companyName)}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium">{userItem.companyName || userItem.username || 'User'}</span>
+                      <span className="text-sm font-medium">{followedUser.companyName || followedUser.username || 'User'}</span>
                     </Link>
                   </li>
                 ))}
