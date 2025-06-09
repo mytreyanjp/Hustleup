@@ -40,7 +40,7 @@ import { useTheme } from 'next-themes';
 import type { ChatMessage, ChatMetadata } from '@/types/chat';
 import { Progress } from '@/components/ui/progress';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle, DialogDescription as UIDialogDescription, DialogFooter as UIDialogFooter, DialogClose } from '@/components/ui/dialog'; // Renamed to avoid conflict
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
@@ -1491,14 +1491,14 @@ export default function ChatPage() {
       </Card>
 
        {/* Dialog for Warning User - Moved to Chat Page */}
-        <UIDialog open={showWarnUserDialogInChat} onOpenChange={setShowWarnUserDialogInChat}>
-            <UIDialogContent>
-                <UIDialogHeader>
-                    <UIDialogTitle>Log Warning for {otherUsername || 'User'}</UIDialogTitle>
-                    <UIDialogDescription>
+        <Dialog open={showWarnUserDialogInChat} onOpenChange={setShowWarnUserDialogInChat}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Log Warning for {otherUsername || 'User'}</DialogTitle>
+                    <DialogDescription>
                         Please provide a reason for this warning. This will be logged and a notification record will be created for the user.
-                    </UIDialogDescription>
-                </UIDialogHeader>
+                    </DialogDescription>
+                </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="warningReasonChat" className="sr-only">Warning Reason</Label>
                     <Textarea
@@ -1509,16 +1509,17 @@ export default function ChatPage() {
                         rows={4}
                     />
                 </div>
-                <UIDialogFooter>
+                <DialogFooter>
                 <Button variant="outline" onClick={() => setShowWarnUserDialogInChat(false)} disabled={isSubmittingWarningInChat}>Cancel</Button>
                 <Button onClick={submitWarningInChat} disabled={isSubmittingWarningInChat || !warningReasonForChat.trim()}>
                     {isSubmittingWarningInChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     Submit Warning
                 </Button>
-                </UIDialogFooter>
-            </UIDialogContent>
-        </UIDialog>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
 
     </div>
   );
 }
+
