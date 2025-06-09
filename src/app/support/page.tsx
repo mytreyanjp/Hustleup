@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import type { ChatMetadata } from '@/types/chat'; // Added for chat status check
+import { getChatId } from '@/lib/utils'; // Added for getting chat ID
 
 interface AnswerEntry {
   answerText: string;
@@ -63,7 +65,11 @@ export default function SupportPage() {
   const [hasActiveChatRequestMessage, setHasActiveChatRequestMessage] = useState<string | null>(null);
   const [isLoadingChatRequestEligibility, setIsLoadingChatRequestEligibility] = useState(true);
 
-  const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; 
+  // IMPORTANT: Replace this with a REAL Admin User ID from your Firebase project.
+  // This UID will be used as the "target" admin for chat requests initiated from this page.
+  // While multiple admins can see and handle requests from the admin panel,
+  // a specific admin UID is needed to form the initial chat ID.
+  const TARGET_ADMIN_UID_FOR_SUPPORT = "Z2X9gmcjA9P4S29Q3n0zHFp7YqJ3"; 
   const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
 
 
@@ -88,7 +94,7 @@ export default function SupportPage() {
 
   useEffect(() => {
     if (!user || !db || authLoading) {
-      setIsLoadingChatRequestEligibility(false); 
+      setIsLoadingChatRequestEligibility(false);
       setCanSubmitChatRequest(false);
       return;
     }
@@ -106,22 +112,44 @@ export default function SupportPage() {
         const activeRequestsSnapshot = await getDocs(activeRequestsQuery);
 
         if (!activeRequestsSnapshot.empty) {
-          setCanSubmitChatRequest(false);
-          setHasActiveChatRequestMessage("You already have an active support request. Please wait for an admin to respond or for it to be resolved.");
+          // User has an active admin_chat_request. Now check the corresponding chat document.
+          const chatId = getChatId(user.uid, TARGET_ADMIN_UID_FOR_SUPPORT);
+          const chatDocRef = doc(db, 'chats', chatId);
+          const chatSnap = await getDoc(chatDocRef);
+
+          if (chatSnap.exists()) {
+            const chatData = chatSnap.data() as ChatMetadata;
+            if (chatData.chatStatus === 'closed_by_user') {
+              // Chat was closed by user, so they can make a new request
+              setCanSubmitChatRequest(true);
+              setHasActiveChatRequestMessage(null);
+            } else {
+              // Chat is still active from admin side or pending admin response
+              setCanSubmitChatRequest(false);
+              setHasActiveChatRequestMessage("You already have an active support request. Please wait for an admin to respond or for it to be resolved.");
+            }
+          } else {
+            // No chat document found, means admin hasn't "accepted" it yet, or it's purely pending.
+            // This implies the admin_chat_request is still effectively active.
+            setCanSubmitChatRequest(false);
+            setHasActiveChatRequestMessage("You have a pending support request. Please wait for an admin to respond.");
+          }
         } else {
+          // No active admin_chat_requests found for this user
           setCanSubmitChatRequest(true);
+          setHasActiveChatRequestMessage(null);
         }
       } catch (error) {
         console.error("Error checking chat request eligibility:", error);
         toast({ title: "Error", description: "Could not verify chat request status. Please try again.", variant: "destructive" });
-        setCanSubmitChatRequest(false); 
+        setCanSubmitChatRequest(false);
       } finally {
         setIsLoadingChatRequestEligibility(false);
       }
     };
 
     checkEligibility();
-  }, [user, db, authLoading, toast, showSupportChatRequestDialog]); 
+  }, [user, db, authLoading, toast, showSupportChatRequestDialog, TARGET_ADMIN_UID_FOR_SUPPORT]); 
 
   const handleAskQuestion = async () => {
     if (!user || !userProfile || !newQuestion.trim() || !db) {
@@ -234,8 +262,8 @@ export default function SupportPage() {
       toast({ title: "Support Request Sent!", description: "An admin will contact you via chat shortly." });
       setSupportRequestMessage('');
       setShowSupportChatRequestDialog(false);
-      setCanSubmitChatRequest(false); 
-      setIsLoadingChatRequestEligibility(true); 
+      setCanSubmitChatRequest(false); // Prevent immediate re-submission
+      setIsLoadingChatRequestEligibility(true); // Trigger re-check
     } catch (error: any) {
       console.error("Error submitting support request:", error);
       toast({ title: "Request Failed", description: `Could not submit your request: ${error.message}`, variant: "destructive" });
@@ -428,7 +456,7 @@ export default function SupportPage() {
                                 Please briefly describe your issue or question. An admin will join a chat with you shortly.
                                 </DialogDescription>
                             </DialogHeader>
-                             {hasActiveChatRequestMessage && <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md">{hasActiveChatRequestMessage}</p>}
+                             {hasActiveChatRequestMessage && !canSubmitChatRequest && <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md">{hasActiveChatRequestMessage}</p>}
                             <Textarea
                                 placeholder="Type your message here..."
                                 value={supportRequestMessage}
