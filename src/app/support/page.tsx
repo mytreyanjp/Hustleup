@@ -15,7 +15,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation'; 
 
 interface AnswerEntry {
   answerText: string;
@@ -33,11 +33,16 @@ interface FAQEntry {
   answers: AnswerEntry[];
 }
 
+// IMPORTANT: Replace 'ADMIN_USER_ID_PLACEHOLDER' with an actual admin user's UID in your project.
+// This admin account will be the initial target for user support chat requests.
+// Other admins will also see and be able to respond to these 'pending_admin_response' chats.
+const TARGET_ADMIN_UID_FOR_SUPPORT = "ADMIN_USER_ID_PLACEHOLDER"; 
+
 export default function SupportPage() {
   const supportEmail = "promoflixindia@gmail.com";
-  const { user, userProfile, loading: authLoading } = useFirebase();
+  const { user, userProfile, loading: authLoading, role } = useFirebase(); // Added role
   const { toast } = useToast();
-  const router = useRouter(); // Initialize router
+  const router = useRouter(); 
 
   const [faqs, setFaqs] = useState<FAQEntry[]>([]);
   const [isLoadingFaqs, setIsLoadingFaqs] = useState(true);
@@ -146,6 +151,33 @@ export default function SupportPage() {
     }
   };
 
+  const handleChatWithAdmin = () => {
+    if (!user) {
+      toast({ title: "Login Required", description: "Please log in to chat with support.", variant: "destructive" });
+      router.push('/auth/login?redirect=/support');
+      return;
+    }
+    if (TARGET_ADMIN_UID_FOR_SUPPORT === "ADMIN_USER_ID_PLACEHOLDER") {
+      toast({
+        title: "Admin Chat Not Configured",
+        description: "This feature is not fully set up. Please contact support via email.",
+        variant: "destructive",
+        duration: 7000,
+      });
+      return;
+    }
+    if (user.uid === TARGET_ADMIN_UID_FOR_SUPPORT) {
+        toast({
+            title: "Action Info",
+            description: "Admins typically review user requests from their main chat list.",
+            variant: "default",
+        });
+        router.push('/chat');
+        return;
+    }
+    router.push(`/chat?userId=${TARGET_ADMIN_UID_FOR_SUPPORT}&adminChatRequest=true`);
+  };
+
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-8">
@@ -160,7 +192,7 @@ export default function SupportPage() {
         </p>
       </div>
 
-      {user && !authLoading && (
+      {user && !authLoading && role !== 'admin' && ( // Admins usually manage support, not ask generic questions here
         <Card className="glass-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MessageSquarePlus className="h-5 w-5" /> Ask a New Question</CardTitle>
@@ -223,11 +255,11 @@ export default function SupportPage() {
                     ) : (
                       <p className="text-sm text-muted-foreground italic pl-6">No answers yet.</p>
                     )}
-                    {user && !authLoading && (
+                    {user && !authLoading && userProfile?.role === 'admin' && ( // Only admins can answer from here
                       <Dialog open={currentAnsweringFaqId === faq.id} onOpenChange={(isOpen) => !isOpen && setCurrentAnsweringFaqId(null)}>
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm" className="ml-6 mt-2" onClick={() => { setNewAnswer(''); setCurrentAnsweringFaqId(faq.id); }}>
-                            <MessageCircle className="mr-2 h-4 w-4" /> Add Your Answer
+                            <MessageCircle className="mr-2 h-4 w-4" /> Add Answer
                           </Button>
                         </DialogTrigger>
                         <DialogContent>
@@ -266,20 +298,39 @@ export default function SupportPage() {
         <CardHeader>
           <CardTitle>Direct Support</CardTitle>
           <CardDescription>
-            If you can't find an answer or need personalized help, please contact us.
+            If you can't find an answer or need personalized help, please use one of the options below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 p-4 border rounded-lg">
-            <Mail className="h-6 w-6 text-primary" />
-            <div>
-              <p className="font-semibold">Email Support</p>
-              <a href={`mailto:${supportEmail}`} className="text-sm text-primary hover:underline">
-                {supportEmail}
-              </a>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 border rounded-lg">
+            <div className="flex items-center gap-3">
+                <Mail className="h-6 w-6 text-primary shrink-0" />
+                <div>
+                <p className="font-semibold">Email Support</p>
+                <a href={`mailto:${supportEmail}`} className="text-sm text-primary hover:underline">
+                    {supportEmail}
+                </a>
+                </div>
             </div>
+            <Button variant="outline" size="sm" asChild className="w-full sm:w-auto mt-2 sm:mt-0">
+                 <a href={`mailto:${supportEmail}`}>Send Email</a>
+            </Button>
           </div>
-          <p className="text-sm text-muted-foreground">
+          {user && role !== 'admin' && ( // Only non-admins see the direct chat request button
+             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                    <MessageCircle className="h-6 w-6 text-primary shrink-0" />
+                    <div>
+                    <p className="font-semibold">Chat with Admin Team</p>
+                    <p className="text-sm text-muted-foreground">Get live help from our support staff.</p>
+                    </div>
+                </div>
+                <Button variant="default" size="sm" onClick={handleChatWithAdmin} className="w-full sm:w-auto mt-2 sm:mt-0">
+                    Request Admin Chat
+                </Button>
+             </div>
+           )}
+          <p className="text-sm text-muted-foreground pt-2">
             We aim to respond to all queries within 24-48 business hours. Please provide as much detail as possible so we can assist you effectively.
           </p>
         </CardContent>
@@ -287,3 +338,4 @@ export default function SupportPage() {
     </div>
   );
 }
+
