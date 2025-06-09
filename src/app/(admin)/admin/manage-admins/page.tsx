@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'; // Added addDoc, serverTimestamp
 import { db } from '@/config/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,35 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+
+type NotificationType = 'role_updated'; // Specific to this page for now
+
+const createAdminRoleUpdateNotification = async (
+    recipientUserId: string,
+    message: string,
+    adminActorId?: string,
+    adminActorUsername?: string
+) => {
+    if (!db) {
+        console.error("Firestore (db) not available for creating role update notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type: 'role_updated' as NotificationType,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            adminActorId: adminActorId || 'system_admin',
+            adminActorUsername: adminActorUsername || 'Admin Action',
+        });
+        console.log(`Role update notification created for ${recipientUserId}: ${message}`);
+    } catch (error) {
+        console.error("Error creating role update notification document:", error);
+    }
+};
+
 
 export default function ManageAdminsPage() {
   const { user: currentAdmin, userProfile: currentAdminProfile } = useFirebase();
@@ -67,8 +96,18 @@ export default function ManageAdminsPage() {
       await updateDoc(userDocRef, { role: roleToSet });
       toast({
         title: "Role Updated",
-        description: `User's role successfully changed to ${roleToSet}.`,
+        description: `User's role successfully changed to ${roleToSet}. A notification has been sent to the user.`,
       });
+
+      // Create notification for the user whose role was changed
+      const notificationMessage = `Your role on the platform has been updated to ${roleToSet} by an administrator.`;
+      await createAdminRoleUpdateNotification(
+        targetUserId,
+        notificationMessage,
+        currentAdmin.uid,
+        currentAdminProfile?.username || currentAdmin.email?.split('@')[0] || 'Admin'
+      );
+
       fetchUsers(); 
     } catch (error: any) {
       console.error("Error updating role:", error);
@@ -170,3 +209,5 @@ export default function ManageAdminsPage() {
     </div>
   );
 }
+
+    
