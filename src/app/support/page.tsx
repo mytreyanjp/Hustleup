@@ -33,15 +33,28 @@ interface FAQEntry {
   answers: AnswerEntry[];
 }
 
-// IMPORTANT: Replace 'YOUR_ACTUAL_ADMIN_UID_GOES_HERE' with a real admin user's UID in your project.
-// This admin account will be the initial target for user support chat requests.
-// Other admins will also see and be able to respond to these 'pending_admin_response' chats.
-const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; 
+// ==========================================================================================
+// IMPORTANT CONFIGURATION FOR "CHAT WITH ADMIN TEAM" FEATURE:
+// ==========================================================================================
+// To enable users to chat with your admin team, you MUST replace the placeholder string
+// "YOUR_ACTUAL_ADMIN_UID_GOES_HERE" below with the Firebase UID of an actual admin user
+// in your project. This user will be the initial target for support chat requests.
+// Other admins in your system will also see these chats if they are in 'pending_admin_response'
+// status and will be able to respond.
+//
+// How to get an Admin UID:
+// 1. Go to your Firebase Console.
+// 2. Navigate to Authentication -> Users tab.
+// 3. Find a user account that has admin privileges in your application.
+// 4. Copy the "User UID" for that admin user.
+// 5. Paste it here, replacing "YOUR_ACTUAL_ADMIN_UID_GOES_HERE".
+// ==========================================================================================
+const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; // <--- REPLACE THIS!
 const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
 
 export default function SupportPage() {
   const supportEmail = "promoflixindia@gmail.com";
-  const { user, userProfile, loading: authLoading, role } = useFirebase(); // Added role
+  const { user, userProfile, loading: authLoading, role } = useFirebase();
   const { toast } = useToast();
   const router = useRouter(); 
 
@@ -161,7 +174,7 @@ export default function SupportPage() {
     if (TARGET_ADMIN_UID_FOR_SUPPORT === "YOUR_ACTUAL_ADMIN_UID_GOES_HERE") {
       toast({
         title: "Admin Chat Not Configured",
-        description: "This feature is not fully set up. A developer needs to update TARGET_ADMIN_UID_FOR_SUPPORT in src/app/support/page.tsx with a valid admin user ID. For now, please contact support via email.",
+        description: "This feature is not fully set up. A developer needs to update TARGET_ADMIN_UID_FOR_SUPPORT in src/app/support/page.tsx (around line 26) with a valid admin user ID. For now, please contact support via email.",
         variant: "destructive",
         duration: 15000,
       });
@@ -193,7 +206,7 @@ export default function SupportPage() {
         </p>
       </div>
 
-      {user && !authLoading && role !== 'admin' && ( // Admins usually manage support, not ask generic questions here
+      {user && !authLoading && role !== 'admin' && ( 
         <Card className="glass-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MessageSquarePlus className="h-5 w-5" /> Ask a New Question</CardTitle>
@@ -256,7 +269,7 @@ export default function SupportPage() {
                     ) : (
                       <p className="text-sm text-muted-foreground italic pl-6">No answers yet.</p>
                     )}
-                    {user && !authLoading && userProfile?.role === 'admin' && ( // Only admins can answer from here
+                    {user && !authLoading && userProfile?.role === 'admin' && ( 
                       <Dialog open={currentAnsweringFaqId === faq.id} onOpenChange={(isOpen) => !isOpen && setCurrentAnsweringFaqId(null)}>
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm" className="ml-6 mt-2" onClick={() => { setNewAnswer(''); setCurrentAnsweringFaqId(faq.id); }}>
@@ -317,7 +330,7 @@ export default function SupportPage() {
                  <a href={`mailto:${supportEmail}`}>Send Email</a>
             </Button>
           </div>
-          {user && role !== 'admin' && ( // Only non-admins see the direct chat request button
+          {user && role !== 'admin' && ( 
              <div className="flex flex-col gap-3 p-4 border rounded-lg">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -341,7 +354,7 @@ export default function SupportPage() {
                     <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-500 bg-amber-500/10 p-2 rounded-md mt-1">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                         <span>
-                            Admin chat is not fully configured. A developer needs to replace <strong>"YOUR_ACTUAL_ADMIN_UID_GOES_HERE"</strong> with a valid admin user ID in the file: <code>src/app/support/page.tsx</code> (line 26).
+                            Admin chat is not fully configured. A developer needs to replace <strong>"YOUR_ACTUAL_ADMIN_UID_GOES_HERE"</strong> with a valid admin user ID in the file: <code>src/app/support/page.tsx</code> (around line 26).
                         </span>
                     </div>
                 )}
@@ -356,3 +369,4 @@ export default function SupportPage() {
   );
 }
 
+    
