@@ -74,12 +74,15 @@ export default function AdminManageGigsPage() {
             if (clientSnap.exists()) {
               gigItem.clientUsername = (clientSnap.data() as UserProfile).username || data.clientId.substring(0,6);
             } else {
-               gigItem.clientUsername = 'Unknown Client';
+               gigItem.clientUsername = 'Client N/A'; // More user-friendly
+               console.warn(`Admin: Client profile not found for ID ${data.clientId}`);
             }
           } catch (clientError) {
-            console.warn(`Could not fetch client profile for ${data.clientId}:`, clientError);
-            gigItem.clientUsername = 'Error Fetching Client';
+            console.error(`Admin: Error fetching client profile for ID ${data.clientId}:`, clientError);
+            gigItem.clientUsername = 'Client N/A'; // More user-friendly
           }
+        } else {
+          gigItem.clientUsername = 'Client ID Missing';
         }
 
         if (data.selectedStudentId) {
@@ -89,12 +92,16 @@ export default function AdminManageGigsPage() {
             if (studentSnap.exists()) {
               gigItem.selectedStudentUsername = (studentSnap.data() as UserProfile).username || data.selectedStudentId.substring(0,6);
             } else {
-              gigItem.selectedStudentUsername = 'Unknown Student';
+              gigItem.selectedStudentUsername = 'Student N/A'; // More user-friendly
+              console.warn(`Admin: Student profile not found for ID ${data.selectedStudentId}`);
             }
           } catch (studentError) {
-             console.warn(`Could not fetch student profile for ${data.selectedStudentId}:`, studentError);
-             gigItem.selectedStudentUsername = 'Error Fetching Student';
+             console.error(`Admin: Error fetching student profile for ID ${data.selectedStudentId}:`, studentError);
+             gigItem.selectedStudentUsername = 'Student N/A'; // More user-friendly
           }
+        } else {
+            // No selected student, so no username to show
+            gigItem.selectedStudentUsername = 'N/A';
         }
         return gigItem as AdminGigView;
       });
