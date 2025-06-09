@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore'; // Added getDoc here
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -213,8 +213,8 @@ export default function AdminManageGigsPage() {
                   <TableCell className="text-xs sm:text-sm">{formatDate(gig.deadline, true)}</TableCell>
                   <TableCell className="text-xs sm:text-sm">{formatDate(gig.createdAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="xs" asChild className="text-xs sm:text-sm">
-                      <Link href={`/admin/manage-gigs/${gig.id}`}><Eye className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> View</Link>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/admin/manage-gigs/${gig.id}`}><Eye className="mr-1 h-4 w-4" /> View</Link>
                     </Button>
                   </TableCell>
                 </TableRow>
