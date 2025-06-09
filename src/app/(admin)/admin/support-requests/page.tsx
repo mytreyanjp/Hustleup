@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useFirebase } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, serverTimestamp, onSnapshot, DocumentData } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, serverTimestamp, onSnapshot, DocumentData, QuerySnapshot } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -68,13 +68,14 @@ export default function AdminSupportRequestsPage() {
         setIsLoading(false);
       }, (err) => {
         console.error("Error fetching support requests:", err);
-        setError("Failed to load support requests. Please try again later.");
+        setError("Failed to load support requests. Please try again later. This might be due to a missing Firestore index.");
+        toast({ title: "Error", description: "Could not load support requests. Check console for details.", variant: "destructive" });
         setIsLoading(false);
       });
 
       return () => unsubscribe();
     }
-  }, [adminUser, adminRole, adminLoading, router]);
+  }, [adminUser, adminRole, adminLoading, router, toast]);
 
 
   const handleStartChat = async (request: AdminSupportRequest) => {
@@ -154,7 +155,6 @@ export default function AdminSupportRequestsPage() {
                   <TableRow key={request.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                          {/* Avatar could be fetched if stored on user profile */}
                           <UserCircle className="h-8 w-8 text-muted-foreground" />
                           <div>
                             <span className="font-medium truncate">{request.requesterUsername}</span>
@@ -193,3 +193,5 @@ export default function AdminSupportRequestsPage() {
     </div>
   );
 }
+
+    

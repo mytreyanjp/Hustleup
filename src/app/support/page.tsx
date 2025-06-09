@@ -151,10 +151,10 @@ export default function SupportPage() {
         requesterEmail: user.email || 'No email',
         initialMessage: supportRequestMessage.trim(),
         requestedAt: serverTimestamp(),
-        status: 'pending', // Initial status
-        platformInfo: { // Optional: gather some platform info for context
-            userAgent: navigator.userAgent,
-            url: window.location.href,
+        status: 'pending', 
+        platformInfo: { 
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+            url: typeof window !== 'undefined' ? window.location.href : 'Unknown',
         }
       });
       toast({ title: "Support Request Sent!", description: "An admin will contact you via chat shortly." });
@@ -318,7 +318,7 @@ export default function SupportPage() {
             </Button>
           </div>
 
-          {user && role !== 'admin' && (
+          {user && role !== 'admin' && !authLoading && (
              <div className="flex flex-col gap-3 p-4 border rounded-lg">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -373,3 +373,5 @@ export default function SupportPage() {
     </div>
   );
 }
+
+    
