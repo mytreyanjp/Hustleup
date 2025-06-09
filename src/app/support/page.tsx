@@ -51,6 +51,9 @@ export default function SupportPage() {
   const [showSupportChatRequestDialog, setShowSupportChatRequestDialog] = useState(false);
   const [supportRequestMessage, setSupportRequestMessage] = useState('');
   const [isSubmittingSupportRequest, setIsSubmittingSupportRequest] = useState(false);
+  const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; // Replace this!
+  const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
+
 
   useEffect(() => {
     if (!db) return;
@@ -100,6 +103,10 @@ export default function SupportPage() {
       toast({ title: "Error", description: "Please log in and enter an answer.", variant: "destructive" });
       return;
     }
+    if (userProfile.role !== 'admin') {
+        toast({ title: "Permission Denied", description: "Only administrators can add answers.", variant: "destructive" });
+        return;
+    }
     setIsSubmittingAnswer(true);
     try {
       const faqDocRef = doc(db, 'faqs', currentAnsweringFaqId);
@@ -142,6 +149,15 @@ export default function SupportPage() {
     if (!user || !userProfile || !supportRequestMessage.trim() || !db) {
       toast({ title: "Error", description: "Please log in and enter your query.", variant: "destructive" });
       return;
+    }
+    if (!isAdminChatConfigured) {
+        toast({
+            title: "Admin Chat Not Configured",
+            description: "Admin chat needs to be set up by a developer. Please use email support for now.",
+            variant: "destructive",
+            duration: 7000,
+        });
+        return;
     }
     setIsSubmittingSupportRequest(true);
     try {
@@ -334,7 +350,8 @@ export default function SupportPage() {
                                 variant="default"
                                 size="sm"
                                 className="w-full sm:w-auto mt-2 sm:mt-0"
-                                disabled={authLoading || !user}
+                                disabled={authLoading || !user || !isAdminChatConfigured}
+                                title={!isAdminChatConfigured ? "Admin Chat feature needs to be configured by a developer." : "Request chat with admin team"}
                             >
                                 Request Admin Chat
                             </Button>
@@ -363,6 +380,12 @@ export default function SupportPage() {
                         </DialogContent>
                     </Dialog>
                 </div>
+                {!isAdminChatConfigured && (
+                    <p className="text-xs text-destructive text-center mt-2">
+                        Admin Chat feature is not yet configured. A developer needs to set the
+                        <code>TARGET_ADMIN_UID_FOR_SUPPORT</code> constant in <code>src/app/support/page.tsx</code> (around line 26) with a valid admin User ID. Please use email support.
+                    </p>
+                )}
              </div>
            )}
           <p className="text-sm text-muted-foreground pt-2">
@@ -374,4 +397,3 @@ export default function SupportPage() {
   );
 }
 
-    
