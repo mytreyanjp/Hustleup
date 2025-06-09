@@ -485,7 +485,7 @@ export default function AdminGigDetailPage() {
             <CardTitle className="text-lg sm:text-xl flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2"><UserCircle className="h-5 w-5" /> Client Information</div>
                 <div className="flex gap-2">
-                    <Button variant="outline" size="xs" onClick={() => handleOpenWarnDialog(clientProfile.uid, clientProfile.username || 'Client', 'client')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
+                    <Button variant="outline" size="sm" onClick={() => handleOpenWarnDialog(clientProfile.uid, clientProfile.username || 'Client', 'client')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
                 </div>
             </CardTitle>
           </CardHeader>
@@ -512,7 +512,7 @@ export default function AdminGigDetailPage() {
             <CardTitle className="text-lg sm:text-xl flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2"><Briefcase className="h-5 w-5" /> Selected Student</div>
                  <div className="flex gap-2">
-                    <Button variant="outline" size="xs" onClick={() => handleOpenWarnDialog(selectedStudentProfile.uid, selectedStudentProfile.username || 'Student', 'student')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
+                    <Button variant="outline" size="sm" onClick={() => handleOpenWarnDialog(selectedStudentProfile.uid, selectedStudentProfile.username || 'Student', 'student')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
                 </div>
             </CardTitle>
           </CardHeader>
