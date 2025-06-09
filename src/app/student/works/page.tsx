@@ -614,7 +614,7 @@ export default function StudentWorksPage() {
                   </CardContent>
                   <CardFooter className="flex flex-col sm:flex-row items-start sm:items-stretch gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
                       <div className="flex-grow space-y-2 sm:space-y-0 sm:flex sm:gap-2">
-                          <Button size="sm" asChild className="w-full sm:w-auto"><Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with Client</Link></Button>
+                          {/* Chat button removed */}
                           <Button variant="outline" size="sm" asChild className="w-full sm:w-auto"><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
                       </div>
                       <Button
@@ -679,3 +679,4 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+
