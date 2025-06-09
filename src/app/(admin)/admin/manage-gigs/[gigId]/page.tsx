@@ -50,7 +50,7 @@ interface Gig {
   deadline: Timestamp;
   requiredSkills: string[];
   clientId: string;
-  clientUsername?: string; // Legacy or fallback
+  clientUsername?: string; 
   clientDisplayName?: string;
   clientAvatarUrl?: string;
   createdAt: Timestamp;
@@ -161,7 +161,7 @@ export default function AdminGigDetailPage() {
 
   if (error) {
     return (
-      <div className="text-center py-10">
+      <div className="text-center py-10 p-4 sm:p-0">
         <p className="text-destructive mb-4">{error}</p>
         <Button variant="outline" onClick={() => router.push('/admin/manage-gigs')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Manage Gigs
@@ -171,29 +171,29 @@ export default function AdminGigDetailPage() {
   }
 
   if (!gig) {
-    return <div className="text-center py-10 text-muted-foreground">Gig details could not be loaded.</div>;
+    return <div className="text-center py-10 text-muted-foreground p-4 sm:p-0">Gig details could not be loaded.</div>;
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-8 space-y-6">
-      <Button variant="outline" size="sm" onClick={() => router.push('/admin/manage-gigs')}>
+    <div className="max-w-5xl mx-auto py-8 space-y-6 p-4 sm:p-0">
+      <Button variant="outline" size="sm" onClick={() => router.push('/admin/manage-gigs')} className="w-full sm:w-auto">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to All Gigs
       </Button>
 
       <Card className="glass-card">
         <CardHeader className="border-b">
-          <CardTitle className="text-2xl sm:text-3xl">{gig.title}</CardTitle>
-          <CardDescription className="text-sm">
+          <CardTitle className="text-xl sm:text-2xl md:text-3xl">{gig.title}</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
             Created: {formatDate(gig.createdAt)} &bull; Deadline: {formatDate(gig.deadline, true)}
           </CardDescription>
           <div className="flex items-center gap-2 pt-2">
             <span className="text-sm font-medium">Status:</span>
-            <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge>
+            <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge>
           </div>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
           <div>
-            <h3 className="font-semibold text-lg mb-1">Description</h3>
+            <h3 className="font-semibold text-md sm:text-lg mb-1">Description</h3>
             <p className="text-sm whitespace-pre-wrap text-muted-foreground">{gig.description}</p>
           </div>
           <Separator />
@@ -217,7 +217,7 @@ export default function AdminGigDetailPage() {
       {clientProfile && (
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2"><UserCircle className="h-5 w-5" /> Client Information</CardTitle>
+            <CardTitle className="text-lg sm:text-xl flex items-center gap-2"><UserCircle className="h-5 w-5" /> Client Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex items-center gap-3">
@@ -239,7 +239,7 @@ export default function AdminGigDetailPage() {
       {gig.selectedStudentId && selectedStudentProfile && (
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2"><Briefcase className="h-5 w-5" /> Selected Student</CardTitle>
+            <CardTitle className="text-lg sm:text-xl flex items-center gap-2"><Briefcase className="h-5 w-5" /> Selected Student</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
              <div className="flex items-center gap-3">
@@ -262,28 +262,30 @@ export default function AdminGigDetailPage() {
       {gig.applicants && gig.applicants.length > 0 && (
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2"><Users className="h-5 w-5" /> Applicants ({gig.applicants.length})</CardTitle>
+            <CardTitle className="text-lg sm:text-xl flex items-center gap-2"><Users className="h-5 w-5" /> Applicants ({gig.applicants.length})</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Applied At</TableHead>
-                  <TableHead>Message</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="min-w-[120px] text-xs sm:text-sm">Student</TableHead>
+                  <TableHead className="min-w-[150px] text-xs sm:text-sm">Applied At</TableHead>
+                  <TableHead className="min-w-[200px] text-xs sm:text-sm">Message</TableHead>
+                  <TableHead className="min-w-[100px] text-xs sm:text-sm">Status</TableHead>
+                  <TableHead className="min-w-[100px] text-xs sm:text-sm">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {gig.applicants.map(applicant => (
                   <TableRow key={applicant.studentId}>
-                    <TableCell>{applicant.studentUsername}</TableCell>
-                    <TableCell>{formatDate(applicant.appliedAt)}</TableCell>
-                    <TableCell className="max-w-xs truncate">{applicant.message || 'N/A'}</TableCell>
-                    <TableCell><Badge variant={getStatusBadgeVariant(applicant.status || 'pending')} className="capitalize">{applicant.status || 'pending'}</Badge></TableCell>
+                    <TableCell className="text-xs sm:text-sm">{applicant.studentUsername}</TableCell>
+                    <TableCell className="text-xs sm:text-sm">{formatDate(applicant.appliedAt)}</TableCell>
+                    <TableCell className="max-w-xs truncate text-xs sm:text-sm">{applicant.message || 'N/A'}</TableCell>
+                    <TableCell><Badge variant={getStatusBadgeVariant(applicant.status || 'pending')} className="capitalize text-xs">{applicant.status || 'pending'}</Badge></TableCell>
                     <TableCell>
-                       <Button variant="outline" size="xs" asChild><Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link></Button>
+                       <Button variant="outline" size="xs" asChild className="text-xs sm:text-sm">
+                         <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
+                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -296,13 +298,13 @@ export default function AdminGigDetailPage() {
       {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && gig.progressReports && (
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2"><Layers className="h-5 w-5" /> Progress Reports</CardTitle>
+            <CardTitle className="text-lg sm:text-xl flex items-center gap-2"><Layers className="h-5 w-5" /> Progress Reports</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {gig.progressReports.length === 0 && <p className="text-sm text-muted-foreground">No progress reports submitted or defined structure missing.</p>}
             {gig.progressReports.sort((a,b) => a.reportNumber - b.reportNumber).map(report => (
               <Card key={report.reportNumber} className="bg-muted/30 p-3">
-                <div className="flex justify-between items-center mb-1">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-1 gap-1">
                   <h5 className="font-medium text-sm">Report #{report.reportNumber}</h5>
                   <Badge variant={getStatusBadgeVariant(report.clientStatus)} size="sm" className="capitalize text-xs">
                     {report.clientStatus ? report.clientStatus.replace('_', ' ') : 'Awaiting Submission'}
@@ -313,9 +315,9 @@ export default function AdminGigDetailPage() {
                   <div className="text-xs space-y-1">
                     <p><strong>Submission:</strong> {report.studentSubmission.text}</p>
                     {report.studentSubmission.fileUrl && (
-                        <Button variant="link" size="xs" asChild className="p-0 h-auto">
+                        <Button variant="link" size="xs" asChild className="p-0 h-auto text-xs">
                             <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
-                                <FileText className="mr-1 h-4 w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
+                                <FileText className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
                             </a>
                         </Button>
                     )}
@@ -338,3 +340,6 @@ export default function AdminGigDetailPage() {
     </div>
   );
 }
+
+
+    

@@ -149,7 +149,7 @@ export default function AdminManageGigsPage() {
 
   if (error) {
     return (
-      <div className="text-center py-10">
+      <div className="text-center py-10 p-4 sm:p-0">
         <p className="text-destructive mb-4">{error}</p>
         <Button variant="outline" onClick={() => router.push('/admin/dashboard')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Admin Dashboard
@@ -159,19 +159,19 @@ export default function AdminManageGigsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" size="sm" onClick={() => router.push('/admin/dashboard')} className="mb-4">
+    <div className="space-y-6 p-4 sm:p-0">
+      <Button variant="outline" size="sm" onClick={() => router.push('/admin/dashboard')} className="mb-4 w-full sm:w-auto">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Admin Dashboard
       </Button>
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle>Manage All Gigs</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Manage All Gigs</CardTitle>
           <CardDescription>View, filter, and manage all gigs on the platform.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <div className="mb-4">
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-              <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px] text-xs sm:text-sm">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -186,29 +186,29 @@ export default function AdminManageGigsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Student</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Budget</TableHead>
-                <TableHead>Deadline</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="min-w-[200px] text-xs sm:text-sm">Title</TableHead>
+                <TableHead className="min-w-[120px] text-xs sm:text-sm">Client</TableHead>
+                <TableHead className="min-w-[120px] text-xs sm:text-sm">Student</TableHead>
+                <TableHead className="min-w-[100px] text-xs sm:text-sm">Status</TableHead>
+                <TableHead className="min-w-[100px] text-xs sm:text-sm">Budget</TableHead>
+                <TableHead className="min-w-[150px] text-xs sm:text-sm">Deadline</TableHead>
+                <TableHead className="min-w-[150px] text-xs sm:text-sm">Created</TableHead>
+                <TableHead className="text-right min-w-[100px] text-xs sm:text-sm">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredGigs.map((gig) => (
                 <TableRow key={gig.id}>
-                  <TableCell className="font-medium max-w-xs truncate">{gig.title}</TableCell>
-                  <TableCell>{gig.clientUsername || 'N/A'}</TableCell>
-                  <TableCell>{gig.selectedStudentUsername || 'N/A'}</TableCell>
-                  <TableCell><Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge></TableCell>
-                  <TableCell>{gig.currency} {gig.budget.toFixed(2)}</TableCell>
-                  <TableCell>{formatDate(gig.deadline, true)}</TableCell>
-                  <TableCell>{formatDate(gig.createdAt)}</TableCell>
+                  <TableCell className="font-medium max-w-xs truncate text-xs sm:text-sm">{gig.title}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{gig.clientUsername || 'N/A'}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{gig.selectedStudentUsername || 'N/A'}</TableCell>
+                  <TableCell><Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge></TableCell>
+                  <TableCell className="text-xs sm:text-sm">{gig.currency} {gig.budget.toFixed(2)}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{formatDate(gig.deadline, true)}</TableCell>
+                  <TableCell className="text-xs sm:text-sm">{formatDate(gig.createdAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/admin/manage-gigs/${gig.id}`}><Eye className="mr-1 h-4 w-4" /> View</Link>
+                    <Button variant="outline" size="xs" asChild className="text-xs sm:text-sm">
+                      <Link href={`/admin/manage-gigs/${gig.id}`}><Eye className="mr-1 h-3 w-3 sm:h-4 sm:w-4" /> View</Link>
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -216,7 +216,7 @@ export default function AdminManageGigsPage() {
             </TableBody>
           </Table>
           {filteredGigs.length === 0 && !isLoading && (
-            <p className="text-center text-muted-foreground py-8">No gigs found for the selected filter.</p>
+            <p className="text-center text-muted-foreground py-8 text-sm">No gigs found for the selected filter.</p>
           )}
         </CardContent>
       </Card>

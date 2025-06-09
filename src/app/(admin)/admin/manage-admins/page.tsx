@@ -21,7 +21,7 @@ export default function ManageAdminsPage() {
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null); // Store UID of user being updated
+  const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -62,8 +62,6 @@ export default function ManageAdminsPage() {
     setIsUpdatingRole(targetUserId);
     try {
       const userDocRef = doc(db, 'users', targetUserId);
-      // If demoting from admin, set to 'student' as a default.
-      // Consider a more robust way to store/retrieve previous role if needed.
       const roleToSet = newRole === 'admin' ? 'admin' : 'student'; 
 
       await updateDoc(userDocRef, { role: roleToSet });
@@ -71,7 +69,7 @@ export default function ManageAdminsPage() {
         title: "Role Updated",
         description: `User's role successfully changed to ${roleToSet}.`,
       });
-      fetchUsers(); // Refresh the list
+      fetchUsers(); 
     } catch (error: any) {
       console.error("Error updating role:", error);
       toast({ title: "Error", description: `Could not update role: ${error.message}`, variant: "destructive" });
@@ -96,23 +94,23 @@ export default function ManageAdminsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" size="sm" onClick={() => router.push('/admin/dashboard')} className="mb-4">
+    <div className="space-y-6 p-4 sm:p-0">
+      <Button variant="outline" size="sm" onClick={() => router.push('/admin/dashboard')} className="mb-4 w-full sm:w-auto">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Admin Dashboard
       </Button>
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle>Manage Admin Access</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Manage Admin Access</CardTitle>
           <CardDescription>Promote users to admin or demote admins.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Current Role</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="min-w-[150px]">User</TableHead>
+                <TableHead className="min-w-[150px]">Email</TableHead>
+                <TableHead className="min-w-[100px]">Current Role</TableHead>
+                <TableHead className="text-right min-w-[200px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -124,37 +122,41 @@ export default function ManageAdminsPage() {
                             <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username || userItem.email || ''} />
                             <AvatarFallback>{getInitials(userItem.email, userItem.username)}</AvatarFallback>
                         </Avatar>
-                        <span className="font-medium">{userItem.username || 'N/A'}</span>
+                        <span className="font-medium truncate">{userItem.username || 'N/A'}</span>
                     </div>
                   </TableCell>
-                  <TableCell>{userItem.email}</TableCell>
+                  <TableCell className="truncate">{userItem.email}</TableCell>
                   <TableCell>
-                    <Badge variant={userItem.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
+                    <Badge variant={userItem.role === 'admin' ? 'default' : 'secondary'} className="capitalize text-xs">
                         {userItem.role || 'N/A'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {userItem.role === 'admin' ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRoleChange(userItem.uid, 'student')} // Demote to student by default
-                        disabled={isUpdatingRole === userItem.uid || (currentAdmin?.uid === userItem.uid)}
-                      >
-                        {isUpdatingRole === userItem.uid ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserMinus className="mr-2 h-4 w-4" />}
-                        Demote from Admin
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => handleRoleChange(userItem.uid, 'admin')}
-                        disabled={isUpdatingRole === userItem.uid}
-                      >
-                        {isUpdatingRole === userItem.uid ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                        Promote to Admin
-                      </Button>
-                    )}
+                    <div className="flex flex-col sm:flex-row gap-2 justify-end">
+                        {userItem.role === 'admin' ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRoleChange(userItem.uid, 'student')}
+                            disabled={isUpdatingRole === userItem.uid || (currentAdmin?.uid === userItem.uid)}
+                            className="w-full sm:w-auto text-xs sm:text-sm"
+                          >
+                            {isUpdatingRole === userItem.uid ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserMinus className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />}
+                            Demote
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleRoleChange(userItem.uid, 'admin')}
+                            disabled={isUpdatingRole === userItem.uid}
+                            className="w-full sm:w-auto text-xs sm:text-sm"
+                          >
+                            {isUpdatingRole === userItem.uid ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />}
+                            Promote
+                          </Button>
+                        )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
