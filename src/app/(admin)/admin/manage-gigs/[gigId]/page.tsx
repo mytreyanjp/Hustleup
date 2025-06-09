@@ -11,13 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ArrowLeft, UserCircle, Briefcase, DollarSign, CalendarDays, FileText, MessageSquare, Edit3, Layers, Star, Info } from 'lucide-react';
+import { Loader2, ArrowLeft, UserCircle, Briefcase, DollarSign, CalendarDays, FileText, MessageSquare, Users, Layers, Star } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
-// Interfaces (can be moved to a shared types file if used elsewhere)
 interface StudentSubmission {
   text: string;
   fileUrl?: string;
@@ -60,7 +59,6 @@ interface Gig {
   selectedStudentId?: string | null;
   numberOfReports?: number;
   progressReports?: ProgressReport[];
-  // Other fields as necessary
 }
 
 
@@ -88,23 +86,23 @@ export default function AdminGigDetailPage() {
 
       if (!gigSnap.exists()) {
         setError("Gig not found.");
+        toast({ title: "Error", description: "Gig not found.", variant: "destructive" });
         setIsLoading(false);
         return;
       }
       const fetchedGig = { id: gigSnap.id, ...gigSnap.data() } as Gig;
-      if (!fetchedGig.currency) fetchedGig.currency = "INR"; // Default currency
+      if (!fetchedGig.currency) fetchedGig.currency = "INR"; 
       setGig(fetchedGig);
 
-      // Fetch client profile
       const clientDocRef = doc(db, 'users', fetchedGig.clientId);
       const clientSnap = await getDoc(clientDocRef);
       if (clientSnap.exists()) {
         setClientProfile({ uid: clientSnap.id, ...clientSnap.data() } as UserProfile);
       } else {
         console.warn(`Client profile not found for clientId: ${fetchedGig.clientId}`);
+        toast({ title: "Warning", description: `Client profile for ID ${fetchedGig.clientId} not found.`, variant: "default" });
       }
 
-      // Fetch selected student profile if exists
       if (fetchedGig.selectedStudentId) {
         const studentDocRef = doc(db, 'users', fetchedGig.selectedStudentId);
         const studentSnap = await getDoc(studentDocRef);
@@ -112,13 +110,14 @@ export default function AdminGigDetailPage() {
           setSelectedStudentProfile({ uid: studentSnap.id, ...studentSnap.data() } as UserProfile);
         } else {
            console.warn(`Selected student profile not found for studentId: ${fetchedGig.selectedStudentId}`);
+           toast({ title: "Warning", description: `Student profile for ID ${fetchedGig.selectedStudentId} not found.`, variant: "default" });
         }
       }
 
     } catch (err: any) {
       console.error("Error fetching gig details for admin:", err);
       setError("Failed to load gig details. Please try again.");
-      toast({ title: "Loading Error", description: err.message, variant: "destructive" });
+      toast({ title: "Loading Error", description: err.message || "Could not load gig details.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -128,7 +127,7 @@ export default function AdminGigDetailPage() {
     if (!adminLoading && adminRole === 'admin') {
       fetchGigAndRelatedData();
     } else if (!adminLoading && adminRole !== 'admin') {
-      router.push('/'); // Redirect if not admin
+      router.push('/'); 
     }
   }, [adminLoading, adminRole, fetchGigAndRelatedData, router]);
 
@@ -215,7 +214,6 @@ export default function AdminGigDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Client Information */}
       {clientProfile && (
         <Card className="glass-card">
           <CardHeader>
@@ -228,7 +226,7 @@ export default function AdminGigDetailPage() {
                 <AvatarFallback>{getInitials(clientProfile.username, clientProfile.email)}</AvatarFallback>
               </Avatar>
               <div>
-                 <p><strong>Username:</strong> <Link href={`/profile/${clientProfile.uid}`} className="text-primary hover:underline">{clientProfile.username || 'N/A'}</Link></p>
+                 <p><strong>Username:</strong> <Link href={`/profile/${clientProfile.uid}`} className="text-primary hover:underline" target="_blank">{clientProfile.username || 'N/A'}</Link></p>
                  <p><strong>Email:</strong> {clientProfile.email}</p>
               </div>
             </div>
@@ -238,7 +236,6 @@ export default function AdminGigDetailPage() {
         </Card>
       )}
 
-      {/* Selected Student Information */}
       {gig.selectedStudentId && selectedStudentProfile && (
         <Card className="glass-card">
           <CardHeader>
@@ -251,7 +248,7 @@ export default function AdminGigDetailPage() {
                 <AvatarFallback>{getInitials(selectedStudentProfile.username, selectedStudentProfile.email)}</AvatarFallback>
               </Avatar>
               <div>
-                <p><strong>Username:</strong> <Link href={`/profile/${selectedStudentProfile.uid}`} className="text-primary hover:underline">{selectedStudentProfile.username || 'N/A'}</Link></p>
+                <p><strong>Username:</strong> <Link href={`/profile/${selectedStudentProfile.uid}`} className="text-primary hover:underline" target="_blank">{selectedStudentProfile.username || 'N/A'}</Link></p>
                 <p><strong>Email:</strong> {selectedStudentProfile.email}</p>
               </div>
             </div>
@@ -262,7 +259,6 @@ export default function AdminGigDetailPage() {
         </Card>
       )}
 
-      {/* Applicants List */}
       {gig.applicants && gig.applicants.length > 0 && (
         <Card className="glass-card">
           <CardHeader>
@@ -297,7 +293,6 @@ export default function AdminGigDetailPage() {
         </Card>
       )}
 
-      {/* Progress Reports */}
       {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && gig.progressReports && (
         <Card className="glass-card">
           <CardHeader>
@@ -343,5 +338,3 @@ export default function AdminGigDetailPage() {
     </div>
   );
 }
-
-    
