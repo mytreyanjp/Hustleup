@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass } from 'lucide-react'; // Added Hourglass
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -48,7 +48,7 @@ interface Gig {
   clientDisplayName?: string;
   clientAvatarUrl?: string;
   createdAt: Timestamp; 
-  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
   selectedStudentId?: string | null;
   numberOfReports?: number;
@@ -412,7 +412,12 @@ export default function GigDetailPage() {
                 Posted by: <Link href={`/profile/${gig.clientId}`} className="font-medium text-foreground hover:underline">{clientDisplayName}</Link>
              </span>
              <span>{formatDate(gig.createdAt)}</span>
-             <Badge variant={gig.status === 'open' ? 'default' : gig.status === 'in-progress' ? 'secondary' : 'outline'} className="capitalize">{gig.status}</Badge>
+             <Badge 
+                variant={gig.status === 'open' ? 'default' : (gig.status === 'in-progress' || gig.status === 'awaiting_payout') ? 'secondary' : 'outline'} 
+                className="capitalize"
+              >
+                {gig.status === 'awaiting_payout' ? 'Payment Processing' : gig.status}
+              </Badge>
           </CardDescription>
           {clientProfileDetails && (
             <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
@@ -470,7 +475,9 @@ export default function GigDetailPage() {
                 }
 
                 if (gig.status !== 'open') {
-                    return <p className="text-sm text-muted-foreground w-full text-center">This gig is no longer accepting applications ({gig.status}).</p>;
+                    let statusText = gig.status;
+                    if (gig.status === 'awaiting_payout') statusText = 'payment processing';
+                    return <p className="text-sm text-muted-foreground w-full text-center">This gig is currently {statusText} and not accepting new applications.</p>;
                 }
 
                 if (!user) { 
@@ -668,3 +675,4 @@ export default function GigDetailPage() {
   );
 }
 
+    

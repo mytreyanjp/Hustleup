@@ -10,14 +10,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2 } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass } from 'lucide-react'; // Added Hourglass
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 
 interface ClientGig {
   id: string;
   title: string;
-  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
   createdAt: Timestamp;
   deadline: Timestamp;
   budget: number;
@@ -87,6 +87,7 @@ export default function ClientGigsPage() {
     return {
       open: allGigs.filter(gig => gig.status === 'open'),
       inProgress: allGigs.filter(gig => gig.status === 'in-progress'),
+      awaitingPayout: allGigs.filter(gig => gig.status === 'awaiting_payout'), // New category
       completed: allGigs.filter(gig => gig.status === 'completed'),
       closed: allGigs.filter(gig => gig.status === 'closed'),
     };
@@ -114,6 +115,7 @@ export default function ClientGigsPage() {
        switch (status) {
            case 'open': return 'default';
            case 'in-progress': return 'secondary';
+           case 'awaiting_payout': return 'secondary'; // Use secondary for awaiting payout
            case 'completed': return 'outline';
            case 'closed': return 'destructive';
            default: return 'secondary';
@@ -149,7 +151,7 @@ export default function ClientGigsPage() {
                <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
            </Link>
            <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize shrink-0 text-xs">
-               {gig.status}
+               {gig.status === 'awaiting_payout' ? 'Payment Processing' : gig.status}
            </Badge>
         </div>
         <CardDescription className="text-xs">
@@ -185,10 +187,11 @@ export default function ClientGigsPage() {
             </Button>
           </>
         )}
-        {gig.status === 'in-progress' && (
+        {(gig.status === 'in-progress' || gig.status === 'awaiting_payout') && (
           <Button variant="default" size="sm" asChild>
             <Link href={`/client/gigs/${gig.id}/manage`}>
-              <Settings2 className="mr-1 h-4 w-4" /> Manage & Pay
+              {gig.status === 'awaiting_payout' ? <Hourglass className="mr-1 h-4 w-4" /> : <Settings2 className="mr-1 h-4 w-4" />} 
+              {gig.status === 'awaiting_payout' ? 'Track Payout' : 'Manage & Pay'}
             </Link>
           </Button>
         )}
@@ -204,7 +207,7 @@ export default function ClientGigsPage() {
   );
 
   const renderGigSection = (title: string, gigs: ClientGig[], icon: React.ReactNode) => {
-    if (gigs.length === 0 && title !== "Open Gigs") return null;
+    if (gigs.length === 0 && title !== "Open Gigs") return null; // Ensure "Open Gigs" section always shows, even if empty initially
 
     return (
       <section className="space-y-4">
@@ -250,6 +253,7 @@ export default function ClientGigsPage() {
       ) : (
         <div className="space-y-10">
           {renderGigSection("In-Progress Gigs", categorizedGigs.inProgress, <Settings2 className="h-5 w-5 sm:h-6 sm:w-6 text-secondary-foreground" />)}
+          {renderGigSection("Awaiting Payout", categorizedGigs.awaitingPayout, <Hourglass className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500" />)}
           {renderGigSection("Open Gigs", categorizedGigs.open, <Users className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />)}
           {renderGigSection("Completed Gigs", categorizedGigs.completed, <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-green-500" />)}
           {renderGigSection("Closed Gigs", categorizedGigs.closed, <XCircle className="h-5 w-5 sm:h-6 sm:w-6 text-destructive" />)}
@@ -259,3 +263,4 @@ export default function ClientGigsPage() {
   );
 }
 
+    

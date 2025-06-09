@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ArrowLeft, UserCircle, Briefcase, DollarSign, CalendarDays, FileText, MessageSquare, Users, Layers, Star, Trash2, ShieldAlert, Edit, CreditCard } from 'lucide-react';
+import { Loader2, ArrowLeft, UserCircle, Briefcase, DollarSign, CalendarDays, FileText, MessageSquare, Users, Layers, Star, Trash2, ShieldAlert, Edit, CreditCard, Send } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -57,9 +57,10 @@ interface GigTransaction {
     gigTitle: string;
     amount: number;
     currency: string;
-    status: 'succeeded' | 'failed' | 'pending';
-    razorpayPaymentId: string;
+    status: 'succeeded' | 'failed' | 'pending' | 'pending_release_to_student' | 'payout_to_student_succeeded'; // Added new statuses
+    razorpayPaymentId?: string; // Optional as payout might not have it
     paidAt: Timestamp;
+    payoutProcessedAt?: Timestamp; // For admin-to-student payouts
 }
 
 interface Gig {
@@ -75,14 +76,14 @@ interface Gig {
   clientDisplayName?: string;
   clientAvatarUrl?: string;
   createdAt: Timestamp;
-  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
   applicants?: ApplicantInfo[];
   selectedStudentId?: string | null;
   numberOfReports?: number;
   progressReports?: ProgressReport[];
 }
 
-type NotificationType = 'gig_deleted' | 'applicant_removed' | 'report_deleted' | 'account_warning';
+type NotificationType = 'gig_deleted' | 'applicant_removed' | 'report_deleted' | 'account_warning' | 'payment_released'; // Added payment_released
 
 const createAdminActionNotification = async (
     recipientUserId: string,
@@ -142,6 +143,9 @@ export default function AdminGigDetailPage() {
 
   const [gigTransactions, setGigTransactions] = useState<GigTransaction[]>([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  
+  const [isReleasingPayment, setIsReleasingPayment] = useState(false);
+
 
   const fetchGigAndRelatedData = useCallback(async () => {
     if (!gigId || !db) return;
@@ -183,7 +187,7 @@ export default function AdminGigDetailPage() {
       }
       // Fetch transactions related to this gig
       setIsLoadingTransactions(true);
-      const transQuery = query(collection(db, 'transactions'), where('gigId', '==', gigId));
+      const transQuery = query(collection(db, 'transactions'), where('gigId', '==', gigId), orderBy('paidAt', 'desc'));
       const transSnap = await getDocs(transQuery);
       setGigTransactions(transSnap.docs.map(d => ({id: d.id, ...d.data()}) as GigTransaction));
       setIsLoadingTransactions(false);
@@ -204,6 +208,85 @@ export default function AdminGigDetailPage() {
       router.push('/');
     }
   }, [adminLoading, adminRole, fetchGigAndRelatedData, router]);
+
+
+  const handleReleasePayment = async () => {
+    if (!gig || !gig.selectedStudentId || !adminUser || !db) {
+        toast({ title: "Error", description: "Cannot release payment. Missing critical data.", variant: "destructive" });
+        return;
+    }
+    setIsReleasingPayment(true);
+    try {
+        // 1. Find the original "pending_release_to_student" transaction
+        const originalTxQuery = query(
+            collection(db, 'transactions'),
+            where('gigId', '==', gig.id),
+            where('status', '==', 'pending_release_to_student')
+        );
+        const originalTxSnapshot = await getDocs(originalTxQuery);
+        let originalTxId: string | null = null;
+        if (!originalTxSnapshot.empty) {
+            originalTxId = originalTxSnapshot.docs[0].id;
+        }
+
+        // 2. Update original transaction or create a new one representing payout
+        if (originalTxId) {
+            await updateDoc(doc(db, 'transactions', originalTxId), {
+                status: 'payout_to_student_succeeded',
+                payoutProcessedAt: serverTimestamp(),
+            });
+        } else {
+            // This case should ideally not happen if client payment was recorded correctly
+            // but as a fallback, create a new transaction for the payout
+            await addDoc(collection(db, 'transactions'), {
+                clientId: gig.clientId,
+                clientUsername: gig.clientUsername || 'N/A',
+                studentId: gig.selectedStudentId,
+                studentUsername: selectedStudentProfile?.username || 'N/A',
+                gigId: gig.id,
+                gigTitle: gig.title,
+                amount: gig.budget,
+                currency: gig.currency,
+                status: 'payout_to_student_succeeded',
+                paidAt: Timestamp.now(), // Fallback paidAt if original not found
+                payoutProcessedAt: serverTimestamp(),
+                adminActorId: adminUser.uid, // Log admin who released
+            });
+        }
+
+        // 3. Update gig status to 'completed'
+        await updateDoc(doc(db, 'gigs', gig.id), { status: 'completed' });
+
+        // 4. Send notifications
+        await createAdminActionNotification(
+            gig.selectedStudentId,
+            `Payment of ${gig.currency} ${gig.budget.toFixed(2)} for the gig "${gig.title}" has been released to your account by an administrator.`,
+            'payment_released',
+            gig.id,
+            gig.title,
+            adminUser.uid,
+            adminProfile?.username
+        );
+        await createAdminActionNotification(
+            gig.clientId,
+            `Payment for your gig "${gig.title}" has been successfully released to the student.`,
+            'payment_released',
+            gig.id,
+            gig.title,
+            adminUser.uid,
+            adminProfile?.username
+        );
+        
+        toast({ title: "Payment Released", description: `Funds for "${gig.title}" released to ${selectedStudentProfile?.username || 'the student'}.`});
+        fetchGigAndRelatedData(); // Refresh data
+    } catch (error: any) {
+        console.error("Error releasing payment:", error);
+        toast({ title: "Payment Release Failed", description: error.message, variant: "destructive" });
+    } finally {
+        setIsReleasingPayment(false);
+    }
+  };
+
 
   const handleDeleteGig = async () => {
     if (!gigId || !gig || !db || !adminUser) return;
@@ -340,10 +423,11 @@ export default function AdminGigDetailPage() {
 
   const getStatusBadgeVariant = (status: Gig['status'] | ApplicantInfo['status'] | ProgressReport['clientStatus'] | GigTransaction['status']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
-           case 'open': case 'accepted': case 'approved': case 'succeeded': return 'default';
-           case 'in-progress': case 'pending': case 'pending_review': return 'secondary';
-           case 'completed': return 'outline';
-           case 'closed': case 'rejected': case 'failed': return 'destructive';
+           case 'open': case 'accepted': case 'approved': case 'succeeded': case 'payout_to_student_succeeded': return 'default'; // Greenish/Default
+           case 'in-progress': case 'pending': case 'pending_review': case 'pending_release_to_student': return 'secondary'; // Bluish/Yellowish
+           case 'awaiting_payout': return 'outline'; // Neutral with border
+           case 'completed': return 'outline'; // Neutral with border
+           case 'closed': case 'rejected': case 'failed': return 'destructive'; // Reddish
            default: return 'secondary';
        }
    };
@@ -366,6 +450,9 @@ export default function AdminGigDetailPage() {
   if (!gig) {
     return <div className="text-center py-10 text-muted-foreground p-4 sm:p-0">Gig details could not be loaded.</div>;
   }
+  
+  const isClientPaymentHeld = gig.status === 'awaiting_payout' && gigTransactions.some(tx => tx.status === 'pending_release_to_student');
+
 
   return (
     <div className="max-w-5xl mx-auto py-8 space-y-6 p-4 sm:p-0">
@@ -405,7 +492,7 @@ export default function AdminGigDetailPage() {
           </CardDescription>
           <div className="flex items-center gap-2 pt-2">
             <span className="text-sm font-medium">Status:</span>
-            <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge>
+            <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status === 'awaiting_payout' ? 'Awaiting Payout' : gig.status}</Badge>
           </div>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
@@ -429,6 +516,24 @@ export default function AdminGigDetailPage() {
             </div>
           </div>
         </CardContent>
+         {isClientPaymentHeld && gig.selectedStudentId && (
+            <CardFooter className="border-t pt-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-2">
+                    <p className="text-sm font-medium text-primary">
+                        Client has paid. Payment of {gig.currency} {gig.budget.toFixed(2)} is awaiting release to {selectedStudentProfile?.username || 'the student'}.
+                    </p>
+                    <Button 
+                        onClick={handleReleasePayment} 
+                        disabled={isReleasingPayment}
+                        variant="default"
+                        size="sm"
+                    >
+                        {isReleasingPayment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                        Release Payment to Student
+                    </Button>
+                </div>
+            </CardFooter>
+         )}
       </Card>
 
       {clientProfile && (
@@ -606,17 +711,26 @@ export default function AdminGigDetailPage() {
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Payment ID</TableHead>
-                    <TableHead>Paid To</TableHead>
+                    <TableHead>Paid By/To</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {gigTransactions.map(tx => (
                     <TableRow key={tx.id}>
-                      <TableCell className="text-xs sm:text-sm whitespace-nowrap">{formatDate(tx.paidAt, true)}</TableCell>
+                      <TableCell className="text-xs sm:text-sm whitespace-nowrap">{formatDate(tx.payoutProcessedAt || tx.paidAt, true)}</TableCell>
                       <TableCell className="text-xs sm:text-sm">{tx.currency} {tx.amount.toFixed(2)}</TableCell>
-                      <TableCell><Badge variant={getStatusBadgeVariant(tx.status)} className="capitalize text-xs">{tx.status}</Badge></TableCell>
-                      <TableCell className="text-xs sm:text-sm truncate max-w-[100px]">{tx.razorpayPaymentId}</TableCell>
-                      <TableCell className="text-xs sm:text-sm">{tx.studentUsername}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(tx.status)} className="capitalize text-xs">
+                            {tx.status === 'pending_release_to_student' ? 'Paid by Client (Held)' : 
+                             tx.status === 'payout_to_student_succeeded' ? 'Paid to Student' : tx.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs sm:text-sm truncate max-w-[100px]">{tx.razorpayPaymentId || 'N/A'}</TableCell>
+                      <TableCell className="text-xs sm:text-sm">
+                        {tx.status === 'pending_release_to_student' ? `Client: ${tx.clientUsername}` : 
+                         tx.status === 'payout_to_student_succeeded' ? `Student: ${tx.studentUsername}` : 
+                         tx.clientUsername}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -667,3 +781,4 @@ export default function AdminGigDetailPage() {
   );
 }
 
+    

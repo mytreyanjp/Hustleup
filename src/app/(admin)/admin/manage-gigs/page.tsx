@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -24,7 +24,7 @@ interface AdminGigView {
   clientUsername?: string;
   selectedStudentId?: string | null;
   selectedStudentUsername?: string;
-  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
   budget: number;
   currency: string;
   deadline: Timestamp;
@@ -39,10 +39,10 @@ export default function AdminManageGigsPage() {
   const [gigs, setGigs] = useState<AdminGigView[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'completed' | 'closed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'awaiting_payout' | 'completed' | 'closed'>('all');
   const [searchTerm, setSearchTerm] = useState(''); // New state for search term
 
-  const fetchGigsAndUserData = useCallback(async () => {
+  const fetchGigsAndUserData = async () => { // Removed useCallback to ensure it fetches with latest filters if needed
     if (!db) {
       setError("Database not available.");
       toast({ title: "Database Error", description: "Firestore is not available.", variant: "destructive" });
@@ -117,7 +117,7 @@ export default function AdminManageGigsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  };
 
   useEffect(() => {
     if (!adminLoading && adminRole === 'admin') {
@@ -125,7 +125,7 @@ export default function AdminManageGigsPage() {
     } else if (!adminLoading && adminRole !== 'admin') {
       router.push('/'); 
     }
-  }, [adminLoading, adminRole, fetchGigsAndUserData, router]);
+  }, [adminLoading, adminRole, router, toast]); // Removed fetchGigsAndUserData from deps, called directly
 
   const filteredGigs = useMemo(() => {
     let results = gigs;
@@ -158,7 +158,7 @@ export default function AdminManageGigsPage() {
   const getStatusBadgeVariant = (status: AdminGigView['status']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
            case 'open': return 'default';
-           case 'in-progress': return 'secondary';
+           case 'in-progress': case 'awaiting_payout': return 'secondary'; // awaiting_payout uses secondary
            case 'completed': return 'outline';
            case 'closed': return 'destructive';
            default: return 'secondary';
@@ -207,6 +207,7 @@ export default function AdminManageGigsPage() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="open">Open</SelectItem>
                 <SelectItem value="in-progress">In Progress</SelectItem>
+                <SelectItem value="awaiting_payout">Awaiting Payout</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
               </SelectContent>
@@ -235,7 +236,11 @@ export default function AdminManageGigsPage() {
                   </TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.clientUsername || 'N/A'}</TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.selectedStudentUsername || 'N/A'}</TableCell>
-                  <TableCell className="hidden md:table-cell"><Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge></TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">
+                        {gig.status === 'awaiting_payout' ? 'Awaiting Payout' : gig.status}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.currency} {gig.budget.toFixed(2)}</TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{formatDate(gig.deadline, true)}</TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{formatDate(gig.createdAt)}</TableCell>
@@ -258,4 +263,5 @@ export default function AdminManageGigsPage() {
     </div>
   );
 }
+    
     

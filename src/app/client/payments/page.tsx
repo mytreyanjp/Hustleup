@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -20,7 +21,7 @@ interface Transaction {
   studentUsername: string; // Denormalized
   amount: number;
   currency: string;
-  status: 'succeeded' | 'failed' | 'pending'; // Example statuses
+  status: 'succeeded' | 'failed' | 'pending' | 'pending_release_to_student'; // Added 'pending_release_to_student'
   razorpayPaymentId: string;
   paidAt: Timestamp;
 }
@@ -46,8 +47,6 @@ export default function ClientPaymentsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Assuming transactions are stored in a top-level collection or subcollection
-      // Example: /transactions collection
       const transactionsRef = collection(db, "transactions");
       const q = query(
         transactionsRef,
@@ -81,9 +80,10 @@ export default function ClientPaymentsPage() {
 
    const getStatusBadgeVariant = (status: Transaction['status']): "default" | "secondary" | "destructive" | "outline" => {
        switch (status) {
-           case 'succeeded': return 'default'; // Success
+           case 'succeeded': return 'default'; 
            case 'failed': return 'destructive';
            case 'pending': return 'secondary';
+           case 'pending_release_to_student': return 'outline'; // Use outline for pending release
            default: return 'outline';
        }
    };
@@ -126,7 +126,7 @@ export default function ClientPaymentsPage() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Gig Title</TableHead>
-                  <TableHead>Student</TableHead>
+                  <TableHead>Paid To (Student)</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
                    <TableHead>Payment ID</TableHead>
@@ -147,7 +147,7 @@ export default function ClientPaymentsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={getStatusBadgeVariant(tx.status)} className="capitalize">
-                        {tx.status}
+                        {tx.status === 'pending_release_to_student' ? 'Processing by HustleUp' : tx.status}
                       </Badge>
                     </TableCell>
                      <TableCell className="text-xs text-muted-foreground truncate max-w-[100px]">
@@ -163,3 +163,5 @@ export default function ClientPaymentsPage() {
     </div>
   );
 }
+
+    

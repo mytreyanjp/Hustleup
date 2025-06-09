@@ -10,7 +10,7 @@ import { db, storage } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon } from 'lucide-react';
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass } from 'lucide-react'; // Added Hourglass
 import Link from 'next/link';
 import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -51,19 +51,22 @@ interface WorkGig {
   paymentRequestsCount?: number;
   lastPaymentRequestedAt?: Timestamp | null; // Ensure it can be null
   studentPaymentRequestPending?: boolean;
-  status: 'in-progress';
+  status: 'in-progress' | 'awaiting_payout' | 'completed'; // Added 'awaiting_payout', 'completed'
   progressReports?: ProgressReport[];
   // For internal processing
-  effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress';
+  effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed'; // Added new statuses
   nextUpcomingDeadline?: Timestamp | null;
   paymentRequestAvailableAt?: Timestamp | null; // When the next payment request can be made
 }
 
-type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress';
+type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
 
 
 // Helper function to determine the effective status of a gig for a student
 const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
+    if (gig.status === 'awaiting_payout') return 'awaiting-payout';
+    if (gig.status === 'completed') return 'completed';
+
     if (!gig.progressReports || gig.progressReports.length === 0 || (gig.numberOfReports === 0)) {
         return 'in-progress'; // No reports defined, or none submitted yet
     }
@@ -75,7 +78,8 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     
     const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
     if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
-        return 'in-progress'; // All reports done and approved, awaiting final gig completion/payment
+        // If it was awaiting_payout, it would have been caught above. So if all reports approved, it's effectively in-progress for final submission/client payment step.
+        return 'in-progress'; 
     }
 
     return 'in-progress'; // Actively working, or next report due
@@ -83,6 +87,8 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
 
 // Helper function to get the next upcoming deadline (report or final gig)
 const getNextUpcomingDeadline = (gig: WorkGig): Timestamp | null => {
+    if (gig.status === 'awaiting_payout' || gig.status === 'completed') return null;
+
     let nextDeadline: Timestamp | null = gig.deadline; // Start with overall gig deadline
     const now = Timestamp.now();
 
@@ -95,11 +101,6 @@ const getNextUpcomingDeadline = (gig: WorkGig): Timestamp | null => {
             if (!nextDeadline || futureReportDeadlines[0].deadline.toMillis() < nextDeadline.toMillis()) {
                 nextDeadline = futureReportDeadlines[0].deadline;
             }
-        } else {
-             const unapprovedUnrejectedFutureReports = gig.progressReports
-                .filter(r => r.deadline && r.deadline.toMillis() >= now.toMillis() && r.clientStatus !== 'approved' && r.clientStatus !== 'rejected');
-             if (unapprovedUnrejectedFutureReports.length === 0) {
-             }
         }
     }
     return nextDeadline;
@@ -143,7 +144,7 @@ export default function StudentWorksPage() {
         const q = query(
           gigsRef,
           where("selectedStudentId", "==", user.uid),
-          where("status", "==", "in-progress"),
+          where("status", "in", ["in-progress", "awaiting_payout", "completed"]), // Include new statuses
           orderBy("createdAt", "desc")
         );
 
@@ -203,11 +204,23 @@ export default function StudentWorksPage() {
             const resolvedGigs = await Promise.all(fetchedGigsPromises);
             const gigsWithEffectiveStatus = resolvedGigs.map(gig => ({
               ...gig,
-              effectiveStatus: getEffectiveGigStatus(gig),
+              effectiveStatus: getEffectiveGigStatus(gig), // Recalculate here
               nextUpcomingDeadline: getNextUpcomingDeadline(gig)
             }));
             setActiveGigs(gigsWithEffectiveStatus);
-            setCollapsedGigs(prevCollapsed => new Set(gigsWithEffectiveStatus.filter(g => g.effectiveStatus === 'in-progress' && !prevCollapsed.has(g.id)).map(g => g.id)));
+             setCollapsedGigs(prevCollapsed => {
+                const newCollapsed = new Set<string>();
+                gigsWithEffectiveStatus.forEach(gig => {
+                    // Collapse if in-progress, awaiting_payout, or completed AND not previously uncollapsed by user
+                    if ((gig.effectiveStatus === 'in-progress' || gig.effectiveStatus === 'awaiting-payout' || gig.effectiveStatus === 'completed') && !prevCollapsed.has(gig.id)) {
+                        newCollapsed.add(gig.id);
+                    } else if (prevCollapsed.has(gig.id) && gig.effectiveStatus !== 'action-required' && gig.effectiveStatus !== 'pending-review') {
+                        // Keep collapsed if it was already and status doesn't demand attention
+                         newCollapsed.add(gig.id);
+                    }
+                });
+                return newCollapsed;
+            });
           } catch (resolveError) {
              console.error("Error resolving gig details:", resolveError);
              setError("Failed to process some gig details.");
@@ -257,6 +270,8 @@ export default function StudentWorksPage() {
         'action-required': 1,
         'pending-review': 2,
         'in-progress': 3,
+        'awaiting-payout': 4,
+        'completed': 5,
       };
       const statusA = statusOrder[a.effectiveStatus!];
       const statusB = statusOrder[b.effectiveStatus!];
@@ -270,7 +285,8 @@ export default function StudentWorksPage() {
       } else if (sortBy === 'deadlineDesc') {
         return deadlineB - deadlineA;
       }
-      return deadlineA - deadlineB; // Default sort if statuses are same
+      // Default sort by gig creation date if statuses and deadlines are same or not used for sort
+      return (b.deadline?.toMillis() || 0) - (a.deadline?.toMillis() || 0);
     });
 
     return gigsToProcess;
@@ -402,8 +418,10 @@ export default function StudentWorksPage() {
      switch (status) {
       case 'action-required': return 'destructive';
       case 'pending-review': return 'secondary';
+      case 'awaiting-payout': return 'secondary';
+      case 'completed': return 'default';
       case 'in-progress':
-      default: return 'default';
+      default: return 'outline'; // Default/in-progress can be outline
     }
   };
 
@@ -411,6 +429,8 @@ export default function StudentWorksPage() {
      switch (status) {
       case 'action-required': return 'Action Required';
       case 'pending-review': return 'Pending Client Review';
+      case 'awaiting-payout': return 'Awaiting Payout';
+      case 'completed': return 'Completed';
       case 'in-progress':
       default: return 'In Progress';
     }
@@ -476,6 +496,8 @@ export default function StudentWorksPage() {
                   <SelectItem value="action-required">Action Required</SelectItem>
                   <SelectItem value="pending-review">Pending Client Review</SelectItem>
                   <SelectItem value="in-progress">In Progress</SelectItem>
+                  <SelectItem value="awaiting-payout">Awaiting Payout</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -522,8 +544,10 @@ export default function StudentWorksPage() {
               const isCoolDownActive = gig.paymentRequestAvailableAt ? now < gig.paymentRequestAvailableAt.toDate() : false;
               const coolDownTimeRemaining = gig.paymentRequestAvailableAt ? formatDistanceToNow(gig.paymentRequestAvailableAt.toDate(), { addSuffix: true, includeSeconds: true }) : "";
 
-              const canRequestPayment = allReportsApproved && requestsUsed < 5 && !gig.studentPaymentRequestPending && !isCoolDownActive;
+              const canRequestPayment = gig.status === 'in-progress' && allReportsApproved && requestsUsed < 5 && !gig.studentPaymentRequestPending && !isCoolDownActive;
               const paymentButtonTitle = 
+                gig.status === 'awaiting_payout' ? "Payment being processed by admin" :
+                gig.status === 'completed' ? "Gig completed and paid" :
                 !allReportsApproved ? "All reports must be approved first" :
                 requestsUsed >= 5 ? "Maximum 5 payment requests reached" :
                 gig.studentPaymentRequestPending ? "A payment request is already pending with the client" :
@@ -597,7 +621,7 @@ export default function StudentWorksPage() {
                                      <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
                                   </div>
                                 )}
-                                {(!report.studentSubmission || isRejected) && canSubmitThisReport && (
+                                {(!report.studentSubmission || isRejected) && canSubmitThisReport && gig.status === 'in-progress' && (
                                     <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)}>
                                         <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{report.reportNumber}
                                     </Button>
@@ -617,16 +641,20 @@ export default function StudentWorksPage() {
                            {/* Chat with client button removed */}
                           <Button variant="outline" size="sm" asChild className="w-full sm:w-auto"><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
                       </div>
-                      <Button
-                          size="sm"
-                          variant={canRequestPayment ? "default" : "outline"}
-                          onClick={() => { if(canRequestPayment) {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}}
-                          disabled={!canRequestPayment}
-                          title={paymentButtonTitle}
-                          className="w-full sm:w-auto mt-2 sm:mt-0"
-                      >
-                          Request Payment {requestsUsed >= 5 && !gig.studentPaymentRequestPending ? '(Limit Reached)' : `(${requestsUsed}/5 left)`}
-                      </Button>
+                       {gig.status !== 'completed' && (
+                        <Button
+                            size="sm"
+                            variant={canRequestPayment ? "default" : "outline"}
+                            onClick={() => { if(canRequestPayment) {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}}
+                            disabled={!canRequestPayment}
+                            title={paymentButtonTitle}
+                            className="w-full sm:w-auto mt-2 sm:mt-0"
+                        >
+                            {gig.status === 'awaiting_payout' ? <Hourglass className="mr-2 h-4 w-4" /> : <DollarSign className="mr-2 h-4 w-4" />}
+                            {gig.status === 'awaiting_payout' ? 'Payment Processing' : 
+                             (gig.status === 'completed' ? 'Payment Complete' : `Request Payment (${requestsUsed}/5)`)}
+                        </Button>
+                       )}
                   </CardFooter>
                 </div>
               </Card>
@@ -680,3 +708,4 @@ export default function StudentWorksPage() {
   );
 }
 
+    

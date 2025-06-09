@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays } from 'lucide-react';
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays, CircleDollarSign } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -58,7 +58,7 @@ interface Gig {
   clientId: string;
   clientUsername?: string;
   createdAt: Timestamp;
-  status: 'open' | 'in-progress' | 'completed' | 'closed';
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
   applicants?: ApplicantInfo[];
   applicationRequests?: { studentId: string; studentUsername: string; requestedAt: Timestamp; status: 'pending' | 'approved_to_apply' | 'denied_to_apply' }[];
   selectedStudentId?: string | null;
@@ -111,13 +111,13 @@ export default function ManageGigPage() {
          const transactionData = {
              clientId: user.uid,
              clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Client',
-             studentId: payingStudent.studentId,
-             studentUsername: payingStudent.studentUsername,
+             studentId: payingStudent.studentId, // Intended recipient
+             studentUsername: payingStudent.studentUsername, // Intended recipient
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
              currency: "INR" as "INR",
-             status: 'succeeded' as 'succeeded' | 'failed' | 'pending',
+             status: 'pending_release_to_student' as 'pending_release_to_student' | 'succeeded' | 'failed' | 'pending',
              razorpayPaymentId: paymentDetails.paymentId,
              razorpayOrderId: paymentDetails.orderId,
              paidAt: serverTimestamp(),
@@ -125,12 +125,12 @@ export default function ManageGigPage() {
          await addDoc(collection(db, "transactions"), transactionData);
 
           const gigDocRef = doc(db, 'gigs', gig.id);
-          await updateDoc(gigDocRef, { status: 'completed' });
-         setGig(prev => prev ? { ...prev, status: 'completed' } : null);
+          await updateDoc(gigDocRef, { status: 'awaiting_payout' }); // New status: payment made, awaiting admin release
+         setGig(prev => prev ? { ...prev, status: 'awaiting_payout' } : null);
 
          toast({
              title: "Payment Successful!",
-             description: `Payment of INR ${gig.budget.toFixed(2)} to ${payingStudent.studentUsername} recorded. You can now review the student.`,
+             description: `Payment of INR ${gig.budget.toFixed(2)} received. Funds will be released to ${payingStudent.studentUsername} after admin review.`,
          });
          // Trigger fetching review status again as the gig is now completed
          fetchGigAndReviewStatus();
@@ -167,7 +167,7 @@ export default function ManageGigPage() {
        amount: gig.budget * 100, 
        currency: "INR",
        name: "HustleUp Gig Payment",
-       description: `Gig: ${gig.title}. Use any supported method via Razorpay (Cards, UPI/GPay, etc.).`,
+       description: `Payment for Gig: ${gig.title}. To HustleUp Platform.`, // Clarify payment is to platform first
        prefill: { name: userProfile?.username || user?.email?.split('@')[0], email: user?.email || '' },
        notes: { gigId: gig.id, studentId: student.studentId, clientId: user?.uid },
      });
@@ -202,7 +202,8 @@ export default function ManageGigPage() {
                     fetchedGig.progressReports = completeProgressReports;
                     setGig(fetchedGig);
 
-                    if (fetchedGig.status === 'completed' && fetchedGig.selectedStudentId) {
+                    // Allow review if gig is 'awaiting_payout' or 'completed'
+                    if ((fetchedGig.status === 'completed' || fetchedGig.status === 'awaiting_payout') && fetchedGig.selectedStudentId) {
                         const reviewsQuery = query( collection(db, 'reviews'), where('gigId', '==', gigId), where('clientId', '==', user.uid), where('studentId', '==', fetchedGig.selectedStudentId) );
                         const reviewsSnapshot = await getDocs(reviewsQuery);
                         if (!reviewsSnapshot.empty) {
@@ -391,7 +392,7 @@ export default function ManageGigPage() {
            case 'accepted': case 'open': case 'approved': case 'approved_to_apply': return 'default';
            case 'rejected': case 'closed': case 'denied_to_apply': return 'destructive';
            case 'pending': case 'in-progress': case 'pending_review': return 'secondary';
-           case 'completed': return 'outline';
+           case 'completed': case 'awaiting_payout': return 'outline'; // Use outline for these too
            default: return 'secondary'; 
        }
    };
@@ -413,7 +414,7 @@ export default function ManageGigPage() {
          <CardHeader>
            <CardTitle className="text-2xl">{gig.title}</CardTitle>
            <CardDescription>Manage applications, progress reports, and payment for this gig.</CardDescription>
-           <div className="flex items-center gap-2 pt-2"> <span className="text-sm text-muted-foreground">Status:</span> <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status}</Badge> </div>
+           <div className="flex items-center gap-2 pt-2"> <span className="text-sm text-muted-foreground">Status:</span> <Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize">{gig.status === 'awaiting_payout' ? 'Payment Processing' : gig.status}</Badge> </div>
            {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && ( <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground"> <Layers className="h-4 w-4" /> <span>Requires {gig.numberOfReports} progress report(s).</span> </div> )}
            {gig.status === 'open' && (
              <Button variant="outline" size="sm" asChild className="mt-2 w-fit">
@@ -546,11 +547,55 @@ export default function ManageGigPage() {
          </Card>
        )}
 
-       {gig.status === 'completed' && selectedStudent && (
+      {gig.status === 'awaiting_payout' && selectedStudent && (
          <Card className="glass-card border-blue-500 dark:border-blue-400">
+           <CardHeader>
+             <CardTitle className="text-blue-700 dark:text-blue-400 flex items-center gap-2">
+               <CircleDollarSign className="h-6 w-6" /> Payment Processing for: {selectedStudent.studentUsername}
+             </CardTitle>
+             <CardDescription>
+               Your payment of INR {gig.budget.toFixed(2)} has been successfully processed by HustleUp.
+               It is now pending review by our admin team before being released to {selectedStudent.studentUsername}.
+             </CardDescription>
+           </CardHeader>
+           <CardContent>
+             <p className="text-sm text-muted-foreground">
+               You will be notified once the payment is released to the student. You can now leave a review for the student.
+             </p>
+           </CardContent>
+           {/* Review section can still be shown here */}
+           <CardFooter className="border-t pt-4">
+               {!hasBeenReviewed ? (
+                <form onSubmit={(e) => { e.preventDefault(); handleSubmitReview(); }} className="space-y-4 w-full">
+                    <div>
+                        <label htmlFor="rating" className="block text-sm font-medium mb-1">Your Rating for {selectedStudent.studentUsername}:</label>
+                        <StarRating value={rating} onValueChange={setRating} size={28} isEditable={true} />
+                    </div>
+                    <div>
+                        <label htmlFor="reviewComment" className="block text-sm font-medium mb-1">Your Review (Optional):</label>
+                        <Textarea id="reviewComment" value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Share your experience working with this student..." rows={4} />
+                    </div>
+                    <Button type="submit" disabled={isSubmittingReview || rating === 0}>
+                        {isSubmittingReview && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Submit Review
+                    </Button>
+                </form>
+               ) : (
+                 <div className="w-full">
+                    <p className="text-lg font-semibold text-green-600">Review Submitted!</p>
+                    <p className="text-sm text-muted-foreground">You rated {selectedStudent.studentUsername} {rating} star(s).</p>
+                    {reviewComment && <p className="text-sm mt-1 italic">"{reviewComment}"</p>}
+                 </div>
+               )}
+           </CardFooter>
+         </Card>
+       )}
+
+
+       {gig.status === 'completed' && selectedStudent && (
+         <Card className="glass-card border-green-500 dark:border-green-400">
             <CardHeader>
-              <CardTitle className="text-blue-700 dark:text-blue-400">Gig Completed With: {selectedStudent.studentUsername}</CardTitle>
-              <CardDescription>This gig has been marked as completed. You can leave a review for the student.</CardDescription>
+              <CardTitle className="text-green-700 dark:text-green-400">Gig Completed & Paid: {selectedStudent.studentUsername}</CardTitle>
+              <CardDescription>This gig has been successfully completed and payment released to the student. You can leave or view your review.</CardDescription>
             </CardHeader>
             <CardContent>
                {!hasBeenReviewed ? (
@@ -624,3 +669,4 @@ export default function ManageGigPage() {
    );
 }
 
+    
