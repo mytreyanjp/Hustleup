@@ -222,8 +222,8 @@ export default function PublicProfilePage() {
   };
   
   const handleShareProfileToChat = () => {
-    if (!viewerUser || !profile) {
-        toast({ title: "Login Required", description: "Please log in to share profiles.", variant: "destructive" });
+    if (!viewerUser || !profile || viewerRole !== 'admin') { // Only admins can share profiles now
+        toast({ title: "Action Not Allowed", description: "Only admins can share profiles.", variant: "destructive" });
         return;
     }
     const shareUrl = `/chat?shareUserId=${profile.uid}&shareUsername=${encodeURIComponent(profile.username || 'User')}&shareUserProfilePictureUrl=${encodeURIComponent(profile.profilePictureUrl || '')}&shareUserRole=${profile.role || 'unknown'}`;
@@ -436,13 +436,15 @@ export default function PublicProfilePage() {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
-                                    <DropdownMenuItem 
-                                      onSelect={handleShareProfileToChat} 
-                                      className="cursor-pointer"
-                                    >
-                                        <Share2 className="mr-2 h-4 w-4" />
-                                        <span>Share Profile to Chat</span>
-                                    </DropdownMenuItem>
+                                    {viewerRole === 'admin' && ( // Share profile only for admins
+                                      <DropdownMenuItem 
+                                        onSelect={handleShareProfileToChat} 
+                                        className="cursor-pointer"
+                                      >
+                                          <Share2 className="mr-2 h-4 w-4" />
+                                          <span>Share Profile to Chat</span>
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem 
                                       onSelect={() => { setShowReportDialog(true); }} 
                                       className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
@@ -475,13 +477,20 @@ export default function PublicProfilePage() {
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
-                                <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
-                                    <Link href={`/chat?userId=${profile.uid}`}>
-                                        <MessageSquare className="mr-1 h-4 w-4"/>Chat
-                                    </Link>
-                                </Button>
+                                {viewerRole === 'admin' && ( // Only Admins can initiate chat from profile
+                                  <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
+                                      <Link href={`/chat?userId=${profile.uid}`}>
+                                          <MessageSquare className="mr-1 h-4 w-4"/>Chat
+                                      </Link>
+                                  </Button>
+                                )}
                             </>
                         )}
+                         {viewerUser && profile.role && viewerRole !== 'admin' && profile.role !== 'admin' && (
+                            <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled>
+                                <MessageSquare className="mr-1 h-4 w-4"/> User Chat Disabled
+                            </Button>
+                         )}
                     </div>
 
                     <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-muted-foreground pt-2">
@@ -679,7 +688,7 @@ export default function PublicProfilePage() {
                                     </CardContent>
                                     <CardFooter className="p-3 sm:p-4 pt-0">
                                         <Button asChild size="sm" className="w-full text-xs sm:text-sm">
-                                            <Link href={`/gigs/${gig.id}`}>View & Apply</Link>
+                                            <Link href={`/gigs/${gig.id}`}>View Details</Link>
                                         </Button>
                                     </CardFooter>
                                 </Card>

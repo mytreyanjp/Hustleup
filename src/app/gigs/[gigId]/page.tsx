@@ -232,9 +232,11 @@ export default function GigDetailPage() {
         toast({ title: "Login Required", description: "Please log in to share gigs.", variant: "destructive" });
         return;
     }
-    // Chat sharing is disabled
-    // router.push(`/chat?shareGigId=${gig.id}&shareGigTitle=${encodeURIComponent(gig.title)}`);
-    toast({ title: "Feature Disabled", description: "Chat sharing is temporarily disabled.", variant: "default"});
+    if (role !== 'admin') {
+      toast({ title: "Feature Disabled", description: "Only admins can share gigs to chat.", variant: "default"});
+      return;
+    }
+    router.push(`/chat?shareGigId=${gig.id}&shareGigTitle=${encodeURIComponent(gig.title)}`);
   };
 
   const formatDate = (timestamp: Timestamp | undefined): string => {
@@ -379,13 +381,13 @@ export default function GigDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
             <CardTitle className="text-2xl md:text-3xl flex-grow">{gig.title}</CardTitle>
             <div className="flex items-center gap-2 shrink-0">
-                {user && (
+                {user && role === 'admin' && ( // Share button for admin
                     <Button 
                         variant="outline" 
                         size="icon" 
                         onClick={handleShareToChat} 
                         disabled={authLoading || isLoadingGig}
-                        title="Share Gig (Chat Disabled)" // Updated title
+                        title="Share Gig to Chat"
                         className="shrink-0"
                     >
                         <Share2 className="h-5 w-5" />
@@ -460,7 +462,7 @@ export default function GigDetailPage() {
               </div>
            </div>
         </CardContent>
-        {!isGigInProgressForCurrentUser && (
+        {!isGigInProgressForCurrentUser && role !== 'admin' && (
             <CardFooter>
             {(() => {
                 if (isLoadingGig || authLoading) {
@@ -528,6 +530,20 @@ export default function GigDetailPage() {
             })()}
             </CardFooter>
         )}
+        {isClientOwner && role === 'client' && (
+             <CardFooter>
+                 <Button asChild variant="secondary" className="w-full sm:w-auto">
+                    <Link href={`/client/gigs/${gigId}/manage`}>Manage This Gig</Link>
+                 </Button>
+             </CardFooter>
+        )}
+         {role === 'admin' && (
+             <CardFooter>
+                 <Button asChild variant="secondary" className="w-full sm:w-auto">
+                    <Link href={`/admin/manage-gigs/${gigId}`}>Admin: Manage This Gig</Link>
+                 </Button>
+             </CardFooter>
+        )}
       </Card>
 
       {isGigInProgressForCurrentUser && gig.numberOfReports !== undefined && (
@@ -579,9 +595,6 @@ export default function GigDetailPage() {
                 );
               })}
             </CardContent>
-             <CardFooter>
-                {/* Chat with client button removed */}
-            </CardFooter>
         </Card>
       )}
 
@@ -610,11 +623,6 @@ export default function GigDetailPage() {
                 {gig.applicants.length > 3 && <p className="text-sm text-muted-foreground mt-2 text-center">And {gig.applicants.length - 3} more...</p>}
              </ul>
            </CardContent>
-           <CardFooter>
-                <Button asChild variant="default" className="w-full">
-                    <Link href={`/client/gigs/${gigId}/manage`}>Manage All Applicants & Payments</Link>
-                </Button>
-            </CardFooter>
          </Card>
        )}
 

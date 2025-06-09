@@ -225,10 +225,6 @@ export default function ManageGigPage() {
   }, [authLoading, user, role, router, fetchGigAndReviewStatus]);
 
 
-  const sendApplicationStatusNotification = async ( studentUsername: string, studentId: string, gigTitle: string, status: 'accepted' | 'rejected' | 'request approved' | 'request denied' ) => {
-    // Chat notifications disabled
-  };
-
   const updateApplicationRequestStatus = async (studentId: string, newStatus: 'approved_to_apply' | 'denied_to_apply') => {
     if (!gig || !db) return;
     const request = gig.applicationRequests?.find(req => req.studentId === studentId);
@@ -242,7 +238,6 @@ export default function ManageGigPage() {
         await updateDoc(gigDocRef, { applicationRequests: updatedRequests });
         setGig(prev => prev ? { ...prev, applicationRequests: updatedRequests } : null);
         toast({ title: `Request ${newStatus === 'approved_to_apply' ? 'Approved' : 'Denied'}`, description: `Student can ${newStatus === 'approved_to_apply' ? 'now apply' : 'no longer apply'}.` });
-        // Chat notification removed
     } catch (err: any) {
         console.error("Error updating application request status:", err);
         toast({ title: "Update Failed", description: `Could not update request status: ${err.message}`, variant: "destructive" });
@@ -313,7 +308,6 @@ export default function ManageGigPage() {
 
 
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
-           // Chat notification removed
        } catch (err: any) { console.error("Error updating applicant status:", err); toast({ title: "Update Failed", description: `Could not update status: ${err.message}`, variant: "destructive" });
        } finally { setUpdatingApplicantId(null); }
    };
@@ -475,7 +469,6 @@ export default function ManageGigPage() {
                   <div className="flex items-start gap-3 flex-grow"> <UserCircle className="h-10 w-10 text-muted-foreground mt-1 shrink-0" /> <div className="flex-grow"> <p className="font-semibold text-lg">{selectedStudent.studentUsername}</p> <p className="text-xs text-muted-foreground mb-1">Accepted application {formatDate(selectedStudent.appliedAt)}</p> </div> </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
                      {selectedStudent.studentId ? ( <Button size="sm" variant="outline" asChild><Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link></Button> ) : ( <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button> )}
-                     {/* Chat button removed */}
                   </div>
               </div>
               {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
@@ -608,7 +601,6 @@ export default function ManageGigPage() {
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
                            {applicant.studentId ? (<Button size="sm" variant="outline" asChild><Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link></Button>) : (<Button size="sm" variant="outline" disabled>View Profile</Button>)}
-                           {/* Chat button removed */}
                            {applicant.status === 'pending' && (
                             <>
                                 <Button size="sm" variant="default" onClick={() => updateApplicantStatus(applicant.studentId, 'accepted')} disabled={updatingApplicantId === applicant.studentId}>

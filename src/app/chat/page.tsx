@@ -87,12 +87,11 @@ export default function ChatPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [targetUserForNewChat, setTargetUserForNewChat] = useState<UserProfile | null>(null);
   const [currentGigForChat, setCurrentGigForChat] = useState<GigForChatContext | null>(null);
-  const [isAcceptingOrRejecting, setIsAcceptingOrRejecting] = useState(false);
+  // const [isAcceptingOrRejecting, setIsAcceptingOrRejecting] = useState(false); // 'pending_request' between non-admins is removed
   const [chatSearchTerm, setChatSearchTerm] = useState('');
   const [transientChatOverride, setTransientChatOverride] = useState<ChatMetadata | null>(null);
   const [otherParticipantProfiles, setOtherParticipantProfiles] = useState<Record<string, UserProfile>>({});
 
-  // State for Warn User Dialog (moved from AdminGigDetailPage)
   const [showWarnUserDialogInChat, setShowWarnUserDialogInChat] = useState(false);
   const [warningReasonForChat, setWarningReasonForChat] = useState('');
   const [isSubmittingWarningInChat, setIsSubmittingWarningInChat] = useState(false);
@@ -120,99 +119,93 @@ export default function ChatPage() {
   }, [emojiPickerRef]);
 
 
-  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string, targetUserRoleParam?: 'student' | 'client' | 'admin' | null): Promise<ChatMetadata | null> => {
+  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsernameFromParam: string, targetProfilePictureUrlFromParam?: string, gigIdForContext?: string): Promise<ChatMetadata | null> => {
     if (!user || !userProfile || !db) return null;
 
     if (userProfile.blockedUserIds?.includes(targetUserId)) {
-        toast({ title: "Chat Blocked", description: "You have blocked this user. Unblock them to start a chat.", variant: "destructive" });
+        toast({ title: "Chat Blocked", description: "You have blocked this user. Unblock them to interact.", variant: "destructive" });
         router.push('/chat');
         return null;
     }
     
-    let targetUserRole = targetUserRoleParam;
-    if (!targetUserRole) {
-        const cachedTargetProfile = otherParticipantProfiles[targetUserId] || (targetUserForNewChat?.uid === targetUserId ? targetUserForNewChat : null);
-        if (cachedTargetProfile) {
-            targetUserRole = cachedTargetProfile.role;
-        } else {
-            try {
-                const targetUserDoc = await getDoc(doc(db, 'users', targetUserId));
-                if (targetUserDoc.exists()) {
-                    const fetchedTargetProfile = targetUserDoc.data() as UserProfile;
-                    setOtherParticipantProfiles(prev => ({ ...prev, [targetUserId]: fetchedTargetProfile }));
-                    targetUserRole = fetchedTargetProfile.role;
-                } else {
-                     toast({ title: "Chat Error", description: "Target user profile not found to determine chat type.", variant: "destructive"});
-                     return null;
-                }
-            } catch (fetchError) {
-                console.error("Error fetching target user role for chat:", fetchError);
-                toast({ title: "Chat Error", description: "Could not determine target user role.", variant: "destructive"});
-                return null;
+    let targetUserFullProfile: UserProfile | null = otherParticipantProfiles[targetUserId] || (targetUserForNewChat?.uid === targetUserId ? targetUserForNewChat : null);
+
+    if (!targetUserFullProfile) {
+        try {
+            const targetUserDoc = await getDoc(doc(db, 'users', targetUserId));
+            if (targetUserDoc.exists()) {
+                targetUserFullProfile = { uid: targetUserDoc.id, ...targetUserDoc.data() } as UserProfile;
+                setOtherParticipantProfiles(prev => ({ ...prev, [targetUserId]: targetUserFullProfile! }));
+            } else {
+                 toast({ title: "Chat Error", description: "Target user profile not found.", variant: "destructive"});
+                 router.push('/chat');
+                 return null;
             }
+        } catch (fetchError) {
+            console.error("Error fetching target user profile for chat:", fetchError);
+            toast({ title: "Chat Error", description: "Could not load target user details.", variant: "destructive"});
+            router.push('/chat');
+            return null;
         }
     }
 
+    if (targetUserFullProfile?.blockedUserIds?.includes(user.uid)) {
+        toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
+        router.push('/chat');
+        return null;
+    }
+
+    const currentUserRole = userProfile.role;
+    const targetUserRole = targetUserFullProfile.role;
+    const targetUsername = targetUserFullProfile.username || targetUsernameFromParam;
+    const targetProfilePictureUrl = targetUserFullProfile.profilePictureUrl || targetProfilePictureUrlFromParam;
+
+    // Enforce new chat rules
+    if (currentUserRole !== 'admin' && targetUserRole !== 'admin') {
+        toast({ title: "Chat Disabled", description: "Direct user-to-user chats are not available. Please use the support page to contact admins if needed.", variant: "destructive" });
+        router.push('/gigs/browse'); // Or a more appropriate page
+        return null;
+    }
 
     const chatId = getChatId(user.uid, targetUserId);
     const chatDocRef = doc(db, 'chats', chatId);
 
     try {
       const chatSnap = await getDoc(chatDocRef);
-      const isClientInteractingWithStudent = userProfile.role === 'client' && targetUserRole === 'student';
       
-      if (chatSnap.exists()) {
+      if (chatSnap.exists()) { // Chat already exists
         let existingChatData = { ...chatSnap.data(), id: chatId } as ChatMetadata;
         let updateRequired = false;
-        const updates: Partial<ChatMetadata> & {updatedAt?: any, lastMessageTimestamp?: any, createdAt?: any} = { updatedAt: serverTimestamp() };
+        const updates: Partial<ChatMetadata> & {updatedAt?: any} = { updatedAt: serverTimestamp() };
 
         if (gigIdForContext && existingChatData.gigId !== gigIdForContext) {
             updates.gigId = gigIdForContext;
             updateRequired = true;
-        } else if (gigIdForContext && !existingChatData.gigId) {
-             updates.gigId = gigIdForContext;
-             updateRequired = true;
         }
         
-        if (userProfile.role === 'admin' && existingChatData.chatStatus === 'pending_admin_response' && existingChatData.requestInitiatorId !== user.uid) {
-            // Admin is viewing a chat requested by a user, keep it pending until admin sends a message
-        } else if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
-            updates.chatStatus = 'accepted'; 
-            if (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected' || existingChatData.chatStatus === undefined) {
-                updates.lastMessage = "Chat is now active.";
-                updates.lastMessageTimestamp = serverTimestamp();
-                updates.lastMessageSenderId = 'system'; 
-                updates.lastMessageReadBy = [];
+        // If current user is student/client trying to access chat with admin
+        if (currentUserRole !== 'admin' && targetUserRole === 'admin') {
+            if (existingChatData.chatStatus !== 'pending_admin_response' && existingChatData.chatStatus !== 'accepted') {
+                toast({ title: "Access Denied", description: "This chat is not active or accessible. Please request admin chat via the support page.", variant: "destructive" });
+                router.push('/support');
+                return null;
             }
-            updateRequired = true;
-            
-            if (updates.lastMessageSenderId === 'system') {
-                const messagesColRef = collection(chatDocRef, 'messages');
-                addDoc(messagesColRef, {
-                    senderId: 'system',
-                    text: 'This chat has been automatically activated by the client.',
-                    timestamp: serverTimestamp(),
-                    messageType: 'system_gig_connection_activated',
-                    deliveredToRecipientAt: null,
-                    readByRecipientAt: null,
-                }).catch(console.error);
-            }
-        } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected') && targetUserRole !== 'admin') {
+        }
+        // If current user is admin and the chat was pending their response
+        else if (currentUserRole === 'admin' && existingChatData.chatStatus === 'pending_admin_response' && existingChatData.requestInitiatorId !== user.uid) {
             updates.chatStatus = 'accepted';
-            updates.lastMessage = "Chat is now active via gig link.";
+            updates.lastMessage = `Admin ${userProfile.username || 'Support'} has joined the chat.`;
             updates.lastMessageTimestamp = serverTimestamp();
             updates.lastMessageSenderId = 'system';
-            updates.lastMessageReadBy = []; 
+            updates.lastMessageReadBy = [user.uid];
             updateRequired = true;
             
             const messagesColRef = collection(chatDocRef, 'messages');
             addDoc(messagesColRef, {
                 senderId: 'system',
-                text: 'This chat has been automatically activated because you are now connected through a gig.',
+                text: `Admin ${userProfile.username || 'Support'} has joined the chat.`,
+                messageType: 'system_admin_reply_received',
                 timestamp: serverTimestamp(),
-                messageType: 'system_gig_connection_activated',
-                deliveredToRecipientAt: null,
-                readByRecipientAt: null,
             }).catch(console.error);
         }
         
@@ -221,37 +214,27 @@ export default function ChatPage() {
             const clientSideUpdates = { ...updates };
             if (clientSideUpdates.updatedAt === serverTimestamp()) clientSideUpdates.updatedAt = Timestamp.now();
             if (clientSideUpdates.lastMessageTimestamp === serverTimestamp()) clientSideUpdates.lastMessageTimestamp = Timestamp.now();
-            if (clientSideUpdates.createdAt === serverTimestamp()) clientSideUpdates.createdAt = Timestamp.now();
-
-            const updatedLocalChat: ChatMetadata = {
-                ...existingChatData,
-                ...clientSideUpdates,
-                id: chatId,
-                chatStatus: updates.chatStatus || existingChatData.chatStatus || (isClientInteractingWithStudent ? 'accepted' : undefined), 
-            };
-             if (isClientInteractingWithStudent && updatedLocalChat.chatStatus !== 'accepted') {
-                updatedLocalChat.chatStatus = 'accepted';
-            }
+            
+            const updatedLocalChat: ChatMetadata = { ...existingChatData, ...clientSideUpdates, id: chatId };
             setChats(prev => prev.map(chat => chat.id === chatId ? updatedLocalChat : chat));
             setSelectedChatId(chatId);
             return updatedLocalChat;
         }
         
-        if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
-            const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
-            setSelectedChatId(chatId);
-            return chatWithForcedStatus;
-        } else if (existingChatData.chatStatus === undefined && isClientInteractingWithStudent) {
-             const chatWithDefinedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
-             setSelectedChatId(chatId);
-             return chatWithDefinedStatus;
-        }
-
-
         setSelectedChatId(chatId);
         return { ...existingChatData, id: chatId };
 
       } else { // New chat
+        if (currentUserRole !== 'admin') {
+            // Students/Clients cannot create new chats with Admins directly here.
+            // They must go through the support page which creates a 'pending_admin_response' request document.
+            // Admins then "Start Chat" from their admin_chat_requests page, which would lead here with the admin as the initiator.
+            toast({ title: "Cannot Initiate", description: "Please request admin chat via the support page.", variant: "destructive" });
+            router.push('/support');
+            return null;
+        }
+
+        // Only an admin can create a new chat record directly via this function
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -262,7 +245,11 @@ export default function ChatPage() {
           createdAt: serverTimestamp() as Timestamp, 
           updatedAt: serverTimestamp() as Timestamp, 
           participantProfilePictures: {},
-          lastMessageReadBy: [],
+          lastMessageReadBy: [user.uid], // Admin has "read" their own initiation
+          chatStatus: 'accepted', // Admin initiated chats are auto-accepted
+          lastMessage: 'Chat started by admin.',
+          lastMessageSenderId: user.uid,
+          lastMessageTimestamp: serverTimestamp() as Timestamp,
         };
 
         if (userProfile.profilePictureUrl) {
@@ -271,38 +258,8 @@ export default function ChatPage() {
         if (targetProfilePictureUrl) {
           newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
         }
-         if (gigIdForContext) newChatData.gigId = gigIdForContext;
-
-
-        if (userProfile.role === 'admin') { 
-            newChatData.chatStatus = 'accepted';
-            newChatData.lastMessage = 'Chat started by admin.';
-            newChatData.lastMessageSenderId = user.uid;
-            newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
-            newChatData.lastMessageReadBy = [user.uid];
-        } else if (targetUserRole === 'admin') { 
-            newChatData.chatStatus = 'pending_admin_response';
-            newChatData.requestInitiatorId = user.uid;
-            // Last message will be the user's first actual message
-            newChatData.lastMessage = 'Chat request to admin team.';
-            newChatData.lastMessageSenderId = user.uid; 
-            newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
-            newChatData.lastMessageReadBy = [user.uid];
-        } else if (isClientInteractingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
-          newChatData.chatStatus = 'accepted';
-          newChatData.lastMessage = 'Chat started.';
-          newChatData.lastMessageSenderId = user.uid;
-          newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
-          newChatData.lastMessageReadBy = [user.uid];
-        } else { 
-          newChatData.chatStatus = 'pending_request';
-          newChatData.requestInitiatorId = user.uid;
-          newChatData.lastMessage = 'Chat request sent.'; 
-          newChatData.lastMessageSenderId = user.uid;
-          newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
-          newChatData.lastMessageReadBy = [user.uid];
-        }
-
+        if (gigIdForContext) newChatData.gigId = gigIdForContext;
+        
         await setDoc(chatDocRef, newChatData);
         
         const localNewChatData: ChatMetadata = {
@@ -310,7 +267,7 @@ export default function ChatPage() {
             id: chatId,
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
-            lastMessageTimestamp: newChatData.lastMessageTimestamp === serverTimestamp() ? Timestamp.now() : (newChatData.lastMessageTimestamp as Timestamp | null),
+            lastMessageTimestamp: Timestamp.now(),
         };
         setChats(prevChats => {
             if (prevChats.find(c => c.id === chatId)) {
@@ -325,6 +282,7 @@ export default function ChatPage() {
     } catch (error) {
       console.error("Error getting or creating chat:", error);
       toast({ title: "Chat Error", description: "Could not start or find the chat.", variant: "destructive" });
+      router.push('/chat');
       return null;
     }
   }, [user, userProfile, toast, router, setChats, otherParticipantProfiles, targetUserForNewChat]);
@@ -344,7 +302,7 @@ export default function ChatPage() {
     const shareProfilePicUrl = searchParams.get('shareUserProfilePictureUrl');
     const shareProfileRole = searchParams.get('shareUserRole') as 'student' | 'client' | 'admin' | undefined;
 
-    if (shareProfileUserId) {
+    if (shareProfileUserId && userProfile.role === 'admin') { // Only admins can share profiles now effectively
       setPendingProfileShareData({
         userId: shareProfileUserId,
         username: decodeURIComponent(shareProfileUsername || 'User'),
@@ -354,61 +312,18 @@ export default function ChatPage() {
       setMessage(''); 
       toast({ title: "Profile Ready to Share", description: "Select a chat and send your message." });
       
-      if (user.uid !== shareProfileUserId) { 
-          const fetchTargetUserAndCreateChatForProfileShare = async () => {
-            if (!db) {
-                toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
-                return;
-            }
-            const chatTargetId = targetUserId || preselectChatId?.split('_').find(id => id !== user.uid) || null; 
-            
-            if (chatTargetId) {
-                 const targetUserDocRef = doc(db, 'users', chatTargetId);
-                 const targetUserSnap = await getDoc(targetUserDocRef);
-                 if (targetUserSnap.exists()) {
+      const chatTargetId = targetUserId || preselectChatId?.split('_').find(id => id !== user.uid) || null; 
+      if (chatTargetId) {
+           getDoc(doc(db, 'users', chatTargetId)).then(targetUserSnap => {
+               if (targetUserSnap.exists()) {
                    const targetUserData = targetUserSnap.data() as UserProfile;
-                   if (targetUserData.blockedUserIds?.includes(user.uid)) {
-                     toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
-                     router.replace('/chat'); 
-                     return;
-                   }
                    setTargetUserForNewChat(targetUserData);
                    setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
-                   const newOrUpdatedChat = await getOrCreateChat(chatTargetId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
-                   if (newOrUpdatedChat) {
-                       setSelectedChatId(newOrUpdatedChat.id);
-                       if (newOrUpdatedChat.chatStatus === 'accepted' || newOrUpdatedChat.chatStatus === 'pending_admin_response') {
-                           setTransientChatOverride(newOrUpdatedChat);
-                           setTimeout(() => setTransientChatOverride(null), 5000); 
-                       }
-                   }
-                 } else {
-                   toast({ title: "User Not Found", description: "The user you're trying to chat with to share the profile doesn't exist.", variant: "destructive" });
-                 }
-            } else if (user.uid === shareProfileUserId) { 
-            } else { 
-                const targetUserDocRef = doc(db, 'users', shareProfileUserId);
-                const targetUserSnap = await getDoc(targetUserDocRef);
-                if (targetUserSnap.exists()) {
-                    const targetUserData = targetUserSnap.data() as UserProfile;
-                    if (targetUserData.blockedUserIds?.includes(user.uid)) {
-                        toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
-                        return;
-                    }
-                    setTargetUserForNewChat(targetUserData);
-                    setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
-                    const newOrUpdatedChat = await getOrCreateChat(shareProfileUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
-                    if (newOrUpdatedChat) {
-                        setSelectedChatId(newOrUpdatedChat.id);
-                        if (newOrUpdatedChat.chatStatus === 'accepted' || newOrUpdatedChat.chatStatus === 'pending_admin_response') {
-                            setTransientChatOverride(newOrUpdatedChat);
-                            setTimeout(() => setTransientChatOverride(null), 5000); 
-                        }
-                    }
-                }
-            }
-          };
-          fetchTargetUserAndCreateChatForProfileShare();
+                   getOrCreateChat(chatTargetId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined).then(newOrUpdatedChat => {
+                       if (newOrUpdatedChat) setSelectedChatId(newOrUpdatedChat.id);
+                   });
+               }
+           });
       }
       if (typeof window !== 'undefined') { 
         const currentUrl = new URL(window.location.href);
@@ -416,7 +331,7 @@ export default function ChatPage() {
         if (targetUserId) currentUrl.searchParams.delete('userId'); 
         router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
       }
-    } else if (shareGigId && shareGigTitle) {
+    } else if (shareGigId && shareGigTitle && userProfile.role === 'admin') { // Only admins can share gigs
       setPendingGigShareData({ gigId: shareGigId, gigTitle: decodeURIComponent(shareGigTitle) });
       setMessage('');
       toast({ title: "Gig Ready to Share", description: "Select a chat and send your message." });
@@ -426,18 +341,37 @@ export default function ChatPage() {
         router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
       }
     } else if (preselectChatId) {
-        setSelectedChatId(preselectChatId);
+        // Allow opening an existing chat by ID, getOrCreateChat will enforce rules
+        getDoc(doc(db, 'chats', preselectChatId)).then(chatSnap => {
+            if (chatSnap.exists()) {
+                const chatData = chatSnap.data() as ChatMetadata;
+                const otherParticipantId = chatData.participants.find(pId => pId !== user.uid);
+                if (otherParticipantId) {
+                    getDoc(doc(db, 'users', otherParticipantId)).then(otherUserSnap => {
+                        if (otherUserSnap.exists()) {
+                            const otherUserData = otherUserSnap.data() as UserProfile;
+                            setTargetUserForNewChat(otherUserData);
+                            setOtherParticipantProfiles(prev => ({ ...prev, [otherUserData.uid]: otherUserData}));
+                            getOrCreateChat(otherParticipantId, otherUserData.username || 'User', otherUserData.profilePictureUrl, chatData.gigId).then(newOrUpdatedChat => {
+                               if(newOrUpdatedChat) setSelectedChatId(newOrUpdatedChat.id);
+                               else router.replace('/chat'); // if getOrCreateChat blocked it
+                            });
+                        } else {
+                            router.replace('/chat');
+                        }
+                    });
+                } else {
+                     router.replace('/chat');
+                }
+            } else {
+                 router.replace('/chat');
+            }
+        });
         if (searchParams.has('chatId') && typeof window !== 'undefined') {
              router.replace('/chat', { scroll: false });
         }
-        return;
     } else if (targetUserId && user.uid !== targetUserId) {
-      if (userProfile.blockedUserIds?.includes(targetUserId)) {
-        toast({ title: "Chat Blocked", description: "You have blocked this user and cannot start a new chat.", variant: "destructive" });
-        router.replace('/chat');
-        return;
-      }
-      const fetchTargetUserAndCreateChat = async () => {
+      const fetchTargetUserAndProcessChat = async () => {
         if (!db) {
             toast({ title: "Database Error", description: "Firestore not available for chat.", variant: "destructive" });
             return;
@@ -445,7 +379,7 @@ export default function ChatPage() {
         const targetUserDocRef = doc(db, 'users', targetUserId);
         const targetUserSnap = await getDoc(targetUserDocRef);
         if (targetUserSnap.exists()) {
-          const targetUserData = targetUserSnap.data() as UserProfile;
+          const targetUserData = { uid: targetUserSnap.id, ...targetUserSnap.data() } as UserProfile;
           if (targetUserData.blockedUserIds?.includes(user.uid)) {
             toast({ title: "Cannot Chat", description: "This user has blocked you.", variant: "destructive" });
             router.replace('/chat');
@@ -453,17 +387,17 @@ export default function ChatPage() {
           }
           setTargetUserForNewChat(targetUserData);
           setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
-          const newOrUpdatedChat = await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined, targetUserData.role);
+          const newOrUpdatedChat = await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined);
           if (newOrUpdatedChat) {
             setSelectedChatId(newOrUpdatedChat.id);
-             if (newOrUpdatedChat.chatStatus === 'accepted' || newOrUpdatedChat.chatStatus === 'pending_admin_response') { 
-                setTransientChatOverride(newOrUpdatedChat);
-                setTimeout(() => setTransientChatOverride(null), 5000); 
-            }
+          } else {
+            // getOrCreateChat would have shown a toast and potentially redirected
+            if (router.asPath.startsWith('/chat')) router.replace('/chat'); // Ensure clean URL if blocked
           }
         } else {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
+          router.replace('/chat');
         }
         const paramsToRemove = ['userId', 'gigId', 'shareGigId', 'shareGigTitle', 'shareUserId', 'shareUsername', 'shareUserProfilePictureUrl', 'shareUserRole', 'chatId'];
         let currentUrl = new URL(window.location.href);
@@ -478,7 +412,7 @@ export default function ChatPage() {
             router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
         }
       };
-      fetchTargetUserAndCreateChat();
+      fetchTargetUserAndProcessChat();
     } else if (!shareGigId && !targetUserId && !preselectChatId && (searchParams.toString() !== '') && typeof window !== 'undefined') {
         router.replace('/chat', { scroll: false });
     }
@@ -510,13 +444,31 @@ export default function ChatPage() {
           return !(otherParticipantId && userProfile.blockedUserIds?.includes(otherParticipantId));
         });
       }
+      
+      // Further filter chats based on the new rules: only show chats with admins, or if current user is admin
+      if (userProfile?.role !== 'admin') {
+        fetchedChats = fetchedChats.filter(chat => {
+            const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
+            if (!otherParticipantId) return false;
+            const otherParticipantProfile = otherParticipantProfiles[otherParticipantId]; // Check cache first
+            if (otherParticipantProfile) return otherParticipantProfile.role === 'admin';
+            // If not cached, this chat might be initially shown and then filtered out once profile loads or decided to fetch all participant profiles first
+            return true; // Temporarily allow, will get filtered once profiles load or fetch all needed profiles initially
+        });
+      }
+
       setChats(fetchedChats);
       fetchedChats.forEach(async (chat) => {
         const otherId = chat.participants.find(pId => pId !== user.uid);
         if (otherId && !otherParticipantProfiles[otherId]) {
             const userDoc = await getDoc(doc(db, 'users', otherId));
             if (userDoc.exists()) {
-                setOtherParticipantProfiles(prev => ({ ...prev, [otherId]: userDoc.data() as UserProfile }));
+                const fetchedOtherProfile = userDoc.data() as UserProfile;
+                setOtherParticipantProfiles(prev => ({ ...prev, [otherId]: fetchedOtherProfile }));
+                 // Re-filter chats if this loaded profile makes a chat invalid for non-admins
+                if (userProfile?.role !== 'admin' && fetchedOtherProfile.role !== 'admin') {
+                    setChats(prev => prev.filter(c => c.id !== chat.id));
+                }
             }
         }
       });
@@ -528,7 +480,7 @@ export default function ChatPage() {
     });
 
     return () => unsubscribe();
-  }, [user, userProfile, toast, db]); 
+  }, [user, userProfile, toast, db, otherParticipantProfiles]); 
 
   useEffect(() => {
     if (!selectedChatId || !user || !userProfile || !db) {
@@ -663,8 +615,8 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async (
-    isRequestingDetails: boolean = false,
-    isSharingDetails: boolean = false,
+    isRequestingDetails: boolean = false, // This logic might become obsolete with chat restrictions
+    isSharingDetails: boolean = false, // This logic might become obsolete
     sharedDetails?: { email?: string, phone?: string }
     ) => {
     if (!selectedChatId || !user || !userProfile || !db ) {
@@ -677,7 +629,6 @@ export default function ChatPage() {
         chatDetailsToUse = transientChatOverride;
     }
     const currentChatDetails = chatDetailsToUse;
-
 
     if (!currentChatDetails) {
         toast({ title: "Cannot Send", description: "Chat details not found or not yet loaded.", variant: "destructive"});
@@ -698,24 +649,18 @@ export default function ChatPage() {
         return;
     }
 
-
-    const isInitiator = currentChatDetails.requestInitiatorId === user.uid;
-    
-    if (currentChatDetails.chatStatus === 'pending_request' && isInitiator && messages.length > 0) {
-         toast({ title: "Cannot Send", description: `Waiting for user to accept your chat request.`, variant: "default"});
-         return;
+    // New rule enforcement before sending
+    if (userProfile.role !== 'admin' && targetParticipantProfile?.role !== 'admin') {
+      toast({ title: "Cannot Send", description: "Direct user-to-user chats are disabled.", variant: "destructive" });
+      return;
     }
-    if (currentChatDetails.chatStatus === 'pending_request' && !isInitiator) {
-         toast({ title: "Cannot Send", description: `Please accept or reject the chat request first.`, variant: "default"});
-         return;
+    if (userProfile.role !== 'admin' && targetParticipantProfile?.role === 'admin' && currentChatDetails.chatStatus !== 'accepted' && currentChatDetails.chatStatus !== 'pending_admin_response') {
+      toast({ title: "Cannot Send", description: "Chat with admin is not active. Please use support page.", variant: "destructive" });
+      return;
     }
     
-    if (currentChatDetails.chatStatus === 'pending_admin_response' && isInitiator && messages.length > 0) {
+    if (currentChatDetails.chatStatus === 'pending_admin_response' && currentChatDetails.requestInitiatorId === user.uid && messages.length > 0) {
          toast({ title: "Cannot Send", description: `Waiting for an admin to reply to your request.`, variant: "default"});
-         return;
-    }
-     if (currentChatDetails.chatStatus === 'rejected') {
-         toast({ title: "Cannot Send", description: `This chat request was rejected.`, variant: "destructive"});
          return;
     }
     
@@ -736,12 +681,15 @@ export default function ChatPage() {
     };
 
     let lastMessageText = '';
+    
+    // Personal detail sharing should only be possible if one party is an admin and the chat is active
+    const canShareOrRequestPersonalDetails = userProfile.role === 'admin' || (targetParticipantProfile?.role === 'admin' && currentChatDetails.chatStatus === 'accepted');
 
-    if (isRequestingDetails) {
+    if (isRequestingDetails && canShareOrRequestPersonalDetails) {
         newMessageContent.isDetailShareRequest = true;
-        newMessageContent.text = `${userProfile.username} has requested your contact details for the gig: ${currentGigForChat?.title || 'this gig'}.`;
+        newMessageContent.text = `${userProfile.username} has requested your contact details${currentGigForChat ? ` for the gig: ${currentGigForChat.title}` : ''}.`;
         lastMessageText = `${userProfile.username} requested contact details.`;
-    } else if (isSharingDetails && sharedDetails) {
+    } else if (isSharingDetails && sharedDetails && canShareOrRequestPersonalDetails) {
         newMessageContent.isDetailsShared = true;
         newMessageContent.sharedContactInfo = {
             email: sharedDetails.email,
@@ -750,7 +698,7 @@ export default function ChatPage() {
         };
         newMessageContent.text = message.trim() || "Here are my contact details:";
         lastMessageText = "Shared contact details.";
-    } else if (pendingGigShareData) {
+    } else if (pendingGigShareData && userProfile.role === 'admin') { // Only admin can effectively share gigs now
       newMessageContent.sharedGigId = pendingGigShareData.gigId;
       newMessageContent.sharedGigTitle = pendingGigShareData.gigTitle;
       lastMessageText = `[Gig Shared] ${pendingGigShareData.gigTitle}`;
@@ -758,7 +706,7 @@ export default function ChatPage() {
         newMessageContent.text = message.trim();
         lastMessageText = `${message.trim()} (Shared: ${pendingGigShareData.gigTitle})`;
       }
-    } else if (pendingProfileShareData) {
+    } else if (pendingProfileShareData && userProfile.role === 'admin') { // Only admin can effectively share profiles
       newMessageContent.sharedUserId = pendingProfileShareData.userId;
       newMessageContent.sharedUsername = pendingProfileShareData.username;
       newMessageContent.sharedUserProfilePictureUrl = pendingProfileShareData.profilePictureUrl;
@@ -805,7 +753,7 @@ export default function ChatPage() {
           chatUpdateData.chatStatus = 'accepted';
           batchOp.set(doc(messagesColRef), { 
               senderId: 'system',
-              text: `An admin (${userProfile.username}) has joined the chat.`,
+              text: `Admin ${userProfile.username} has joined and replied.`,
               messageType: 'system_admin_reply_received',
               timestamp: serverTimestamp(),
           });
@@ -827,41 +775,8 @@ export default function ChatPage() {
     }
   };
 
-  const handleChatRequestAction = async (action: 'accepted' | 'rejected') => {
-    if (!selectedChatId || !user || !db) return;
-    setIsAcceptingOrRejecting(true);
-    try {
-      const chatDocRef = doc(db, 'chats', selectedChatId);
-      const messagesColRef = collection(chatDocRef, 'messages');
-      const systemMessageText = action === 'accepted' ? 'Chat request accepted. You can now chat freely.' : 'Chat request rejected.';
-
-      const batch = writeBatch(db);
-      batch.update(chatDocRef, {
-        chatStatus: action,
-        updatedAt: serverTimestamp(),
-        lastMessage: systemMessageText,
-        lastMessageSenderId: 'system',
-        lastMessageTimestamp: serverTimestamp(),
-        lastMessageReadBy: [], 
-      });
-      batch.set(doc(messagesColRef), {
-        senderId: 'system',
-        text: systemMessageText,
-        messageType: action === 'accepted' ? 'system_request_accepted' : 'system_request_rejected',
-        timestamp: serverTimestamp(),
-        deliveredToRecipientAt: null,
-        readByRecipientAt: null,
-      });
-      await batch.commit();
-      toast({ title: `Request ${action}`, description: `Chat request has been ${action}.` });
-      setTransientChatOverride(null); 
-    } catch (error) {
-      console.error(`Error ${action} chat request:`, error);
-      toast({ title: "Action Failed", description: `Could not ${action} the chat request.`, variant: "destructive" });
-    } finally {
-      setIsAcceptingOrRejecting(false);
-    }
-  };
+  // handleChatRequestAction is no longer needed as direct student-client chat requests are removed.
+  // Admin chat requests are handled differently (status change from pending_admin_response to accepted upon admin reply).
 
   const filteredChats = useMemo(() => {
     if (!chatSearchTerm.trim()) {
@@ -1110,12 +1025,11 @@ export default function ChatPage() {
         adminUsername: userProfile.username || 'Admin',
         reason: warningReasonForChat.trim(),
         gigId: _selectedChatDetails?.gigId || null,
-        gigTitle: currentGigForChat?.title || _selectedChatDetails?.gigId || null, // Attempt to get gig title
+        gigTitle: currentGigForChat?.title || _selectedChatDetails?.gigId || null,
         timestamp: serverTimestamp(),
       });
       toast({ title: "Warning Logged", description: `A warning has been logged for ${otherUsername}. A notification record has been created.` });
       
-      // Create notification
       await addDoc(collection(db, 'notifications'), {
         recipientUserId: otherUserId,
         message: `You have received a warning from an administrator regarding: ${warningReasonForChat.trim()}${_selectedChatDetails?.gigId ? ` (related to gig: ${currentGigForChat?.title || _selectedChatDetails.gigId})` : ''}.`,
@@ -1176,28 +1090,25 @@ export default function ChatPage() {
   }, [selectedChatId, otherUserId, user, db]);
 
 
-  const canShareDetails = userProfile?.role === 'client' &&
-                          currentGigForChat?.status === 'in-progress' &&
+  const canShareDetails = userProfile?.role === 'admin' &&
+                          currentGigForChat?.status === 'in-progress' && // Keep gig context relevant
+                          otherUserActualProfile?.role === 'student' && // Admin sharing with selected student
                           currentGigForChat?.selectedStudentId === otherUserId &&
                           (!!userProfile?.personalEmail || !!userProfile?.personalPhone);
 
-  const canRequestDetails = userProfile?.role === 'student' &&
+  const canRequestDetails = userProfile?.role === 'admin' && // Only admin can request
                             currentGigForChat?.status === 'in-progress' &&
-                            currentGigForChat?.selectedStudentId === user?.uid;
+                            otherUserActualProfile?.role === 'student' &&
+                            currentGigForChat?.selectedStudentId === user?.uid; // This seems wrong, admin is not selected student
 
-  const isCurrentUserInitiator = _selectedChatDetails?.requestInitiatorId === user?.uid;
-  const isChatPendingUserRequest = _selectedChatDetails?.chatStatus === 'pending_request';
   const isChatPendingAdminResponse = _selectedChatDetails?.chatStatus === 'pending_admin_response';
-  const isChatRejected = _selectedChatDetails?.chatStatus === 'rejected';
+  const isCurrentUserInitiatorOfAdminRequest = isChatPendingAdminResponse && _selectedChatDetails?.requestInitiatorId === user?.uid;
 
-  const showRequestActionButtons = isChatPendingUserRequest && !isCurrentUserInitiator;
-  
+
   let inputDisabledReason = "";
   if (!_selectedChatDetails) inputDisabledReason = "Loading chat...";
-  else if (isChatPendingUserRequest && isCurrentUserInitiator && messages.length > 0) inputDisabledReason = "Waiting for user to accept request...";
-  else if (isChatPendingUserRequest && !isCurrentUserInitiator) inputDisabledReason = "Accept or reject the request first.";
-  else if (isChatPendingAdminResponse && isCurrentUserInitiator && messages.length > 0) inputDisabledReason = "Waiting for admin to reply...";
-  else if (isChatRejected) inputDisabledReason = "Chat request rejected.";
+  else if (userProfile.role !== 'admin' && otherUserActualProfile?.role !== 'admin') inputDisabledReason = "Direct user chats disabled.";
+  else if (isCurrentUserInitiatorOfAdminRequest && messages.length > 0) inputDisabledReason = "Waiting for admin to reply...";
   else if (isSending) inputDisabledReason = "Sending...";
   else if (isOtherUserBlockedByCurrentUser) inputDisabledReason = "You blocked this user.";
   else if (isCurrentUserBlockedByOther) inputDisabledReason = "This user blocked you.";
@@ -1205,9 +1116,8 @@ export default function ChatPage() {
   const isInputEffectivelyDisabled = !!inputDisabledReason;
 
   const placeholderText = isInputEffectivelyDisabled ? inputDisabledReason :
-    (isChatPendingUserRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
-    (isChatPendingAdminResponse && isCurrentUserInitiator && messages.length === 0 ? "Type your support request to admin..." :
-    (pendingGigShareData || pendingProfileShareData) ? "Add a caption (optional)..." : "Type your message..."));
+    (isChatPendingAdminResponse && isCurrentUserInitiatorOfAdminRequest && messages.length === 0 ? "Type your support request to admin..." :
+    (pendingGigShareData || pendingProfileShareData) ? "Add a caption (optional)..." : "Type your message...");
 
 
   return (
@@ -1242,7 +1152,8 @@ export default function ChatPage() {
                 )}
                 {!isLoadingChats && filteredChats.length === 0 && (
                 <p className="text-sm text-muted-foreground p-4 text-center">
-                    {chatSearchTerm ? 'No conversations match your search.' : 'No active conversations. Start one!'}
+                    {chatSearchTerm ? 'No conversations match your search.' : 
+                     (userProfile?.role === 'admin' ? 'No active conversations. Start one!' : 'No active admin chats. Request one via Support.')}
                 </p>
                 )}
                 {filteredChats.map((chat) => {
@@ -1252,9 +1163,7 @@ export default function ChatPage() {
                 const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
                 
                 let isPendingForCurrentUserAction = false;
-                if (chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid) {
-                    isPendingForCurrentUserAction = true; 
-                } else if (chat.chatStatus === 'pending_admin_response' && userProfile?.role === 'admin' && chat.requestInitiatorId !== user.uid) {
+                if (chat.chatStatus === 'pending_admin_response' && userProfile?.role === 'admin' && chat.requestInitiatorId !== user.uid) {
                     isPendingForCurrentUserAction = true; 
                 }
 
@@ -1288,11 +1197,8 @@ export default function ChatPage() {
                         <p className={`text-sm truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
                         )}
                         <p className={`text-xs truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
-                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && "Request sent, waiting for acceptance..."}
-                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid && "Wants to chat with you."}
                         {chat.chatStatus === 'pending_admin_response' && chat.requestInitiatorId === user?.uid && "Support request sent..."}
                         {chat.chatStatus === 'pending_admin_response' && chat.requestInitiatorId !== user?.uid && userProfile?.role === 'admin' && "User needs support."}
-                        {chat.chatStatus === 'rejected' && "Chat request rejected."}
                         {chat.chatStatus === 'accepted' && chat.lastMessage}
                         {!chat.chatStatus && chat.lastMessage} 
                         </p>
@@ -1327,21 +1233,17 @@ export default function ChatPage() {
                 </Link>
                 <div className="overflow-hidden">
                   <Link href={`/profile/${otherUserId}`} className="hover:underline">
-                    <CardTitle className="text-base truncate">{otherUsername}</CardTitle>
+                    <CardTitle className="text-base truncate">{otherUsername} {otherUserActualProfile?.role === 'admin' && <Badge variant="outline" className="ml-1 text-xs">Admin</Badge>}</CardTitle>
                   </Link>
-                  {currentGigForChat?.title && _selectedChatDetails.chatStatus === 'accepted' && (
+                  {currentGigForChat?.title && _selectedChatDetails.chatStatus === 'accepted' && userProfile.role === 'admin' && (
                       <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline truncate block">
                           Gig: {currentGigForChat.title}
                       </Link>
                   )}
-                    {isChatPendingUserRequest && isCurrentUserInitiator && messages.length > 0 && ( <p className="text-xs text-amber-600 dark:text-amber-400">Request sent, waiting for user acceptance.</p> )}
-                    {isChatPendingUserRequest && !isCurrentUserInitiator && ( <p className="text-xs text-amber-600 dark:text-amber-400">This user wants to chat with you.</p> )}
-                    {isChatPendingAdminResponse && isCurrentUserInitiator && messages.length > 0 && ( <p className="text-xs text-amber-600 dark:text-amber-400">Support request sent, waiting for admin.</p> )}
-                    {isChatPendingAdminResponse && !isCurrentUserInitiator && userProfile.role === 'admin' && ( <p className="text-xs text-amber-600 dark:text-amber-400">This user needs support. Reply to activate chat.</p> )}
-
-                    {_selectedChatDetails.chatStatus === 'rejected' && ( <p className="text-xs text-destructive">Chat request rejected.</p> )}
-                    {isOtherUserBlockedByCurrentUser && ( <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>You have blocked this user.</p> )}
-                     {isCurrentUserBlockedByOther && ( <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>This user has blocked you.</p> )}
+                  {isChatPendingAdminResponse && isCurrentUserInitiatorOfAdminRequest && messages.length > 0 && ( <p className="text-xs text-amber-600 dark:text-amber-400">Support request sent, waiting for admin.</p> )}
+                  {isChatPendingAdminResponse && !isCurrentUserInitiatorOfAdminRequest && userProfile.role === 'admin' && ( <p className="text-xs text-amber-600 dark:text-amber-400">This user needs support. Reply to activate chat.</p> )}
+                  {isOtherUserBlockedByCurrentUser && ( <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>You have blocked this user.</p> )}
+                  {isCurrentUserBlockedByOther && ( <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>This user has blocked you.</p> )}
                 </div>
               </div>
                <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
@@ -1350,16 +1252,16 @@ export default function ChatPage() {
                         <ShieldAlert className="mr-2 h-4 w-4" /> Warn User
                     </Button>
                 )}
-                {_selectedChatDetails.chatStatus === 'accepted' && canShareDetails && userProfile && (
+                {_selectedChatDetails.chatStatus === 'accepted' && userProfile.role === 'admin' && canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="outline" size="sm" disabled={isInputEffectivelyDisabled}><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader>
-                            <AlertDialogTitle>Share Personal Contact Details?</AlertDialogTitle>
+                            <AlertDialogTitle>Share Admin Contact Details?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                You are about to share the following details with {otherUsername}:
+                                You are about to share your admin contact details with {otherUsername}:
                                 {userProfile.personalEmail && <div className="mt-2">Email: {userProfile.personalEmail}</div>}
                                 {userProfile.personalPhone && <div className="mt-0.5">Phone: {userProfile.personalPhone}</div>}
                                 This cannot be undone.
@@ -1374,20 +1276,10 @@ export default function ChatPage() {
                         </AlertDialogContent>
                     </AlertDialog>
                 )}
-                {_selectedChatDetails.chatStatus === 'accepted' && canRequestDetails && (
+                 {_selectedChatDetails.chatStatus === 'accepted' && userProfile.role === 'admin' && canRequestDetails && (
                     <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)} disabled={isInputEffectivelyDisabled}>
                         <Info className="mr-2 h-4 w-4" /> Request Contact
                     </Button>
-                )}
-                {showRequestActionButtons && (
-                    <>
-                        <Button variant="default" size="sm" onClick={() => handleChatRequestAction('accepted')} disabled={isAcceptingOrRejecting}>
-                           {isAcceptingOrRejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} Accept Request
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleChatRequestAction('rejected')} disabled={isAcceptingOrRejecting}>
-                            {isAcceptingOrRejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertTriangle className="mr-2 h-4 w-4" />} Reject Request
-                        </Button>
-                    </>
                 )}
                </div>
             </CardHeader>
@@ -1398,14 +1290,12 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
                 {!isLoadingMessages && messages.length === 0 && _selectedChatDetails && (
                     <p className="text-center text-muted-foreground pt-10">
-                       {isChatPendingUserRequest && isCurrentUserInitiator && "Send a message to request a chat with this user."}
-                       {isChatPendingUserRequest && !isCurrentUserInitiator && `Waiting for ${otherUsername} to send their first message.`}
-                       {isChatPendingAdminResponse && isCurrentUserInitiator && "Send your support request to the admin team."}
-                       {isChatPendingAdminResponse && !isCurrentUserInitiator && userProfile?.role === 'admin' && "Waiting for your reply to activate this support chat."}
+                       {isChatPendingAdminResponse && isCurrentUserInitiatorOfAdminRequest && "Send your support request to the admin team."}
+                       {isChatPendingAdminResponse && !isCurrentUserInitiatorOfAdminRequest && userProfile?.role === 'admin' && "Waiting for your reply to activate this support chat."}
                        {_selectedChatDetails.chatStatus === 'accepted' && !isInputEffectivelyDisabled && "Send a message to start the conversation."}
-                       {isChatRejected && "This chat request was rejected. You cannot send further messages."}
                        {isOtherUserBlockedByCurrentUser && "You have blocked this user. Unblock them to send messages."}
                        {isCurrentUserBlockedByOther && "This user has blocked you. You cannot send messages."}
+                       {userProfile.role !== 'admin' && otherUserActualProfile?.role !== 'admin' && "Direct user-to-user chats are not enabled."}
                     </p>
                 )}
               </CardContent>
@@ -1426,7 +1316,7 @@ export default function ChatPage() {
             )}
 
             <CardFooter className="p-3 border-t flex flex-col items-start">
-              {pendingGigShareData && (
+              {pendingGigShareData && userProfile.role==='admin' && (
                 <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50 text-sm">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <Briefcase className="h-4 w-4 text-primary" />
@@ -1437,7 +1327,7 @@ export default function ChatPage() {
                   </Button>
                 </div>
               )}
-              {pendingProfileShareData && (
+              {pendingProfileShareData && userProfile.role==='admin' && (
                  <div className="mb-2 p-2 border rounded-md w-full flex items-center justify-between bg-muted/50 text-sm">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <UserCircle className="h-4 w-4 text-primary" />
@@ -1478,9 +1368,10 @@ export default function ChatPage() {
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <MessageSquare className="h-16 w-16 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') && !searchParams.get('shareUserId') && !pendingGigShareData && !pendingProfileShareData ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
-                 {(searchParams.get('shareGigId') || pendingGigShareData) && !selectedChatId && ' Select a chat to share the gig.'}
-                 {(searchParams.get('shareUserId') || pendingProfileShareData) && !selectedChatId && ' Select a chat to share the profile.'}
+                {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') && !searchParams.get('shareUserId') && !pendingGigShareData && !pendingProfileShareData ? 'Setting up your chat...' : 
+                (userProfile.role !== 'admin' ? 'Select an admin conversation or request one via Support.' : 'Select a conversation to start chatting.'))}
+                 {(searchParams.get('shareGigId') || pendingGigShareData) && !selectedChatId && userProfile.role === 'admin' && ' Select a chat to share the gig.'}
+                 {(searchParams.get('shareUserId') || pendingProfileShareData) && !selectedChatId && userProfile.role === 'admin' && ' Select a chat to share the profile.'}
                  {userProfile?.role !== 'admin' && <span className="block mt-2 text-xs">Need help? <Link href="/support" className="text-primary hover:underline">Visit Support & FAQs</Link> or request a chat with an admin.</span>}
             </p>
             {targetUserForNewChat && !selectedChatId && !pendingGigShareData && !pendingProfileShareData && (
