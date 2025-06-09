@@ -8,7 +8,7 @@ import { auth, db, firebaseInitializationDetails } from '@/config/firebase';
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat';
 
-type UserRole = 'student' | 'client' | null;
+type UserRole = 'student' | 'client' | 'admin' | null;
 
 export interface UserProfile extends DocumentData {
   uid: string;
@@ -95,14 +95,14 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalEmail: docSnap.data().personalEmail || '',
             personalPhone: docSnap.data().personalPhone || '',
             blockedUserIds: docSnap.data().blockedUserIds || [],
-            readReceiptsEnabled: docSnap.data().readReceiptsEnabled === undefined ? true : docSnap.data().readReceiptsEnabled, // Default to true if undefined
+            readReceiptsEnabled: docSnap.data().readReceiptsEnabled === undefined ? true : docSnap.data().readReceiptsEnabled,
           } as UserProfile;
           setUserProfile(profileData);
-          if (profileData.role === 'student' || profileData.role === 'client') {
+          if (profileData.role === 'student' || profileData.role === 'client' || profileData.role === 'admin') {
             setRole(profileData.role);
           } else {
             setRole(null);
-            console.warn(`User profile for UID ${currentUser.uid} found, but 'role' field is missing, invalid, or not 'student'/'client'. Actual role value: '${profileData.role}'. Setting role to null.`);
+            console.warn(`User profile for UID ${currentUser.uid} found, but 'role' field is missing, invalid, or not 'student'/'client'/'admin'. Actual role value: '${profileData.role}'. Setting role to null.`);
           }
           console.log("User profile loaded:", profileData);
         } else {
@@ -267,7 +267,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
               }
             });
           }
-          if (gig.studentPaymentRequestPending) { // Add count for pending payment requests
+          if (gig.studentPaymentRequestPending) { 
             pendingCount++;
           }
         });
@@ -279,7 +279,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
       return () => unsubscribeClientNotifications();
     } else {
-      setClientUnreadNotificationCount(0); // Reset if not client or not logged in
+      setClientUnreadNotificationCount(0); 
     }
   }, [user, role]);
 

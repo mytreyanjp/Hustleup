@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Users, Briefcase, MessageSquare, User as UserIcon, PlusCircle } from 'lucide-react';
+import { Compass, Users, Briefcase, MessageSquare, User as UserIcon, PlusCircle, ShieldCheck } from 'lucide-react';
 import { useFirebase } from '@/context/firebase-context';
 import { cn } from '@/lib/utils';
 
@@ -51,28 +51,34 @@ export default function FooterNav() {
   const getDashboardUrl = () => {
     if (role === 'student') return '/student/profile';
     if (role === 'client') return '/client/dashboard';
+    if (role === 'admin') return '/admin/dashboard';
     return '/';
   };
 
   let generatedNavItems: Omit<NavItemProps, 'isActive'>[] = [];
 
-  generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
+  if (role === 'admin') {
+    generatedNavItems.push({ href: "/admin/dashboard", icon: ShieldCheck, label: "Admin" });
+    generatedNavItems.push({ href: "/admin/manage-admins", icon: Users, label: "Users" });
+    // Admins might want to see gigs too for moderation, or just explore:
+    generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore Gigs" });
 
-  if (role === 'student') {
-    generatedNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works" });
-  } else if (role === 'client') {
-    generatedNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers" });
-    generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
+  } else {
+    generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
+    if (role === 'student') {
+      generatedNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works" });
+    } else if (role === 'client') {
+      generatedNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers" });
+      generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
+    }
   }
   
-  // Chat item removed from footer navigation
-  // generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Messages", unreadCount: totalUnreadChats });
-  generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: role === 'student' ? "Profile" : "Dashboard" });
+  generatedNavItems.push({ href: getDashboardUrl(), icon: role === 'admin' ? ShieldCheck : UserIcon, label: role === 'admin' ? "Admin" : (role === 'student' ? "Profile" : "Dashboard") });
   
   const navItems = generatedNavItems.map(item => ({
       ...item,
-      isActive: pathname === item.href,
-      show: true, // All generated items are shown if user exists
+      isActive: pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/'), // Broader active check for nested routes
+      show: true, 
   }));
 
 

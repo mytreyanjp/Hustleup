@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -146,7 +146,7 @@ export default function Navbar() {
         (suggestion.requiredSkills && suggestion.requiredSkills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())))
       ).slice(0,5);
 
-  const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : '/';
+  const dashboardUrl = role === 'student' ? '/student/profile' : role === 'client' ? '/client/dashboard' : role === 'admin' ? '/admin/dashboard' : '/';
 
   const SearchBarComponent = (
      <Popover open={isSuggestionsOpen && !!searchTerm.trim()} onOpenChange={setIsSuggestionsOpen}>
@@ -246,7 +246,7 @@ export default function Navbar() {
               </svg>
               <span className="font-bold inline-block">Hustle Up</span>
             </Link>
-            {!isMobile && ( // Hide desktop nav items on mobile
+            {!isMobile && ( 
             <nav className="items-center space-x-2 sm:space-x-4 hidden md:flex">
               <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
                 <Compass className="mr-1 h-4 w-4" />
@@ -267,7 +267,6 @@ export default function Navbar() {
                     <Briefcase className="mr-1 h-4 w-4" /> Your Works
                 </Link>
               )}
-              {/* Chat link removed from desktop navbar */}
             </nav>
             )}
           </div>
@@ -367,6 +366,12 @@ export default function Navbar() {
                             <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
                           </>
+                        )}
+                        {role === 'admin' && (
+                            <>
+                                <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link href="/admin/manage-admins"><UsersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                            </>
                         )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
@@ -469,6 +474,12 @@ export default function Navbar() {
                             </Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
+                        </>
+                      )}
+                      {role === 'admin' && (
+                        <>
+                            <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/admin/manage-admins"><UsersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
                         </>
                       )}
                       <DropdownMenuSeparator />

@@ -26,7 +26,7 @@ export interface ChatMessage {
   sharedUserId?: string;
   sharedUsername?: string;
   sharedUserProfilePictureUrl?: string;
-  sharedUserRole?: 'student' | 'client';
+  sharedUserRole?: 'student' | 'client' | 'admin'; // Added admin
 
   // Fields for read receipts
   deliveredToRecipientAt?: Timestamp | null;

@@ -22,7 +22,11 @@ export default function Home() {
         router.replace('/student/profile');
       } else if (role === 'client') {
         router.replace('/client/dashboard');
+      } else if (role === 'admin') {
+        router.replace('/admin/dashboard');
       }
+      // If role is null but user exists, they might need to complete profile
+      // or there's an issue. For now, no redirect if role is null.
     }
   }, [user, role, authLoading, router]);
 
