@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore'; // Added getDoc here
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,12 +74,12 @@ export default function AdminManageGigsPage() {
             if (clientSnap.exists()) {
               gigItem.clientUsername = (clientSnap.data() as UserProfile).username || data.clientId.substring(0,6);
             } else {
-               gigItem.clientUsername = 'Client N/A'; // More user-friendly
+               gigItem.clientUsername = 'Client N/A';
                console.warn(`Admin: Client profile not found for ID ${data.clientId}`);
             }
-          } catch (clientError) {
-            console.error(`Admin: Error fetching client profile for ID ${data.clientId}:`, clientError);
-            gigItem.clientUsername = 'Client N/A'; // More user-friendly
+          } catch (clientError: any) {
+            console.error(`Admin: Error fetching client profile for ID ${data.clientId}:`, clientError.message || clientError);
+            gigItem.clientUsername = 'Client N/A (Error)';
           }
         } else {
           gigItem.clientUsername = 'Client ID Missing';
@@ -92,15 +92,14 @@ export default function AdminManageGigsPage() {
             if (studentSnap.exists()) {
               gigItem.selectedStudentUsername = (studentSnap.data() as UserProfile).username || data.selectedStudentId.substring(0,6);
             } else {
-              gigItem.selectedStudentUsername = 'Student N/A'; // More user-friendly
+              gigItem.selectedStudentUsername = 'Student N/A';
               console.warn(`Admin: Student profile not found for ID ${data.selectedStudentId}`);
             }
-          } catch (studentError) {
-             console.error(`Admin: Error fetching student profile for ID ${data.selectedStudentId}:`, studentError);
-             gigItem.selectedStudentUsername = 'Student N/A'; // More user-friendly
+          } catch (studentError: any) {
+             console.error(`Admin: Error fetching student profile for ID ${data.selectedStudentId}:`, studentError.message || studentError);
+             gigItem.selectedStudentUsername = 'Student N/A (Error)';
           }
         } else {
-            // No selected student, so no username to show
             gigItem.selectedStudentUsername = 'N/A';
         }
         return gigItem as AdminGigView;
@@ -230,3 +229,4 @@ export default function AdminManageGigsPage() {
     </div>
   );
 }
+
