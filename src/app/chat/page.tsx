@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook, Check, HelpCircle } from 'lucide-react'; // Added Check, HelpCircle
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook, Check, HelpCircle, ShieldAlert } from 'lucide-react'; 
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -40,6 +40,10 @@ import { useTheme } from 'next-themes';
 import type { ChatMessage, ChatMetadata } from '@/types/chat';
 import { Progress } from '@/components/ui/progress';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle, DialogDescription as UIDialogDescription, DialogFooter as UIDialogFooter, DialogClose } from '@/components/ui/dialog'; // Renamed to avoid conflict
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+
 
 interface PendingGigShareData {
   gigId: string;
@@ -88,6 +92,10 @@ export default function ChatPage() {
   const [transientChatOverride, setTransientChatOverride] = useState<ChatMetadata | null>(null);
   const [otherParticipantProfiles, setOtherParticipantProfiles] = useState<Record<string, UserProfile>>({});
 
+  // State for Warn User Dialog (moved from AdminGigDetailPage)
+  const [showWarnUserDialogInChat, setShowWarnUserDialogInChat] = useState(false);
+  const [warningReasonForChat, setWarningReasonForChat] = useState('');
+  const [isSubmittingWarningInChat, setIsSubmittingWarningInChat] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
@@ -166,8 +174,9 @@ export default function ChatPage() {
              updateRequired = true;
         }
         
-        // Standard User-to-User: Acceptance logic if client initiates or gig context activates it
-        if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
+        if (userProfile.role === 'admin' && existingChatData.chatStatus === 'pending_admin_response' && existingChatData.requestInitiatorId !== user.uid) {
+            // Admin is viewing a chat requested by a user, keep it pending until admin sends a message
+        } else if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             updates.chatStatus = 'accepted'; 
             if (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected' || existingChatData.chatStatus === undefined) {
                 updates.lastMessage = "Chat is now active.";
@@ -189,7 +198,6 @@ export default function ChatPage() {
                 }).catch(console.error);
             }
         } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected') && targetUserRole !== 'admin') {
-            // If chat with non-admin is related to a gig, and was pending/rejected, activate it.
             updates.chatStatus = 'accepted';
             updates.lastMessage = "Chat is now active via gig link.";
             updates.lastMessageTimestamp = serverTimestamp();
@@ -229,7 +237,6 @@ export default function ChatPage() {
             return updatedLocalChat;
         }
         
-        // If it's a client-student chat and status isn't 'accepted', force it locally if no other updates.
         if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
             setSelectedChatId(chatId);
@@ -267,17 +274,18 @@ export default function ChatPage() {
          if (gigIdForContext) newChatData.gigId = gigIdForContext;
 
 
-        if (userProfile.role === 'admin') { // Admin initiating chat with student/client
+        if (userProfile.role === 'admin') { 
             newChatData.chatStatus = 'accepted';
             newChatData.lastMessage = 'Chat started by admin.';
             newChatData.lastMessageSenderId = user.uid;
             newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
             newChatData.lastMessageReadBy = [user.uid];
-        } else if (targetUserRole === 'admin') { // Student/Client initiating chat with Admin
+        } else if (targetUserRole === 'admin') { 
             newChatData.chatStatus = 'pending_admin_response';
             newChatData.requestInitiatorId = user.uid;
-            newChatData.lastMessage = 'Chat request to admin team.'; // User will send first actual message
-            newChatData.lastMessageSenderId = user.uid; // Or 'system' until first user message
+            // Last message will be the user's first actual message
+            newChatData.lastMessage = 'Chat request to admin team.';
+            newChatData.lastMessageSenderId = user.uid; 
             newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
             newChatData.lastMessageReadBy = [user.uid];
         } else if (isClientInteractingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
@@ -286,7 +294,7 @@ export default function ChatPage() {
           newChatData.lastMessageSenderId = user.uid;
           newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
           newChatData.lastMessageReadBy = [user.uid];
-        } else { // Standard student/client to student/client chat
+        } else { 
           newChatData.chatStatus = 'pending_request';
           newChatData.requestInitiatorId = user.uid;
           newChatData.lastMessage = 'Chat request sent.'; 
@@ -445,7 +453,6 @@ export default function ChatPage() {
           }
           setTargetUserForNewChat(targetUserData);
           setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
-          // Pass targetUserData.role to getOrCreateChat
           const newOrUpdatedChat = await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined, targetUserData.role);
           if (newOrUpdatedChat) {
             setSelectedChatId(newOrUpdatedChat.id);
@@ -504,7 +511,6 @@ export default function ChatPage() {
         });
       }
       setChats(fetchedChats);
-      // Fetch other participant profiles for read receipt status and role
       fetchedChats.forEach(async (chat) => {
         const otherId = chat.participants.find(pId => pId !== user.uid);
         if (otherId && !otherParticipantProfiles[otherId]) {
@@ -795,10 +801,9 @@ export default function ChatPage() {
         }
       }
 
-      // If an admin is replying to a 'pending_admin_response' chat, change status to 'accepted'
       if (userProfile.role === 'admin' && currentChatDetails.chatStatus === 'pending_admin_response') {
           chatUpdateData.chatStatus = 'accepted';
-          batchOp.set(doc(messagesColRef), { // Add a system message
+          batchOp.set(doc(messagesColRef), { 
               senderId: 'system',
               text: `An admin (${userProfile.username}) has joined the chat.`,
               messageType: 'system_admin_reply_received',
@@ -1086,12 +1091,58 @@ export default function ChatPage() {
     return elements;
   }, [messages, user, userProfile, otherParticipantProfiles, _selectedChatDetails]);
 
+  const handleOpenWarnDialogInChat = () => {
+    if (userProfile?.role === 'admin' && otherUserId && otherUserActualProfile?.role !== 'admin') {
+      setWarningReasonForChat('');
+      setShowWarnUserDialogInChat(true);
+    }
+  };
+
+  const submitWarningInChat = async () => {
+    if (!user || !userProfile || !otherUserId || !otherUsername || !warningReasonForChat.trim() || !db) return;
+    setIsSubmittingWarningInChat(true);
+    try {
+      await addDoc(collection(db, 'user_warnings'), {
+        warnedUserId: otherUserId,
+        warnedUserName: otherUsername,
+        warnedUserRole: otherUserActualProfile?.role || 'unknown',
+        adminId: user.uid,
+        adminUsername: userProfile.username || 'Admin',
+        reason: warningReasonForChat.trim(),
+        gigId: _selectedChatDetails?.gigId || null,
+        gigTitle: currentGigForChat?.title || _selectedChatDetails?.gigId || null, // Attempt to get gig title
+        timestamp: serverTimestamp(),
+      });
+      toast({ title: "Warning Logged", description: `A warning has been logged for ${otherUsername}. A notification record has been created.` });
+      
+      // Create notification
+      await addDoc(collection(db, 'notifications'), {
+        recipientUserId: otherUserId,
+        message: `You have received a warning from an administrator regarding: ${warningReasonForChat.trim()}${_selectedChatDetails?.gigId ? ` (related to gig: ${currentGigForChat?.title || _selectedChatDetails.gigId})` : ''}.`,
+        type: 'account_warning',
+        relatedGigId: _selectedChatDetails?.gigId || null,
+        relatedGigTitle: currentGigForChat?.title || null,
+        isRead: false,
+        createdAt: serverTimestamp(),
+        adminActorId: user.uid,
+        adminActorUsername: userProfile.username || 'Admin Action',
+      });
+
+      setShowWarnUserDialogInChat(false);
+    } catch (error: any) {
+      console.error("Error submitting warning from chat:", error);
+      toast({ title: "Error", description: "Could not log warning.", variant: "destructive" });
+    } finally {
+      setIsSubmittingWarningInChat(false);
+    }
+  };
+
 
   if (authLoading && typeof window !== 'undefined') {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  if (!user || !userProfile) { // Added userProfile check
+  if (!user || !userProfile) { 
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
 
@@ -1202,9 +1253,9 @@ export default function ChatPage() {
                 
                 let isPendingForCurrentUserAction = false;
                 if (chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid) {
-                    isPendingForCurrentUserAction = true; // User needs to accept/reject a peer request
+                    isPendingForCurrentUserAction = true; 
                 } else if (chat.chatStatus === 'pending_admin_response' && userProfile?.role === 'admin' && chat.requestInitiatorId !== user.uid) {
-                    isPendingForCurrentUserAction = true; // Admin needs to reply to a user's support request
+                    isPendingForCurrentUserAction = true; 
                 }
 
                 return (
@@ -1243,7 +1294,7 @@ export default function ChatPage() {
                         {chat.chatStatus === 'pending_admin_response' && chat.requestInitiatorId !== user?.uid && userProfile?.role === 'admin' && "User needs support."}
                         {chat.chatStatus === 'rejected' && "Chat request rejected."}
                         {chat.chatStatus === 'accepted' && chat.lastMessage}
-                        {!chat.chatStatus && chat.lastMessage} {/* Fallback for older chats */}
+                        {!chat.chatStatus && chat.lastMessage} 
                         </p>
                         <p className="text-xs text-muted-foreground/70">
                             {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
@@ -1294,6 +1345,11 @@ export default function ChatPage() {
                 </div>
               </div>
                <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                {userProfile.role === 'admin' && otherUserActualProfile?.role !== 'admin' && (
+                    <Button variant="outline" size="sm" onClick={handleOpenWarnDialogInChat} className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/50">
+                        <ShieldAlert className="mr-2 h-4 w-4" /> Warn User
+                    </Button>
+                )}
                 {_selectedChatDetails.chatStatus === 'accepted' && canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -1433,6 +1489,36 @@ export default function ChatPage() {
           </div>
         )}
       </Card>
+
+       {/* Dialog for Warning User - Moved to Chat Page */}
+        <UIDialog open={showWarnUserDialogInChat} onOpenChange={setShowWarnUserDialogInChat}>
+            <UIDialogContent>
+                <UIDialogHeader>
+                    <UIDialogTitle>Log Warning for {otherUsername || 'User'}</UIDialogTitle>
+                    <UIDialogDescription>
+                        Please provide a reason for this warning. This will be logged and a notification record will be created for the user.
+                    </UIDialogDescription>
+                </UIDialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="warningReasonChat" className="sr-only">Warning Reason</Label>
+                    <Textarea
+                        id="warningReasonChat"
+                        placeholder="Enter reason for warning..."
+                        value={warningReasonForChat}
+                        onChange={(e) => setWarningReasonForChat(e.target.value)}
+                        rows={4}
+                    />
+                </div>
+                <UIDialogFooter>
+                <Button variant="outline" onClick={() => setShowWarnUserDialogInChat(false)} disabled={isSubmittingWarningInChat}>Cancel</Button>
+                <Button onClick={submitWarningInChat} disabled={isSubmittingWarningInChat || !warningReasonForChat.trim()}>
+                    {isSubmittingWarningInChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Submit Warning
+                </Button>
+                </UIDialogFooter>
+            </UIDialogContent>
+        </UIDialog>
+
     </div>
   );
 }

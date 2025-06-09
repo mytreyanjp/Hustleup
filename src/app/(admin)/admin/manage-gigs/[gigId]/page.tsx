@@ -136,11 +136,6 @@ export default function AdminGigDetailPage() {
   const [applicantToDelete, setApplicantToDelete] = useState<ApplicantInfo | null>(null);
   const [isDeletingApplicant, setIsDeletingApplicant] = useState(false);
 
-  const [showWarnUserDialog, setShowWarnUserDialog] = useState(false);
-  const [userToWarn, setUserToWarn] = useState<{ id: string; name: string; role: 'client' | 'student' } | null>(null);
-  const [warningReason, setWarningReason] = useState('');
-  const [isSubmittingWarning, setIsSubmittingWarning] = useState(false);
-
   const [showDeleteReportDialog, setShowDeleteReportDialog] = useState(false);
   const [reportToDeleteNumber, setReportToDeleteNumber] = useState<number | null>(null);
   const [isDeletingReport, setIsDeletingReport] = useState(false);
@@ -217,7 +212,6 @@ export default function AdminGigDetailPage() {
       await deleteDoc(doc(db, 'gigs', gigId));
       toast({ title: "Gig Deleted", description: "The gig has been successfully deleted." });
       
-      // Create notifications
       await createAdminActionNotification(
         gig.clientId,
         `The gig "${gig.title}" has been deleted by an administrator.`,
@@ -240,7 +234,7 @@ export default function AdminGigDetailPage() {
       }
       if (gig.applicants) {
         for (const applicant of gig.applicants) {
-          if (applicant.studentId !== gig.selectedStudentId) { // Avoid double notifying selected student
+          if (applicant.studentId !== gig.selectedStudentId) { 
             await createAdminActionNotification(
               applicant.studentId,
               `Your application for the gig "${gig.title}" has been affected because the gig was deleted by an administrator.`,
@@ -290,48 +284,6 @@ export default function AdminGigDetailPage() {
     }
   };
 
-  const handleOpenWarnDialog = (userId: string, name: string, role: 'client' | 'student') => {
-    setUserToWarn({ id: userId, name, role });
-    setWarningReason('');
-    setShowWarnUserDialog(true);
-  };
-
-  const submitWarning = async () => {
-    if (!userToWarn || !warningReason.trim() || !adminUser || !db) return;
-    setIsSubmittingWarning(true);
-    try {
-      await addDoc(collection(db, 'user_warnings'), {
-        warnedUserId: userToWarn.id,
-        warnedUserName: userToWarn.name,
-        warnedUserRole: userToWarn.role,
-        adminId: adminUser.uid,
-        adminUsername: adminProfile?.username || 'Admin',
-        reason: warningReason.trim(),
-        gigId: gig?.id || null,
-        gigTitle: gig?.title || null,
-        timestamp: serverTimestamp(),
-      });
-      toast({ title: "Warning Logged", description: `A warning has been logged for ${userToWarn.name}. A notification record has been created.` });
-      
-      await createAdminActionNotification(
-        userToWarn.id,
-        `You have received a warning from an administrator regarding: ${warningReason.trim()}${gig ? ` (related to gig: ${gig.title})` : ''}.`,
-        'account_warning',
-        gig?.id,
-        gig?.title,
-        adminUser.uid,
-        adminProfile?.username
-      );
-
-      setShowWarnUserDialog(false);
-      setUserToWarn(null);
-    } catch (error: any) {
-      console.error("Error submitting warning:", error);
-      toast({ title: "Error", description: "Could not log warning.", variant: "destructive" });
-    } finally {
-      setIsSubmittingWarning(false);
-    }
-  };
 
   const confirmDeleteReport = async () => {
     if (!gig || reportToDeleteNumber === null || !db || !adminUser) return;
@@ -490,7 +442,6 @@ export default function AdminGigDetailPage() {
                         <MessageSquare className="mr-1 h-3 w-3"/> Chat
                       </Link>
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleOpenWarnDialog(clientProfile.uid, clientProfile.username || 'Client', 'client')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
                 </div>
             </CardTitle>
           </CardHeader>
@@ -522,7 +473,6 @@ export default function AdminGigDetailPage() {
                         <MessageSquare className="mr-1 h-3 w-3"/> Chat
                       </Link>
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleOpenWarnDialog(selectedStudentProfile.uid, selectedStudentProfile.username || 'Student', 'student')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
                 </div>
             </CardTitle>
           </CardHeader>
@@ -693,35 +643,6 @@ export default function AdminGigDetailPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
-
-        {/* Dialog for Warning User */}
-        <Dialog open={showWarnUserDialog} onOpenChange={setShowWarnUserDialog}>
-            <DialogContent>
-                <DialogHeader>
-                <DialogTitle>Log Warning for {userToWarn?.name || 'User'}</DialogTitle>
-                <DialogDescription>
-                    Please provide a reason for this warning. This will be logged and a notification record will be created for the user.
-                </DialogDescription>
-                </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="warningReason" className="sr-only">Warning Reason</Label>
-                    <Textarea
-                        id="warningReason"
-                        placeholder="Enter reason for warning..."
-                        value={warningReason}
-                        onChange={(e) => setWarningReason(e.target.value)}
-                        rows={4}
-                    />
-                </div>
-                <DialogFooter>
-                <Button variant="outline" onClick={() => setShowWarnUserDialog(false)} disabled={isSubmittingWarning}>Cancel</Button>
-                <Button onClick={submitWarning} disabled={isSubmittingWarning || !warningReason.trim()}>
-                    {isSubmittingWarning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Submit Warning
-                </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
 
         {/* Dialog for Deleting Progress Report */}
         <AlertDialog open={showDeleteReportDialog} onOpenChange={setShowDeleteReportDialog}>
