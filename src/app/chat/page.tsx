@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook, Check } from 'lucide-react'; // Added Check
+import { Loader2, MessageSquare, Send, UserCircle, ArrowLeft, Paperclip, Image as ImageIconLucide, FileText as FileIcon, X, Smile, Link2, Share2 as ShareIcon, Info, Phone, Mail as MailIcon, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Search, Lock, Briefcase, AddressBook, Check, HelpCircle } from 'lucide-react'; // Added Check, HelpCircle
 import { Badge } from '@/components/ui/badge';
 import { db, storage } from '@/config/firebase';
 import {
@@ -50,7 +50,7 @@ interface PendingProfileShareData {
   userId: string;
   username: string;
   profilePictureUrl?: string;
-  userRole?: 'student' | 'client';
+  userRole?: 'student' | 'client' | 'admin';
 }
 
 
@@ -112,7 +112,7 @@ export default function ChatPage() {
   }, [emojiPickerRef]);
 
 
-  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string, targetUserRole?: 'student' | 'client' | null): Promise<ChatMetadata | null> => {
+  const getOrCreateChat = useCallback(async (targetUserId: string, targetUsername: string, targetProfilePictureUrl?: string, gigIdForContext?: string, targetUserRoleParam?: 'student' | 'client' | 'admin' | null): Promise<ChatMetadata | null> => {
     if (!user || !userProfile || !db) return null;
 
     if (userProfile.blockedUserIds?.includes(targetUserId)) {
@@ -120,6 +120,31 @@ export default function ChatPage() {
         router.push('/chat');
         return null;
     }
+    
+    let targetUserRole = targetUserRoleParam;
+    if (!targetUserRole) {
+        const cachedTargetProfile = otherParticipantProfiles[targetUserId] || (targetUserForNewChat?.uid === targetUserId ? targetUserForNewChat : null);
+        if (cachedTargetProfile) {
+            targetUserRole = cachedTargetProfile.role;
+        } else {
+            try {
+                const targetUserDoc = await getDoc(doc(db, 'users', targetUserId));
+                if (targetUserDoc.exists()) {
+                    const fetchedTargetProfile = targetUserDoc.data() as UserProfile;
+                    setOtherParticipantProfiles(prev => ({ ...prev, [targetUserId]: fetchedTargetProfile }));
+                    targetUserRole = fetchedTargetProfile.role;
+                } else {
+                     toast({ title: "Chat Error", description: "Target user profile not found to determine chat type.", variant: "destructive"});
+                     return null;
+                }
+            } catch (fetchError) {
+                console.error("Error fetching target user role for chat:", fetchError);
+                toast({ title: "Chat Error", description: "Could not determine target user role.", variant: "destructive"});
+                return null;
+            }
+        }
+    }
+
 
     const chatId = getChatId(user.uid, targetUserId);
     const chatDocRef = doc(db, 'chats', chatId);
@@ -141,6 +166,7 @@ export default function ChatPage() {
              updateRequired = true;
         }
         
+        // Standard User-to-User: Acceptance logic if client initiates or gig context activates it
         if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             updates.chatStatus = 'accepted'; 
             if (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected' || existingChatData.chatStatus === undefined) {
@@ -162,7 +188,8 @@ export default function ChatPage() {
                     readByRecipientAt: null,
                 }).catch(console.error);
             }
-        } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected')) {
+        } else if (gigIdForContext && (existingChatData.chatStatus === 'pending_request' || existingChatData.chatStatus === 'rejected') && targetUserRole !== 'admin') {
+            // If chat with non-admin is related to a gig, and was pending/rejected, activate it.
             updates.chatStatus = 'accepted';
             updates.lastMessage = "Chat is now active via gig link.";
             updates.lastMessageTimestamp = serverTimestamp();
@@ -202,6 +229,7 @@ export default function ChatPage() {
             return updatedLocalChat;
         }
         
+        // If it's a client-student chat and status isn't 'accepted', force it locally if no other updates.
         if (isClientInteractingWithStudent && existingChatData.chatStatus !== 'accepted') {
             const chatWithForcedStatus: ChatMetadata = { ...existingChatData, chatStatus: 'accepted', id: chatId };
             setSelectedChatId(chatId);
@@ -216,7 +244,7 @@ export default function ChatPage() {
         setSelectedChatId(chatId);
         return { ...existingChatData, id: chatId };
 
-      } else { 
+      } else { // New chat
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
@@ -236,22 +264,35 @@ export default function ChatPage() {
         if (targetProfilePictureUrl) {
           newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
         }
+         if (gigIdForContext) newChatData.gigId = gigIdForContext;
 
-        if (isClientInteractingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
+
+        if (userProfile.role === 'admin') { // Admin initiating chat with student/client
+            newChatData.chatStatus = 'accepted';
+            newChatData.lastMessage = 'Chat started by admin.';
+            newChatData.lastMessageSenderId = user.uid;
+            newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
+            newChatData.lastMessageReadBy = [user.uid];
+        } else if (targetUserRole === 'admin') { // Student/Client initiating chat with Admin
+            newChatData.chatStatus = 'pending_admin_response';
+            newChatData.requestInitiatorId = user.uid;
+            newChatData.lastMessage = 'Chat request to admin team.'; // User will send first actual message
+            newChatData.lastMessageSenderId = user.uid; // Or 'system' until first user message
+            newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
+            newChatData.lastMessageReadBy = [user.uid];
+        } else if (isClientInteractingWithStudent || (gigIdForContext && userProfile.role === 'client')) {
           newChatData.chatStatus = 'accepted';
-          newChatData.gigId = gigIdForContext;
           newChatData.lastMessage = 'Chat started.';
           newChatData.lastMessageSenderId = user.uid;
           newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
           newChatData.lastMessageReadBy = [user.uid];
-        } else {
+        } else { // Standard student/client to student/client chat
           newChatData.chatStatus = 'pending_request';
           newChatData.requestInitiatorId = user.uid;
           newChatData.lastMessage = 'Chat request sent.'; 
           newChatData.lastMessageSenderId = user.uid;
           newChatData.lastMessageTimestamp = serverTimestamp() as Timestamp;
           newChatData.lastMessageReadBy = [user.uid];
-           if (gigIdForContext) newChatData.gigId = gigIdForContext;
         }
 
         await setDoc(chatDocRef, newChatData);
@@ -278,7 +319,7 @@ export default function ChatPage() {
       toast({ title: "Chat Error", description: "Could not start or find the chat.", variant: "destructive" });
       return null;
     }
-  }, [user, userProfile, toast, router, setChats]);
+  }, [user, userProfile, toast, router, setChats, otherParticipantProfiles, targetUserForNewChat]);
 
 
   useEffect(() => {
@@ -293,7 +334,7 @@ export default function ChatPage() {
     const shareProfileUserId = searchParams.get('shareUserId');
     const shareProfileUsername = searchParams.get('shareUsername');
     const shareProfilePicUrl = searchParams.get('shareUserProfilePictureUrl');
-    const shareProfileRole = searchParams.get('shareUserRole') as 'student' | 'client' | undefined;
+    const shareProfileRole = searchParams.get('shareUserRole') as 'student' | 'client' | 'admin' | undefined;
 
     if (shareProfileUserId) {
       setPendingProfileShareData({
@@ -328,7 +369,7 @@ export default function ChatPage() {
                    const newOrUpdatedChat = await getOrCreateChat(chatTargetId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
                    if (newOrUpdatedChat) {
                        setSelectedChatId(newOrUpdatedChat.id);
-                       if (newOrUpdatedChat.chatStatus === 'accepted') {
+                       if (newOrUpdatedChat.chatStatus === 'accepted' || newOrUpdatedChat.chatStatus === 'pending_admin_response') {
                            setTransientChatOverride(newOrUpdatedChat);
                            setTimeout(() => setTransientChatOverride(null), 5000); 
                        }
@@ -351,7 +392,7 @@ export default function ChatPage() {
                     const newOrUpdatedChat = await getOrCreateChat(shareProfileUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, undefined, targetUserData.role);
                     if (newOrUpdatedChat) {
                         setSelectedChatId(newOrUpdatedChat.id);
-                        if (newOrUpdatedChat.chatStatus === 'accepted') {
+                        if (newOrUpdatedChat.chatStatus === 'accepted' || newOrUpdatedChat.chatStatus === 'pending_admin_response') {
                             setTransientChatOverride(newOrUpdatedChat);
                             setTimeout(() => setTransientChatOverride(null), 5000); 
                         }
@@ -404,10 +445,11 @@ export default function ChatPage() {
           }
           setTargetUserForNewChat(targetUserData);
           setOtherParticipantProfiles(prev => ({ ...prev, [targetUserData.uid]: targetUserData }));
+          // Pass targetUserData.role to getOrCreateChat
           const newOrUpdatedChat = await getOrCreateChat(targetUserId, targetUserData.username || 'User', targetUserData.profilePictureUrl, gigIdForChatContext || undefined, targetUserData.role);
           if (newOrUpdatedChat) {
             setSelectedChatId(newOrUpdatedChat.id);
-             if (newOrUpdatedChat.chatStatus === 'accepted') { 
+             if (newOrUpdatedChat.chatStatus === 'accepted' || newOrUpdatedChat.chatStatus === 'pending_admin_response') { 
                 setTransientChatOverride(newOrUpdatedChat);
                 setTimeout(() => setTransientChatOverride(null), 5000); 
             }
@@ -462,7 +504,7 @@ export default function ChatPage() {
         });
       }
       setChats(fetchedChats);
-      // Fetch other participant profiles for read receipt status
+      // Fetch other participant profiles for read receipt status and role
       fetchedChats.forEach(async (chat) => {
         const otherId = chat.participants.find(pId => pId !== user.uid);
         if (otherId && !otherParticipantProfiles[otherId]) {
@@ -643,18 +685,31 @@ export default function ChatPage() {
     }
 
     const targetUserProfileSnap = otherParticipantId ? await getDoc(doc(db, 'users', otherParticipantId)) : null;
-    if (targetUserProfileSnap?.exists() && (targetUserProfileSnap.data() as UserProfile).blockedUserIds?.includes(user.uid)) {
+    const targetParticipantProfile = targetUserProfileSnap?.exists() ? targetUserProfileSnap.data() as UserProfile : otherParticipantProfiles[otherParticipantId!];
+
+    if (targetParticipantProfile?.blockedUserIds?.includes(user.uid)) {
         toast({ title: "Cannot Send", description: "This user has blocked you.", variant: "destructive" });
         return;
     }
 
 
     const isInitiator = currentChatDetails.requestInitiatorId === user.uid;
-    const isPendingRequest = currentChatDetails.chatStatus === 'pending_request';
-    const canSendRequestMessage = isPendingRequest && isInitiator && messages.length === 0;
-
-    if (!canSendRequestMessage && currentChatDetails.chatStatus !== 'accepted') {
-         toast({ title: "Cannot Send", description: `Chat not active or request pending. Status: ${currentChatDetails.chatStatus}`, variant: "destructive"});
+    
+    if (currentChatDetails.chatStatus === 'pending_request' && isInitiator && messages.length > 0) {
+         toast({ title: "Cannot Send", description: `Waiting for user to accept your chat request.`, variant: "default"});
+         return;
+    }
+    if (currentChatDetails.chatStatus === 'pending_request' && !isInitiator) {
+         toast({ title: "Cannot Send", description: `Please accept or reject the chat request first.`, variant: "default"});
+         return;
+    }
+    
+    if (currentChatDetails.chatStatus === 'pending_admin_response' && isInitiator && messages.length > 0) {
+         toast({ title: "Cannot Send", description: `Waiting for an admin to reply to your request.`, variant: "default"});
+         return;
+    }
+     if (currentChatDetails.chatStatus === 'rejected') {
+         toast({ title: "Cannot Send", description: `This chat request was rejected.`, variant: "destructive"});
          return;
     }
     
@@ -739,6 +794,18 @@ export default function ChatPage() {
            };
         }
       }
+
+      // If an admin is replying to a 'pending_admin_response' chat, change status to 'accepted'
+      if (userProfile.role === 'admin' && currentChatDetails.chatStatus === 'pending_admin_response') {
+          chatUpdateData.chatStatus = 'accepted';
+          batchOp.set(doc(messagesColRef), { // Add a system message
+              senderId: 'system',
+              text: `An admin (${userProfile.username}) has joined the chat.`,
+              messageType: 'system_admin_reply_received',
+              timestamp: serverTimestamp(),
+          });
+      }
+
 
       batchOp.update(chatDocRef, chatUpdateData);
 
@@ -968,16 +1035,16 @@ export default function ChatPage() {
               className={cn(
                 "p-3 rounded-lg max-w-[70%] shadow-sm min-w-0 overflow-hidden",
                  msg.senderId === user?.uid ? 'bg-primary text-primary-foreground' : 
-                 msg.senderId === 'system' ? 'bg-muted/70 text-muted-foreground text-xs italic' : 'bg-secondary dark:bg-muted'
+                 msg.senderId === 'system' || msg.messageType?.startsWith('system_') ? 'bg-muted/70 text-muted-foreground text-xs italic text-center' : 'bg-secondary dark:bg-muted'
               )}
             >
-               {msg.messageType?.startsWith('system_') && <p className="text-center">{msg.text}</p>}
-               {!msg.messageType?.startsWith('system_') && msg.isDetailShareRequest && (
+               {(msg.messageType?.startsWith('system_') || msg.senderId === 'system') && <p className="text-center">{msg.text}</p>}
+               {!msg.messageType?.startsWith('system_') && msg.senderId !== 'system' && msg.isDetailShareRequest && (
                  <div className="p-2.5 my-1 rounded-md border border-border bg-background/70 text-sm">
                     <p className="font-semibold break-all whitespace-pre-wrap">{msg.text || "Contact details request"}</p>
                  </div>
                )}
-               {!msg.messageType?.startsWith('system_') && msg.isDetailsShared && msg.sharedContactInfo && (
+               {!msg.messageType?.startsWith('system_') && msg.senderId !== 'system' && msg.isDetailsShared && msg.sharedContactInfo && (
                 <div className={`p-2.5 my-1 rounded-md border ${msg.senderId === user?.uid ? 'border-primary-foreground/30 bg-primary/80' : 'border-border bg-background/70'}`}>
                     <p className="text-xs font-medium mb-1 break-all">{msg.sharedContactInfo.note || "Contact Information:"}</p>
                     {msg.sharedContactInfo.email && (
@@ -995,8 +1062,8 @@ export default function ChatPage() {
                      {msg.text && msg.text !== (msg.sharedContactInfo.note || "Here are my contact details:") && <p className="text-sm mt-1.5 pt-1.5 border-t border-dashed break-all whitespace-pre-wrap">{msg.text}</p>}
                 </div>
                )}
-              {!msg.messageType?.startsWith('system_') && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId && !msg.sharedUserId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
-              {msg.senderId !== 'system' && (
+              {!msg.messageType?.startsWith('system_') && msg.senderId !== 'system' && msg.text && !msg.isDetailShareRequest && !msg.isDetailsShared && (!msg.sharedGigId && !msg.sharedUserId) && <p className="text-sm whitespace-pre-wrap break-all">{msg.text}</p>}
+              {msg.senderId !== 'system' && !msg.messageType?.startsWith('system_') && (
                  <div className={`text-xs mt-1 text-right flex items-center justify-end gap-1 ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground/80'}`}>
                     <span>{msg.timestamp && typeof msg.timestamp.toDate === 'function' ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}</span>
                     {msg.senderId === user?.uid && (
@@ -1024,13 +1091,14 @@ export default function ChatPage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  if (!user) {
+  if (!user || !userProfile) { // Added userProfile check
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
 
   const otherUserId = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
   const otherUsername = otherUserId ? _selectedChatDetails?.participantUsernames[otherUserId] : 'User';
   const otherUserProfilePicture = otherUserId ? _selectedChatDetails?.participantProfilePictures?.[otherUserId] : undefined;
+  const otherUserActualProfile = otherUserId ? otherParticipantProfiles[otherUserId] : null;
   
   const isOtherUserBlockedByCurrentUser = otherUserId && userProfile?.blockedUserIds?.includes(otherUserId);
   const [isCurrentUserBlockedByOther, setIsCurrentUserBlockedByOther] = useState(false);
@@ -1067,17 +1135,28 @@ export default function ChatPage() {
                             currentGigForChat?.selectedStudentId === user?.uid;
 
   const isCurrentUserInitiator = _selectedChatDetails?.requestInitiatorId === user?.uid;
-  const isChatPendingRequest = _selectedChatDetails?.chatStatus === 'pending_request';
+  const isChatPendingUserRequest = _selectedChatDetails?.chatStatus === 'pending_request';
+  const isChatPendingAdminResponse = _selectedChatDetails?.chatStatus === 'pending_admin_response';
   const isChatRejected = _selectedChatDetails?.chatStatus === 'rejected';
-  const showRequestActionButtons = isChatPendingRequest && !isCurrentUserInitiator;
-  const isInputDisabled =
-    !_selectedChatDetails || 
-    (_selectedChatDetails.chatStatus === 'pending_request' && isCurrentUserInitiator && messages.length > 0) ||
-    (_selectedChatDetails.chatStatus === 'pending_request' && !isCurrentUserInitiator) ||
-    _selectedChatDetails.chatStatus === 'rejected' ||
-    isSending ||
-    isOtherUserBlockedByCurrentUser ||
-    isCurrentUserBlockedByOther;
+
+  const showRequestActionButtons = isChatPendingUserRequest && !isCurrentUserInitiator;
+  
+  let inputDisabledReason = "";
+  if (!_selectedChatDetails) inputDisabledReason = "Loading chat...";
+  else if (isChatPendingUserRequest && isCurrentUserInitiator && messages.length > 0) inputDisabledReason = "Waiting for user to accept request...";
+  else if (isChatPendingUserRequest && !isCurrentUserInitiator) inputDisabledReason = "Accept or reject the request first.";
+  else if (isChatPendingAdminResponse && isCurrentUserInitiator && messages.length > 0) inputDisabledReason = "Waiting for admin to reply...";
+  else if (isChatRejected) inputDisabledReason = "Chat request rejected.";
+  else if (isSending) inputDisabledReason = "Sending...";
+  else if (isOtherUserBlockedByCurrentUser) inputDisabledReason = "You blocked this user.";
+  else if (isCurrentUserBlockedByOther) inputDisabledReason = "This user blocked you.";
+
+  const isInputEffectivelyDisabled = !!inputDisabledReason;
+
+  const placeholderText = isInputEffectivelyDisabled ? inputDisabledReason :
+    (isChatPendingUserRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
+    (isChatPendingAdminResponse && isCurrentUserInitiator && messages.length === 0 ? "Type your support request to admin..." :
+    (pendingGigShareData || pendingProfileShareData) ? "Add a caption (optional)..." : "Type your message..."));
 
 
   return (
@@ -1120,7 +1199,13 @@ export default function ChatPage() {
                 const chatPartnerUsername = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
                 const partnerProfilePic = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
                 const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
-                const isPendingForCurrentUser = chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid;
+                
+                let isPendingForCurrentUserAction = false;
+                if (chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid) {
+                    isPendingForCurrentUserAction = true; // User needs to accept/reject a peer request
+                } else if (chat.chatStatus === 'pending_admin_response' && userProfile?.role === 'admin' && chat.requestInitiatorId !== user.uid) {
+                    isPendingForCurrentUserAction = true; // Admin needs to reply to a user's support request
+                }
 
                 return (
                     <div
@@ -1128,11 +1213,11 @@ export default function ChatPage() {
                     className={`p-3 rounded-md cursor-pointer hover:bg-accent/50 flex items-center gap-3 relative ${selectedChatId === chat.id ? 'bg-accent' : ''} ${isUnread ? 'font-semibold' : ''}`}
                     onClick={() => handleSelectChat(chat.id)}
                     >
-                    {isUnread && (
-                        <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary rounded-full"></span>
-                    )}
-                    {isPendingForCurrentUser && (
-                        <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 bg-orange-500 rounded-full animate-pulse" title="New chat request"></span>
+                    {(isUnread || isPendingForCurrentUserAction) && (
+                        <span className={cn(
+                            "absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full",
+                            isPendingForCurrentUserAction ? "bg-amber-500 animate-pulse" : "bg-primary"
+                        )} title={isPendingForCurrentUserAction ? "Action required" : "Unread messages"}></span>
                     )}
                     <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}>
                         <Avatar className="h-10 w-10 ml-2">
@@ -1144,19 +1229,21 @@ export default function ChatPage() {
                         {otherParticipantId ? (
                         <Link href={`/profile/${otherParticipantId}`} passHref
                             onClick={(e) => e.stopPropagation()}
-                            className={`text-sm truncate hover:underline ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}
+                            className={`text-sm truncate hover:underline ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`}
                         >
                             {chatPartnerUsername}
                         </Link>
                         ) : (
-                        <p className={`text-sm truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                        <p className={`text-sm truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
                         )}
-                        <p className={`text-xs truncate ${isUnread || isPendingForCurrentUser ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
-                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length === 0 && "Your request message will appear here..."}
-                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && messages.length > 0 && "Waiting for acceptance..."}
-                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid && "Responded to your request."}
+                        <p className={`text-xs truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
+                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId === user?.uid && "Request sent, waiting for acceptance..."}
+                        {chat.chatStatus === 'pending_request' && chat.requestInitiatorId !== user?.uid && "Wants to chat with you."}
+                        {chat.chatStatus === 'pending_admin_response' && chat.requestInitiatorId === user?.uid && "Support request sent..."}
+                        {chat.chatStatus === 'pending_admin_response' && chat.requestInitiatorId !== user?.uid && userProfile?.role === 'admin' && "User needs support."}
                         {chat.chatStatus === 'rejected' && "Chat request rejected."}
-                        {chat.chatStatus !== 'pending_request' && chat.chatStatus !== 'rejected' && chat.lastMessage}
+                        {chat.chatStatus === 'accepted' && chat.lastMessage}
+                        {!chat.chatStatus && chat.lastMessage} {/* Fallback for older chats */}
                         </p>
                         <p className="text-xs text-muted-foreground/70">
                             {chat.lastMessageTimestamp && typeof chat.lastMessageTimestamp.toDate === 'function' ? formatDistanceToNow(chat.lastMessageTimestamp.toDate(), { addSuffix: true }) : (chat.createdAt && typeof chat.createdAt.toDate === 'function' ? formatDistanceToNow(chat.createdAt.toDate(), {addSuffix: true}) : '')}
@@ -1174,7 +1261,7 @@ export default function ChatPage() {
         "flex-grow glass-card flex flex-col h-full relative",
         !selectedChatId && 'hidden md:flex'
         )}>
-        {selectedChatId && _selectedChatDetails && otherUserId && user ? (
+        {selectedChatId && _selectedChatDetails && otherUserId && user && userProfile ? (
           <>
             <CardHeader className="border-b flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-2 sm:gap-0 flex-wrap">
               <div className="flex items-center gap-3 flex-grow min-w-0">
@@ -1196,28 +1283,21 @@ export default function ChatPage() {
                           Gig: {currentGigForChat.title}
                       </Link>
                   )}
-                   {_selectedChatDetails.chatStatus === 'pending_request' && _selectedChatDetails.requestInitiatorId === user.uid && messages.length > 0 && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">Request sent, waiting for acceptance.</p>
-                    )}
-                    {_selectedChatDetails.chatStatus === 'pending_request' && _selectedChatDetails.requestInitiatorId !== user.uid && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">Responded to your chat request.</p>
-                    )}
-                    {_selectedChatDetails.chatStatus === 'rejected' && (
-                        <p className="text-xs text-destructive">Chat request rejected.</p>
-                    )}
-                    {isOtherUserBlockedByCurrentUser && (
-                        <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>You have blocked this user.</p>
-                    )}
-                     {isCurrentUserBlockedByOther && (
-                        <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>This user has blocked you.</p>
-                    )}
+                    {isChatPendingUserRequest && isCurrentUserInitiator && messages.length > 0 && ( <p className="text-xs text-amber-600 dark:text-amber-400">Request sent, waiting for user acceptance.</p> )}
+                    {isChatPendingUserRequest && !isCurrentUserInitiator && ( <p className="text-xs text-amber-600 dark:text-amber-400">This user wants to chat with you.</p> )}
+                    {isChatPendingAdminResponse && isCurrentUserInitiator && messages.length > 0 && ( <p className="text-xs text-amber-600 dark:text-amber-400">Support request sent, waiting for admin.</p> )}
+                    {isChatPendingAdminResponse && !isCurrentUserInitiator && userProfile.role === 'admin' && ( <p className="text-xs text-amber-600 dark:text-amber-400">This user needs support. Reply to activate chat.</p> )}
+
+                    {_selectedChatDetails.chatStatus === 'rejected' && ( <p className="text-xs text-destructive">Chat request rejected.</p> )}
+                    {isOtherUserBlockedByCurrentUser && ( <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>You have blocked this user.</p> )}
+                     {isCurrentUserBlockedByOther && ( <p className="text-xs text-destructive flex items-center gap-1"><Lock className="h-3 w-3"/>This user has blocked you.</p> )}
                 </div>
               </div>
                <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                 {_selectedChatDetails.chatStatus === 'accepted' && canShareDetails && userProfile && (
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" disabled={isInputDisabled}><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
+                            <Button variant="outline" size="sm" disabled={isInputEffectivelyDisabled}><ShareIcon className="mr-2 h-4 w-4" /> Share Contact</Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader>
@@ -1239,7 +1319,7 @@ export default function ChatPage() {
                     </AlertDialog>
                 )}
                 {_selectedChatDetails.chatStatus === 'accepted' && canRequestDetails && (
-                    <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)} disabled={isInputDisabled}>
+                    <Button variant="outline" size="sm" onClick={() => handleSendMessage(true, false)} disabled={isInputEffectivelyDisabled}>
                         <Info className="mr-2 h-4 w-4" /> Request Contact
                     </Button>
                 )}
@@ -1262,9 +1342,11 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
                 {!isLoadingMessages && messages.length === 0 && _selectedChatDetails && (
                     <p className="text-center text-muted-foreground pt-10">
-                       {isChatPendingRequest && isCurrentUserInitiator && "Send a message to request a chat."}
-                       {isChatPendingRequest && !isCurrentUserInitiator && "Waiting for chat request..."}
-                       {_selectedChatDetails.chatStatus === 'accepted' && !isInputDisabled && "Send a message to start the conversation."}
+                       {isChatPendingUserRequest && isCurrentUserInitiator && "Send a message to request a chat with this user."}
+                       {isChatPendingUserRequest && !isCurrentUserInitiator && `Waiting for ${otherUsername} to send their first message.`}
+                       {isChatPendingAdminResponse && isCurrentUserInitiator && "Send your support request to the admin team."}
+                       {isChatPendingAdminResponse && !isCurrentUserInitiator && userProfile?.role === 'admin' && "Waiting for your reply to activate this support chat."}
+                       {_selectedChatDetails.chatStatus === 'accepted' && !isInputEffectivelyDisabled && "Send a message to start the conversation."}
                        {isChatRejected && "This chat request was rejected. You cannot send further messages."}
                        {isOtherUserBlockedByCurrentUser && "You have blocked this user. Unblock them to send messages."}
                        {isCurrentUserBlockedByOther && "This user has blocked you. You cannot send messages."}
@@ -1315,7 +1397,7 @@ export default function ChatPage() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowEmojiPicker(prev => !prev)}
-                  disabled={isInputDisabled}
+                  disabled={isInputEffectivelyDisabled}
                   title="Add emoji"
                 >
                     <Smile className="h-5 w-5" />
@@ -1323,17 +1405,13 @@ export default function ChatPage() {
                 </Button>
                 <Input
                   type="text"
-                  placeholder={
-                    isInputDisabled ? (isOtherUserBlockedByCurrentUser ? "You blocked this user" : isCurrentUserBlockedByOther ? "This user blocked you" : (_selectedChatDetails && _selectedChatDetails.chatStatus !== 'accepted') ? "Cannot send message" : "Loading chat...") :
-                    (isChatPendingRequest && isCurrentUserInitiator && messages.length === 0 ? "Type your chat request message..." :
-                    (pendingGigShareData || pendingProfileShareData) ? "Add a caption (optional)..." : "Type your message...")
-                   }
+                  placeholder={placeholderText}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isInputDisabled && handleSendMessage()}
-                  disabled={isInputDisabled}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !isInputEffectivelyDisabled && handleSendMessage()}
+                  disabled={isInputEffectivelyDisabled}
                 />
-                <Button onClick={() => handleSendMessage()} disabled={isInputDisabled || (!message.trim() && !pendingGigShareData && !pendingProfileShareData)} title={pendingGigShareData ? "Send Gig" : (pendingProfileShareData ? "Send Profile" : "Send message")}>
+                <Button onClick={() => handleSendMessage()} disabled={isInputEffectivelyDisabled || (!message.trim() && !pendingGigShareData && !pendingProfileShareData)} title={pendingGigShareData ? "Send Gig" : (pendingProfileShareData ? "Send Profile" : "Send message")}>
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   <span className="sr-only">{pendingGigShareData ? "Send Gig" : (pendingProfileShareData ? "Send Profile" : "Send")}</span>
                 </Button>
@@ -1347,6 +1425,7 @@ export default function ChatPage() {
                 {isLoadingChats ? 'Loading conversations...' : (searchParams.get('userId') && !searchParams.get('shareGigId') && !searchParams.get('shareUserId') && !pendingGigShareData && !pendingProfileShareData ? 'Setting up your chat...' : 'Select a conversation to start chatting.')}
                  {(searchParams.get('shareGigId') || pendingGigShareData) && !selectedChatId && ' Select a chat to share the gig.'}
                  {(searchParams.get('shareUserId') || pendingProfileShareData) && !selectedChatId && ' Select a chat to share the profile.'}
+                 {userProfile?.role !== 'admin' && <span className="block mt-2 text-xs">Need help? <Link href="/support" className="text-primary hover:underline">Visit Support & FAQs</Link> or request a chat with an admin.</span>}
             </p>
             {targetUserForNewChat && !selectedChatId && !pendingGigShareData && !pendingProfileShareData && (
                  <p className="text-sm mt-2">Starting chat with {targetUserForNewChat.username}...</p>
@@ -1357,5 +1436,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
-    
