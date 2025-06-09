@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc } from 'firebase/firestore'; // Removed getDoc as it's fetched again from the import
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -70,7 +70,7 @@ export default function AdminManageGigsPage() {
         if (data.clientId) {
           try {
             const clientDocRef = doc(db, 'users', data.clientId);
-            const clientSnap = await getDoc(clientDocRef);
+            const clientSnap = await getDoc(clientDocRef); // Using getDoc here
             if (clientSnap.exists()) {
               gigItem.clientUsername = (clientSnap.data() as UserProfile).username || data.clientId.substring(0,6);
             } else {
@@ -88,7 +88,7 @@ export default function AdminManageGigsPage() {
         if (data.selectedStudentId) {
           try {
             const studentDocRef = doc(db, 'users', data.selectedStudentId);
-            const studentSnap = await getDoc(studentDocRef);
+            const studentSnap = await getDoc(studentDocRef); // Using getDoc here
             if (studentSnap.exists()) {
               gigItem.selectedStudentUsername = (studentSnap.data() as UserProfile).username || data.selectedStudentId.substring(0,6);
             } else {
@@ -192,29 +192,29 @@ export default function AdminManageGigsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[200px] text-xs sm:text-sm">Title</TableHead>
-                <TableHead className="min-w-[120px] text-xs sm:text-sm">Client</TableHead>
-                <TableHead className="min-w-[120px] text-xs sm:text-sm">Student</TableHead>
-                <TableHead className="min-w-[100px] text-xs sm:text-sm">Status</TableHead>
-                <TableHead className="min-w-[100px] text-xs sm:text-sm">Budget</TableHead>
-                <TableHead className="min-w-[150px] text-xs sm:text-sm">Deadline</TableHead>
-                <TableHead className="min-w-[150px] text-xs sm:text-sm">Created</TableHead>
-                <TableHead className="text-right min-w-[100px] text-xs sm:text-sm">Actions</TableHead>
+                <TableHead className="min-w-[150px] sm:min-w-[200px] text-xs sm:text-sm">Title</TableHead>
+                <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Client</TableHead>
+                <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Student</TableHead>
+                <TableHead className="min-w-[100px] text-xs sm:text-sm hidden md:table-cell">Status</TableHead>
+                <TableHead className="min-w-[100px] text-xs sm:text-sm hidden md:table-cell">Budget</TableHead>
+                <TableHead className="min-w-[150px] text-xs sm:text-sm hidden md:table-cell">Deadline</TableHead>
+                <TableHead className="min-w-[150px] text-xs sm:text-sm hidden md:table-cell">Created</TableHead>
+                <TableHead className="text-right min-w-[80px] sm:min-w-[100px] text-xs sm:text-sm">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredGigs.map((gig) => (
                 <TableRow key={gig.id}>
-                  <TableCell className="font-medium max-w-xs truncate text-xs sm:text-sm">{gig.title}</TableCell>
-                  <TableCell className="text-xs sm:text-sm">{gig.clientUsername || 'N/A'}</TableCell>
-                  <TableCell className="text-xs sm:text-sm">{gig.selectedStudentUsername || 'N/A'}</TableCell>
-                  <TableCell><Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge></TableCell>
-                  <TableCell className="text-xs sm:text-sm">{gig.currency} {gig.budget.toFixed(2)}</TableCell>
-                  <TableCell className="text-xs sm:text-sm">{formatDate(gig.deadline, true)}</TableCell>
-                  <TableCell className="text-xs sm:text-sm">{formatDate(gig.createdAt)}</TableCell>
+                  <TableCell className="font-medium max-w-[150px] sm:max-w-xs truncate text-xs sm:text-sm">{gig.title}</TableCell>
+                  <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.clientUsername || 'N/A'}</TableCell>
+                  <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.selectedStudentUsername || 'N/A'}</TableCell>
+                  <TableCell className="hidden md:table-cell"><Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge></TableCell>
+                  <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.currency} {gig.budget.toFixed(2)}</TableCell>
+                  <TableCell className="text-xs sm:text-sm hidden md:table-cell">{formatDate(gig.deadline, true)}</TableCell>
+                  <TableCell className="text-xs sm:text-sm hidden md:table-cell">{formatDate(gig.createdAt)}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/admin/manage-gigs/${gig.id}`}><Eye className="mr-1 h-4 w-4" /> View</Link>
+                      <Link href={`/admin/manage-gigs/${gig.id}`}><Eye className="mr-0 md:mr-1 h-4 w-4" /> <span className="hidden md:inline">View</span></Link>
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -229,4 +229,3 @@ export default function AdminManageGigsPage() {
     </div>
   );
 }
-
