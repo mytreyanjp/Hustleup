@@ -33,11 +33,11 @@ interface FAQEntry {
   answers: AnswerEntry[];
 }
 
-// IMPORTANT: Replace 'ADMIN_USER_ID_PLACEHOLDER' with an actual admin user's UID in your project.
+// IMPORTANT: Replace 'YOUR_ACTUAL_ADMIN_UID_GOES_HERE' with a real admin user's UID in your project.
 // This admin account will be the initial target for user support chat requests.
 // Other admins will also see and be able to respond to these 'pending_admin_response' chats.
-const TARGET_ADMIN_UID_FOR_SUPPORT = "ADMIN_USER_ID_PLACEHOLDER"; 
-const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "ADMIN_USER_ID_PLACEHOLDER";
+const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; 
+const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
 
 export default function SupportPage() {
   const supportEmail = "promoflixindia@gmail.com";
@@ -158,12 +158,12 @@ export default function SupportPage() {
       router.push('/auth/login?redirect=/support');
       return;
     }
-    if (TARGET_ADMIN_UID_FOR_SUPPORT === "ADMIN_USER_ID_PLACEHOLDER") {
+    if (TARGET_ADMIN_UID_FOR_SUPPORT === "YOUR_ACTUAL_ADMIN_UID_GOES_HERE") {
       toast({
         title: "Admin Chat Not Configured",
-        description: "This feature is not fully set up. Please update TARGET_ADMIN_UID_FOR_SUPPORT in src/app/support/page.tsx or contact support via email.",
+        description: "This feature is not fully set up. A developer needs to update TARGET_ADMIN_UID_FOR_SUPPORT in src/app/support/page.tsx with a valid admin user ID. For now, please contact support via email.",
         variant: "destructive",
-        duration: 10000,
+        duration: 15000,
       });
       return;
     }
@@ -338,10 +338,10 @@ export default function SupportPage() {
                     </Button>
                 </div>
                 {!isAdminChatConfigured && !authLoading && (
-                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-500 bg-amber-500/10 p-2 rounded-md">
+                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-500 bg-amber-500/10 p-2 rounded-md mt-1">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                         <span>
-                            Admin chat is not fully configured. The developer needs to update the <strong>TARGET_ADMIN_UID_FOR_SUPPORT</strong> constant in <code>src/app/support/page.tsx</code> with a valid admin user ID.
+                            Admin chat is not fully configured. A developer needs to replace <strong>"YOUR_ACTUAL_ADMIN_UID_GOES_HERE"</strong> with a valid admin user ID in the file: <code>src/app/support/page.tsx</code> (line 26).
                         </span>
                     </div>
                 )}
