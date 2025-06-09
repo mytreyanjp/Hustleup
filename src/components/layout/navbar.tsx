@@ -370,7 +370,7 @@ export default function Navbar() {
                         {role === 'admin' && (
                             <>
                                 <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
-                                <DropdownMenuItem asChild><Link href="/admin/manage-admins"><UsersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
                             </>
                         )}
                         <DropdownMenuSeparator />
@@ -479,7 +479,7 @@ export default function Navbar() {
                       {role === 'admin' && (
                         <>
                             <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
-                            <DropdownMenuItem asChild><Link href="/admin/manage-admins"><UsersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
                         </>
                       )}
                       <DropdownMenuSeparator />
