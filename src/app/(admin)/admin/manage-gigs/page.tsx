@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc } from 'firebase/firestore'; // Removed getDoc as it's fetched again from the import
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore'; // Ensure getDoc is imported
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -229,3 +229,5 @@ export default function AdminManageGigsPage() {
     </div>
   );
 }
+
+    
