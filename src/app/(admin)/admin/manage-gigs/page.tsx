@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore'; // Ensure getDoc is imported
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { Loader2, ArrowLeft, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input'; // Added Input import
 import { useToast } from '@/hooks/use-toast';
 
 interface AdminGigView {
@@ -39,6 +40,7 @@ export default function AdminManageGigsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'completed' | 'closed'>('all');
+  const [searchTerm, setSearchTerm] = useState(''); // New state for search term
 
   const fetchGigsAndUserData = useCallback(async () => {
     if (!db) {
@@ -70,7 +72,7 @@ export default function AdminManageGigsPage() {
         if (data.clientId) {
           try {
             const clientDocRef = doc(db, 'users', data.clientId);
-            const clientSnap = await getDoc(clientDocRef); // Using getDoc here
+            const clientSnap = await getDoc(clientDocRef);
             if (clientSnap.exists()) {
               gigItem.clientUsername = (clientSnap.data() as UserProfile).username || data.clientId.substring(0,6);
             } else {
@@ -88,7 +90,7 @@ export default function AdminManageGigsPage() {
         if (data.selectedStudentId) {
           try {
             const studentDocRef = doc(db, 'users', data.selectedStudentId);
-            const studentSnap = await getDoc(studentDocRef); // Using getDoc here
+            const studentSnap = await getDoc(studentDocRef);
             if (studentSnap.exists()) {
               gigItem.selectedStudentUsername = (studentSnap.data() as UserProfile).username || data.selectedStudentId.substring(0,6);
             } else {
@@ -126,11 +128,24 @@ export default function AdminManageGigsPage() {
   }, [adminLoading, adminRole, fetchGigsAndUserData, router]);
 
   const filteredGigs = useMemo(() => {
-    if (statusFilter === 'all') {
-      return gigs;
+    let results = gigs;
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      results = results.filter(gig => gig.status === statusFilter);
     }
-    return gigs.filter(gig => gig.status === statusFilter);
-  }, [gigs, statusFilter]);
+
+    // Apply search term filter
+    if (searchTerm.trim() !== '') {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      results = results.filter(gig => {
+        const clientMatch = gig.clientUsername?.toLowerCase().includes(lowerSearchTerm);
+        const studentMatch = gig.selectedStudentUsername?.toLowerCase().includes(lowerSearchTerm);
+        return clientMatch || studentMatch;
+      });
+    }
+    return results;
+  }, [gigs, statusFilter, searchTerm]);
 
   const formatDate = (timestamp: Timestamp | undefined, specific: boolean = false): string => {
     if (!timestamp) return 'N/A';
@@ -175,9 +190,16 @@ export default function AdminManageGigsPage() {
           <CardDescription>View, filter, and manage all gigs on the platform.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <div className="mb-4">
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <Input
+              type="search"
+              placeholder="Search by Client or Student username..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full sm:max-w-xs text-xs sm:text-sm h-9"
+            />
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-              <SelectTrigger className="w-full sm:w-[200px] text-xs sm:text-sm">
+              <SelectTrigger className="w-full sm:w-[200px] text-xs sm:text-sm h-9">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -222,12 +244,13 @@ export default function AdminManageGigsPage() {
             </TableBody>
           </Table>
           {filteredGigs.length === 0 && !isLoading && (
-            <p className="text-center text-muted-foreground py-8 text-sm">No gigs found for the selected filter.</p>
+            <p className="text-center text-muted-foreground py-8 text-sm">
+              {searchTerm.trim() || statusFilter !== 'all' ? 'No gigs found for the selected filters.' : 'No gigs found.'}
+            </p>
           )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
     
