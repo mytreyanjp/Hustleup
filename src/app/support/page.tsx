@@ -6,7 +6,7 @@ import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send, ArrowLeft } from 'lucide-react';
+import { Mail, HelpCircle, MessageSquarePlus, MessageCircle, UserCircle, Send, ArrowLeft, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/config/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, Timestamp, getDoc } from 'firebase/firestore';
@@ -37,6 +37,7 @@ interface FAQEntry {
 // This admin account will be the initial target for user support chat requests.
 // Other admins will also see and be able to respond to these 'pending_admin_response' chats.
 const TARGET_ADMIN_UID_FOR_SUPPORT = "ADMIN_USER_ID_PLACEHOLDER"; 
+const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "ADMIN_USER_ID_PLACEHOLDER";
 
 export default function SupportPage() {
   const supportEmail = "promoflixindia@gmail.com";
@@ -160,9 +161,9 @@ export default function SupportPage() {
     if (TARGET_ADMIN_UID_FOR_SUPPORT === "ADMIN_USER_ID_PLACEHOLDER") {
       toast({
         title: "Admin Chat Not Configured",
-        description: "This feature is not fully set up. Please contact support via email.",
+        description: "This feature is not fully set up. Please update TARGET_ADMIN_UID_FOR_SUPPORT in src/app/support/page.tsx or contact support via email.",
         variant: "destructive",
-        duration: 7000,
+        duration: 10000,
       });
       return;
     }
@@ -317,17 +318,33 @@ export default function SupportPage() {
             </Button>
           </div>
           {user && role !== 'admin' && ( // Only non-admins see the direct chat request button
-             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 border rounded-lg">
-                <div className="flex items-center gap-3">
-                    <MessageCircle className="h-6 w-6 text-primary shrink-0" />
-                    <div>
-                    <p className="font-semibold">Chat with Admin Team</p>
-                    <p className="text-sm text-muted-foreground">Get live help from our support staff.</p>
+             <div className="flex flex-col gap-3 p-4 border rounded-lg">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <MessageCircle className="h-6 w-6 text-primary shrink-0" />
+                        <div>
+                            <p className="font-semibold">Chat with Admin Team</p>
+                            <p className="text-sm text-muted-foreground">Get live help from our support staff.</p>
+                        </div>
                     </div>
+                    <Button 
+                        variant="default" 
+                        size="sm" 
+                        onClick={handleChatWithAdmin} 
+                        className="w-full sm:w-auto mt-2 sm:mt-0"
+                        disabled={!isAdminChatConfigured && !authLoading}
+                    >
+                        Request Admin Chat
+                    </Button>
                 </div>
-                <Button variant="default" size="sm" onClick={handleChatWithAdmin} className="w-full sm:w-auto mt-2 sm:mt-0">
-                    Request Admin Chat
-                </Button>
+                {!isAdminChatConfigured && !authLoading && (
+                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-500 bg-amber-500/10 p-2 rounded-md">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>
+                            Admin chat is not fully configured. The developer needs to update the <strong>TARGET_ADMIN_UID_FOR_SUPPORT</strong> constant in <code>src/app/support/page.tsx</code> with a valid admin user ID.
+                        </span>
+                    </div>
+                )}
              </div>
            )}
           <p className="text-sm text-muted-foreground pt-2">
