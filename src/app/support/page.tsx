@@ -9,12 +9,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Mail, HelpCircle, MessageSquarePlus, UserCircle, Send, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/config/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, Timestamp, getDoc, where, getDocs, limit } from 'firebase/firestore'; // Added where, getDocs, limit
+import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, Timestamp, getDoc, where, getDocs, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Loader2 } from 'lucide-react';
-import { formatDistanceToNow, differenceInMinutes } from 'date-fns'; // Added differenceInMinutes
+import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
 
 interface AnswerEntry {
@@ -59,14 +59,11 @@ export default function SupportPage() {
   const [supportRequestMessage, setSupportRequestMessage] = useState('');
   const [isSubmittingSupportRequest, setIsSubmittingSupportRequest] = useState(false);
   
-  // State for rate limiting admin chat requests
   const [canSubmitChatRequest, setCanSubmitChatRequest] = useState(false);
-  const [chatRequestCooldownMessage, setChatRequestCooldownMessage] = useState<string | null>(null);
   const [hasActiveChatRequestMessage, setHasActiveChatRequestMessage] = useState<string | null>(null);
   const [isLoadingChatRequestEligibility, setIsLoadingChatRequestEligibility] = useState(true);
 
-
-  const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; // Placeholder for actual admin UID
+  const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; 
   const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
 
 
@@ -89,21 +86,18 @@ export default function SupportPage() {
     return () => unsubscribe();
   }, [toast]);
 
-  // Effect to check admin chat request eligibility
   useEffect(() => {
     if (!user || !db || authLoading) {
-      setIsLoadingChatRequestEligibility(false); // Not logged in or DB not ready
+      setIsLoadingChatRequestEligibility(false); 
       setCanSubmitChatRequest(false);
       return;
     }
 
     setIsLoadingChatRequestEligibility(true);
-    setChatRequestCooldownMessage(null);
     setHasActiveChatRequestMessage(null);
 
     const checkEligibility = async () => {
       try {
-        // Check for active (pending or in_progress) requests
         const activeRequestsQuery = query(
           collection(db, 'admin_chat_requests'),
           where('requesterUid', '==', user.uid),
@@ -114,47 +108,20 @@ export default function SupportPage() {
         if (!activeRequestsSnapshot.empty) {
           setCanSubmitChatRequest(false);
           setHasActiveChatRequestMessage("You already have an active support request. Please wait for an admin to respond or for it to be resolved.");
-          setIsLoadingChatRequestEligibility(false);
-          return;
-        }
-
-        // If no active requests, check the timestamp of the last request
-        const lastRequestQuery = query(
-          collection(db, 'admin_chat_requests'),
-          where('requesterUid', '==', user.uid),
-          orderBy('requestedAt', 'desc'),
-          limit(1)
-        );
-        const lastRequestSnapshot = await getDocs(lastRequestQuery);
-
-        if (!lastRequestSnapshot.empty) {
-          const lastRequest = lastRequestSnapshot.docs[0].data() as AdminChatRequest;
-          const lastRequestTime = lastRequest.requestedAt.toDate();
-          const minutesSinceLastRequest = differenceInMinutes(new Date(), lastRequestTime);
-          const COOLDOWN_PERIOD_MINUTES = 30;
-
-          if (minutesSinceLastRequest < COOLDOWN_PERIOD_MINUTES) {
-            const minutesRemaining = COOLDOWN_PERIOD_MINUTES - minutesSinceLastRequest;
-            setCanSubmitChatRequest(false);
-            setChatRequestCooldownMessage(`Please wait ${minutesRemaining} minute${minutesRemaining > 1 ? 's' : ''} before submitting another support request.`);
-          } else {
-            setCanSubmitChatRequest(true);
-          }
         } else {
-          // No previous requests found
           setCanSubmitChatRequest(true);
         }
       } catch (error) {
         console.error("Error checking chat request eligibility:", error);
         toast({ title: "Error", description: "Could not verify chat request status. Please try again.", variant: "destructive" });
-        setCanSubmitChatRequest(false); // Default to false on error
+        setCanSubmitChatRequest(false); 
       } finally {
         setIsLoadingChatRequestEligibility(false);
       }
     };
 
     checkEligibility();
-  }, [user, db, authLoading, toast, showSupportChatRequestDialog]); // Re-check when dialog opens
+  }, [user, db, authLoading, toast, showSupportChatRequestDialog]); 
 
   const handleAskQuestion = async () => {
     if (!user || !userProfile || !newQuestion.trim() || !db) {
@@ -206,7 +173,7 @@ export default function SupportPage() {
       const newAnswerObject: AnswerEntry = {
         answerText: newAnswer.trim(),
         answeredByUid: user.uid,
-        answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Anonymous',
+        answeredByUsername: userProfile.username || user.email?.split('@')[0] || 'Admin',
         answeredAt: Timestamp.now(),
       };
 
@@ -235,18 +202,15 @@ export default function SupportPage() {
     if (!isAdminChatConfigured) {
         toast({
             title: "Admin Chat Not Configured",
-            description: "Admin chat needs to be set up. Please use email support for now.",
+            description: "Admin chat feature is currently unavailable. Please use email support.",
             variant: "destructive",
             duration: 7000,
         });
         return;
     }
-    // Re-check eligibility just before submission
     if (!canSubmitChatRequest || isLoadingChatRequestEligibility) {
         if (hasActiveChatRequestMessage) {
             toast({ title: "Request Not Sent", description: hasActiveChatRequestMessage, variant: "destructive"});
-        } else if (chatRequestCooldownMessage) {
-            toast({ title: "Request Not Sent", description: chatRequestCooldownMessage, variant: "destructive"});
         } else {
             toast({ title: "Request Not Sent", description: "Cannot submit request at this time.", variant: "destructive"});
         }
@@ -270,9 +234,8 @@ export default function SupportPage() {
       toast({ title: "Support Request Sent!", description: "An admin will contact you via chat shortly." });
       setSupportRequestMessage('');
       setShowSupportChatRequestDialog(false);
-      // Trigger eligibility re-check after successful submission
-      setCanSubmitChatRequest(false); // Temporarily disable to allow useEffect to re-evaluate
-      setIsLoadingChatRequestEligibility(true); // Force re-evaluation
+      setCanSubmitChatRequest(false); 
+      setIsLoadingChatRequestEligibility(true); 
     } catch (error: any) {
       console.error("Error submitting support request:", error);
       toast({ title: "Request Failed", description: `Could not submit your request: ${error.message}`, variant: "destructive" });
@@ -449,9 +412,9 @@ export default function SupportPage() {
                                 className="w-full sm:w-auto mt-2 sm:mt-0"
                                 disabled={authLoading || !user || !isAdminChatConfigured || isSubmittingSupportRequest || !canSubmitChatRequest || isLoadingChatRequestEligibility}
                                 title={
-                                    !isAdminChatConfigured ? "Admin Chat feature needs to be configured." :
+                                    !isAdminChatConfigured ? "Admin Chat feature is currently unavailable." :
                                     isLoadingChatRequestEligibility ? "Checking eligibility..." :
-                                    hasActiveChatRequestMessage || chatRequestCooldownMessage || "Request chat with admin team"
+                                    hasActiveChatRequestMessage || "Request chat with admin team"
                                 }
                             >
                                 {isLoadingChatRequestEligibility ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -466,17 +429,16 @@ export default function SupportPage() {
                                 </DialogDescription>
                             </DialogHeader>
                              {hasActiveChatRequestMessage && <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md">{hasActiveChatRequestMessage}</p>}
-                             {chatRequestCooldownMessage && <p className="text-sm text-amber-600 dark:text-amber-400 p-2 bg-amber-500/10 rounded-md">{chatRequestCooldownMessage}</p>}
                             <Textarea
                                 placeholder="Type your message here..."
                                 value={supportRequestMessage}
                                 onChange={(e) => setSupportRequestMessage(e.target.value)}
                                 rows={4}
-                                disabled={isSubmittingSupportRequest || !canSubmitChatRequest || isLoadingChatRequestEligibility || !!hasActiveChatRequestMessage || !!chatRequestCooldownMessage}
+                                disabled={isSubmittingSupportRequest || !canSubmitChatRequest || isLoadingChatRequestEligibility || !!hasActiveChatRequestMessage}
                             />
                             <DialogFooter>
                                 <Button variant="ghost" onClick={() => setShowSupportChatRequestDialog(false)} disabled={isSubmittingSupportRequest}>Cancel</Button>
-                                <Button onClick={handleSubmitSupportRequest} disabled={isSubmittingSupportRequest || !supportRequestMessage.trim() || !canSubmitChatRequest || isLoadingChatRequestEligibility || !!hasActiveChatRequestMessage || !!chatRequestCooldownMessage}>
+                                <Button onClick={handleSubmitSupportRequest} disabled={isSubmittingSupportRequest || !supportRequestMessage.trim() || !canSubmitChatRequest || isLoadingChatRequestEligibility || !!hasActiveChatRequestMessage}>
                                     {isSubmittingSupportRequest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                     Send Request
                                 </Button>
@@ -484,9 +446,9 @@ export default function SupportPage() {
                         </DialogContent>
                     </Dialog>
                 </div>
-                {!canSubmitChatRequest && !isLoadingChatRequestEligibility && (hasActiveChatRequestMessage || chatRequestCooldownMessage) && (
+                {!canSubmitChatRequest && !isLoadingChatRequestEligibility && hasActiveChatRequestMessage && (
                     <p className="text-xs text-center text-muted-foreground mt-1 sm:text-right">
-                        {hasActiveChatRequestMessage || chatRequestCooldownMessage}
+                        {hasActiveChatRequestMessage}
                     </p>
                 )}
              </div>
@@ -499,5 +461,3 @@ export default function SupportPage() {
     </div>
   );
 }
-
-    
