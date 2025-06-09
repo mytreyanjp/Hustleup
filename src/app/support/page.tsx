@@ -51,7 +51,7 @@ export default function SupportPage() {
   const [showSupportChatRequestDialog, setShowSupportChatRequestDialog] = useState(false);
   const [supportRequestMessage, setSupportRequestMessage] = useState('');
   const [isSubmittingSupportRequest, setIsSubmittingSupportRequest] = useState(false);
-  const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE"; // Replace this!
+  const TARGET_ADMIN_UID_FOR_SUPPORT = "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
   const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
 
 
@@ -153,7 +153,7 @@ export default function SupportPage() {
     if (!isAdminChatConfigured) {
         toast({
             title: "Admin Chat Not Configured",
-            description: "Admin chat needs to be set up by a developer. Please use email support for now.",
+            description: "Admin chat needs to be set up. Please use email support for now.",
             variant: "destructive",
             duration: 7000,
         });
@@ -380,12 +380,7 @@ export default function SupportPage() {
                         </DialogContent>
                     </Dialog>
                 </div>
-                {!isAdminChatConfigured && (
-                    <p className="text-xs text-destructive text-center mt-2">
-                        Admin Chat feature is not yet configured. A developer needs to set the
-                        <code>TARGET_ADMIN_UID_FOR_SUPPORT</code> constant in <code>src/app/support/page.tsx</code> (around line 26) with a valid admin User ID. Please use email support.
-                    </p>
-                )}
+                {/* Detailed developer instruction message removed here */}
              </div>
            )}
           <p className="text-sm text-muted-foreground pt-2">
