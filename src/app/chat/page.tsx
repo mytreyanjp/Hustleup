@@ -615,8 +615,8 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async (
-    isRequestingDetails: boolean = false, // This logic might become obsolete with chat restrictions
-    isSharingDetails: boolean = false, // This logic might become obsolete
+    isRequestingDetails: boolean = false, 
+    isSharingDetails: boolean = false, 
     sharedDetails?: { email?: string, phone?: string }
     ) => {
     if (!selectedChatId || !user || !userProfile || !db ) {
@@ -682,7 +682,6 @@ export default function ChatPage() {
 
     let lastMessageText = '';
     
-    // Personal detail sharing should only be possible if one party is an admin and the chat is active
     const canShareOrRequestPersonalDetails = userProfile.role === 'admin' || (targetParticipantProfile?.role === 'admin' && currentChatDetails.chatStatus === 'accepted');
 
     if (isRequestingDetails && canShareOrRequestPersonalDetails) {
@@ -698,7 +697,7 @@ export default function ChatPage() {
         };
         newMessageContent.text = message.trim() || "Here are my contact details:";
         lastMessageText = "Shared contact details.";
-    } else if (pendingGigShareData && userProfile.role === 'admin') { // Only admin can effectively share gigs now
+    } else if (pendingGigShareData && userProfile.role === 'admin') { 
       newMessageContent.sharedGigId = pendingGigShareData.gigId;
       newMessageContent.sharedGigTitle = pendingGigShareData.gigTitle;
       lastMessageText = `[Gig Shared] ${pendingGigShareData.gigTitle}`;
@@ -706,7 +705,7 @@ export default function ChatPage() {
         newMessageContent.text = message.trim();
         lastMessageText = `${message.trim()} (Shared: ${pendingGigShareData.gigTitle})`;
       }
-    } else if (pendingProfileShareData && userProfile.role === 'admin') { // Only admin can effectively share profiles
+    } else if (pendingProfileShareData && userProfile.role === 'admin') { 
       newMessageContent.sharedUserId = pendingProfileShareData.userId;
       newMessageContent.sharedUsername = pendingProfileShareData.username;
       newMessageContent.sharedUserProfilePictureUrl = pendingProfileShareData.profilePictureUrl;
@@ -774,9 +773,6 @@ export default function ChatPage() {
       setIsSending(false);
     }
   };
-
-  // handleChatRequestAction is no longer needed as direct student-client chat requests are removed.
-  // Admin chat requests are handled differently (status change from pending_admin_response to accepted upon admin reply).
 
   const filteredChats = useMemo(() => {
     if (!chatSearchTerm.trim()) {
@@ -1015,37 +1011,65 @@ export default function ChatPage() {
 
   const submitWarningInChat = async () => {
     if (!user || !userProfile || !otherUserId || !otherUsername || !warningReasonForChat.trim() || !db) return;
+    
     setIsSubmittingWarningInChat(true);
+    let warningLogged = false;
+    let notificationSent = false;
+
     try {
+      // Log the warning for admin records
       await addDoc(collection(db, 'user_warnings'), {
         warnedUserId: otherUserId,
         warnedUserName: otherUsername,
         warnedUserRole: otherUserActualProfile?.role || 'unknown',
         adminId: user.uid,
-        adminUsername: userProfile.username || 'Admin',
+        adminUsername: userProfile.username || 'Admin Action',
         reason: warningReasonForChat.trim(),
         gigId: _selectedChatDetails?.gigId || null,
-        gigTitle: currentGigForChat?.title || _selectedChatDetails?.gigId || null,
+        gigTitle: currentGigForChat?.title || null,
         timestamp: serverTimestamp(),
       });
-      toast({ title: "Warning Logged", description: `A warning has been logged for ${otherUsername}. A notification record has been created.` });
-      
-      await addDoc(collection(db, 'notifications'), {
-        recipientUserId: otherUserId,
-        message: `You have received a warning from an administrator regarding: ${warningReasonForChat.trim()}${_selectedChatDetails?.gigId ? ` (related to gig: ${currentGigForChat?.title || _selectedChatDetails.gigId})` : ''}.`,
-        type: 'account_warning',
-        relatedGigId: _selectedChatDetails?.gigId || null,
-        relatedGigTitle: currentGigForChat?.title || null,
-        isRead: false,
-        createdAt: serverTimestamp(),
-        adminActorId: user.uid,
-        adminActorUsername: userProfile.username || 'Admin Action',
-      });
+      warningLogged = true;
 
+      // Create notification for the warned user
+      try {
+        const notificationMessage = `You have received a warning from an administrator regarding: ${warningReasonForChat.trim()}${_selectedChatDetails?.gigId ? ` (related to gig: ${currentGigForChat?.title || _selectedChatDetails.gigId})` : ''}.`;
+        await addDoc(collection(db, 'notifications'), {
+          recipientUserId: otherUserId,
+          message: notificationMessage,
+          type: 'account_warning',
+          relatedGigId: _selectedChatDetails?.gigId || null,
+          relatedGigTitle: currentGigForChat?.title || null,
+          isRead: false,
+          createdAt: serverTimestamp(),
+          adminActorId: user.uid,
+          adminActorUsername: userProfile.username || 'Admin Action',
+        });
+        notificationSent = true;
+      } catch (notificationError: any) {
+        console.error("Error creating notification for user:", notificationError);
+        toast({
+            title: "Warning Logged, Notification Failed",
+            description: `The warning for ${otherUsername} was recorded, but sending a notification to them failed. Error: ${notificationError.message}`,
+            variant: "destructive",
+            duration: 7000,
+        });
+      }
+
+      if (warningLogged && notificationSent) {
+        toast({ title: "Warning Issued", description: `${otherUsername} has been warned and notified.` });
+      } else if (warningLogged && !notificationSent) {
+        // Toast for notification failure was already shown inside the inner try/catch
+      } else {
+        // This case implies warningLogged is false, which means the first addDoc failed.
+        // The outer catch block will handle toasting this.
+      }
       setShowWarnUserDialogInChat(false);
-    } catch (error: any) {
-      console.error("Error submitting warning from chat:", error);
-      toast({ title: "Error", description: "Could not log warning.", variant: "destructive" });
+      setWarningReasonForChat('');
+
+    } catch (error: any) { // Catches error from logging to user_warnings
+      console.error("Error submitting warning to user_warnings:", error);
+      toast({ title: "Error Logging Warning", description: `Could not log the warning for admin records: ${error.message}`, variant: "destructive" });
     } finally {
       setIsSubmittingWarningInChat(false);
     }
@@ -1091,15 +1115,15 @@ export default function ChatPage() {
 
 
   const canShareDetails = userProfile?.role === 'admin' &&
-                          currentGigForChat?.status === 'in-progress' && // Keep gig context relevant
-                          otherUserActualProfile?.role === 'student' && // Admin sharing with selected student
+                          currentGigForChat?.status === 'in-progress' && 
+                          otherUserActualProfile?.role === 'student' && 
                           currentGigForChat?.selectedStudentId === otherUserId &&
                           (!!userProfile?.personalEmail || !!userProfile?.personalPhone);
 
-  const canRequestDetails = userProfile?.role === 'admin' && // Only admin can request
+  const canRequestDetails = userProfile?.role === 'admin' && 
                             currentGigForChat?.status === 'in-progress' &&
                             otherUserActualProfile?.role === 'student' &&
-                            currentGigForChat?.selectedStudentId === user?.uid; // This seems wrong, admin is not selected student
+                            currentGigForChat?.selectedStudentId === user?.uid; 
 
   const isChatPendingAdminResponse = _selectedChatDetails?.chatStatus === 'pending_admin_response';
   const isCurrentUserInitiatorOfAdminRequest = isChatPendingAdminResponse && _selectedChatDetails?.requestInitiatorId === user?.uid;
