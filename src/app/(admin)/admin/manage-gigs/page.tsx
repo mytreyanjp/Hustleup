@@ -141,7 +141,8 @@ export default function AdminManageGigsPage() {
       results = results.filter(gig => {
         const clientMatch = gig.clientUsername?.toLowerCase().includes(lowerSearchTerm);
         const studentMatch = gig.selectedStudentUsername?.toLowerCase().includes(lowerSearchTerm);
-        return clientMatch || studentMatch;
+        const titleMatch = gig.title.toLowerCase().includes(lowerSearchTerm);
+        return clientMatch || studentMatch || titleMatch;
       });
     }
     return results;
@@ -193,7 +194,7 @@ export default function AdminManageGigsPage() {
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
             <Input
               type="search"
-              placeholder="Search by Client or Student username..."
+              placeholder="Search by Gig Title, Client or Student..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full sm:max-w-xs text-xs sm:text-sm h-9"
@@ -227,7 +228,11 @@ export default function AdminManageGigsPage() {
             <TableBody>
               {filteredGigs.map((gig) => (
                 <TableRow key={gig.id}>
-                  <TableCell className="font-medium max-w-[150px] sm:max-w-xs truncate text-xs sm:text-sm">{gig.title}</TableCell>
+                  <TableCell className="font-medium max-w-[150px] sm:max-w-xs truncate text-xs sm:text-sm">
+                    <Link href={`/admin/manage-gigs/${gig.id}`} className="hover:underline text-primary">
+                        {gig.title}
+                    </Link>
+                  </TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.clientUsername || 'N/A'}</TableCell>
                   <TableCell className="text-xs sm:text-sm hidden md:table-cell">{gig.selectedStudentUsername || 'N/A'}</TableCell>
                   <TableCell className="hidden md:table-cell"><Badge variant={getStatusBadgeVariant(gig.status)} className="capitalize text-xs">{gig.status}</Badge></TableCell>
