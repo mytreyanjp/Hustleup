@@ -58,20 +58,26 @@ export default function FooterNav() {
   let generatedNavItems: Omit<NavItemProps, 'isActive'>[] = [];
 
   if (role === 'admin') {
-    // The /admin/dashboard link is handled by the generic getDashboardUrl() push below
-    generatedNavItems.push({ href: "/admin/manage-admins", icon: Users, label: "Users" });
     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore Gigs" });
-  } else {
+    generatedNavItems.push({ href: "/admin/manage-admins", icon: Users, label: "Users" });
+    generatedNavItems.push({ href: getDashboardUrl(), icon: ShieldCheck, label: "Admin Panel"});
+  } else if (role === 'student') {
     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
-    if (role === 'student') {
-      generatedNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works" });
-    } else if (role === 'client') {
-      generatedNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers" });
-      generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
-    }
+    generatedNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works" });
+    generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
+    generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: "Profile" });
+  } else if (role === 'client') {
+    generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
+    generatedNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers" });
+    generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
+    generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
+    generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: "Dashboard" });
+  } else {
+    // Fallback for users with no specific role but logged in
+     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
+     generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
+     generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: "Account" });
   }
-  
-  generatedNavItems.push({ href: getDashboardUrl(), icon: role === 'admin' ? ShieldCheck : UserIcon, label: role === 'admin' ? "Admin" : (role === 'student' ? "Profile" : "Dashboard") });
   
   const navItems = generatedNavItems.map(item => ({
       ...item,
