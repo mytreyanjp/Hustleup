@@ -160,10 +160,10 @@ export default function ChatPage() {
 
     const currentUserRole = userProfile.role;
     const targetUserRole = targetUserFullProfile.role;
-    const targetUsername = targetUserFullProfile.username || targetUsernameFromParam;
-    const targetProfilePictureUrl = targetUserFullProfile.profilePictureUrl || targetProfilePictureUrlFromParam;
+    const actualTargetUsername = targetUserFullProfile.username || targetUsernameFromParam;
+    const actualTargetProfilePictureUrl = targetUserFullProfile.profilePictureUrl || targetProfilePictureUrlFromParam;
 
-    // Enforce new chat rules
+    // Enforce new chat rules: Only admin-user chats allowed. Students/Clients must use support page.
     if (currentUserRole !== 'admin' && targetUserRole !== 'admin') {
         toast({ title: "Chat Disabled", description: "Direct user-to-user chats are not available. Please use the support page to contact admins if needed.", variant: "destructive" });
         router.push('/gigs/browse'); 
@@ -186,25 +186,24 @@ export default function ChatPage() {
             updateRequired = true;
         }
         
-        if (currentUserRole !== 'admin' && targetUserRole === 'admin') {
+        if (currentUserRole !== 'admin' && targetUserRole === 'admin') { // User (non-admin) trying to open chat with admin
             if (existingChatData.chatStatus !== 'pending_admin_response' && existingChatData.chatStatus !== 'accepted') {
-                toast({ title: "Access Denied", description: "This chat is not active or accessible. Please request admin chat via the support page.", variant: "destructive" });
+                toast({ title: "Access Denied", description: "This chat is not active. Please request admin chat via the support page if needed.", variant: "destructive" });
                 router.push('/support');
                 return null;
             }
-        }
-        else if (currentUserRole === 'admin' && existingChatData.chatStatus === 'pending_admin_response' && existingChatData.requestInitiatorId !== user.uid) {
+        } else if (currentUserRole === 'admin' && existingChatData.chatStatus === 'pending_admin_response' && existingChatData.requestInitiatorId !== user.uid) {
             updates.chatStatus = 'accepted';
-            updates.lastMessage = `Admin ${userProfile.username || 'Support'} has joined the chat.`;
+            updates.lastMessage = `An Admin from our support team has joined the chat.`; // Generic admin join message
             updates.lastMessageTimestamp = serverTimestamp();
-            updates.lastMessageSenderId = 'system';
+            updates.lastMessageSenderId = 'system'; // System message
             updates.lastMessageReadBy = [user.uid];
             updateRequired = true;
             
             const messagesColRef = collection(chatDocRef, 'messages');
             addDoc(messagesColRef, {
                 senderId: 'system',
-                text: `Admin ${userProfile.username || 'Support'} has joined the chat.`,
+                text: `An Admin from our support team has joined the chat.`,
                 messageType: 'system_admin_reply_received',
                 timestamp: serverTimestamp(),
             }).catch(console.error);
@@ -225,26 +224,26 @@ export default function ChatPage() {
         setSelectedChatId(chatId);
         return { ...existingChatData, id: chatId };
 
-      } else { 
-        if (currentUserRole !== 'admin') {
-            toast({ title: "Cannot Initiate", description: "Please request admin chat via the support page.", variant: "destructive" });
+      } else { // Chat doesn't exist, create new
+        if (currentUserRole !== 'admin') { // Student/Client cannot initiate a new chat directly
+            toast({ title: "Cannot Initiate Chat", description: "Please request admin chat via the support page.", variant: "destructive" });
             router.push('/support');
             return null;
         }
-
+        // Admin is initiating the chat
         const newChatData: ChatMetadata = {
           id: chatId,
           participants: [user.uid, targetUserId],
-          participantUsernames: {
-            [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Me',
-            [targetUserId]: targetUsername,
+          participantUsernames: { // Store actual usernames
+            [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Admin',
+            [targetUserId]: actualTargetUsername,
           },
           createdAt: serverTimestamp() as Timestamp, 
           updatedAt: serverTimestamp() as Timestamp, 
-          participantProfilePictures: {},
+          participantProfilePictures: {}, // Store actual profile pics
           lastMessageReadBy: [user.uid], 
-          chatStatus: 'accepted', 
-          lastMessage: 'Chat started by admin.',
+          chatStatus: 'accepted', // Admin-initiated chats are immediately accepted
+          lastMessage: 'Chat started by Admin.',
           lastMessageSenderId: user.uid,
           lastMessageTimestamp: serverTimestamp() as Timestamp,
         };
@@ -252,8 +251,8 @@ export default function ChatPage() {
         if (userProfile.profilePictureUrl) {
           newChatData.participantProfilePictures![user.uid] = userProfile.profilePictureUrl;
         }
-        if (targetProfilePictureUrl) {
-          newChatData.participantProfilePictures![targetUserId] = targetProfilePictureUrl;
+        if (actualTargetProfilePictureUrl) {
+          newChatData.participantProfilePictures![targetUserId] = actualTargetProfilePictureUrl;
         }
         if (gigIdForContext) newChatData.gigId = gigIdForContext;
         
@@ -387,13 +386,15 @@ export default function ChatPage() {
           if (newOrUpdatedChat) {
             setSelectedChatId(newOrUpdatedChat.id);
           } else {
-            if (router.asPath.startsWith('/chat')) router.replace('/chat'); 
+            // getOrCreateChat handles its own toasts/redirects if chat cannot be created
+            if (router.asPath.startsWith('/chat')) router.replace('/chat'); // Fallback redirect
           }
         } else {
           console.error("Target user for chat not found.");
           toast({ title: "User Not Found", description: "The user you're trying to chat with doesn't exist.", variant: "destructive" });
           router.replace('/chat');
         }
+        // Clean up URL params after processing
         const paramsToRemove = ['userId', 'gigId', 'shareGigId', 'shareGigTitle', 'shareUserId', 'shareUsername', 'shareUserProfilePictureUrl', 'shareUserRole', 'chatId'];
         let currentUrl = new URL(window.location.href);
         let paramsChanged = false;
@@ -409,6 +410,7 @@ export default function ChatPage() {
       };
       fetchTargetUserAndProcessChat();
     } else if (!shareGigId && !targetUserId && !preselectChatId && (searchParams.toString() !== '') && typeof window !== 'undefined') {
+        // Clear any other stray params if no specific action taken
         router.replace('/chat', { scroll: false });
     }
   }, [searchParams, user, userProfile, authLoading, getOrCreateChat, router, toast]);
@@ -433,6 +435,7 @@ export default function ChatPage() {
         ...docSnap.data(),
       })) as ChatMetadata[];
 
+      // Filter out chats with blocked users
       if (userProfile && userProfile.blockedUserIds && userProfile.blockedUserIds.length > 0) {
         fetchedChats = fetchedChats.filter(chat => {
           const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
@@ -440,24 +443,29 @@ export default function ChatPage() {
         });
       }
       
+      // Filter chats for non-admins: only show chats with admins
       if (userProfile?.role !== 'admin') {
         fetchedChats = fetchedChats.filter(chat => {
             const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
-            if (!otherParticipantId) return false;
+            if (!otherParticipantId) return false; // Should not happen
             const otherParticipantProfile = otherParticipantProfiles[otherParticipantId]; 
-            if (otherParticipantProfile) return otherParticipantProfile.role === 'admin';
+            // If profile is already fetched and it's not an admin, filter out
+            if (otherParticipantProfile && otherParticipantProfile.role !== 'admin') return false;
+            // If profile not fetched yet, keep it for now, it will be re-filtered after fetching
             return true; 
         });
       }
 
       setChats(fetchedChats);
+      // Fetch profiles for other participants if not already loaded, and re-filter for non-admins if needed
       fetchedChats.forEach(async (chat) => {
         const otherId = chat.participants.find(pId => pId !== user.uid);
         if (otherId && !otherParticipantProfiles[otherId]) {
             const userDoc = await getDoc(doc(db, 'users', otherId));
             if (userDoc.exists()) {
-                const fetchedOtherProfile = userDoc.data() as UserProfile;
+                const fetchedOtherProfile = {uid: userDoc.id, ...userDoc.data()} as UserProfile;
                 setOtherParticipantProfiles(prev => ({ ...prev, [otherId]: fetchedOtherProfile }));
+                // Re-filter for non-admins after fetching profile
                 if (userProfile?.role !== 'admin' && fetchedOtherProfile.role !== 'admin') {
                     setChats(prev => prev.filter(c => c.id !== chat.id));
                 }
@@ -509,12 +517,10 @@ export default function ChatPage() {
           const msgRef = doc(db, 'chats', selectedChatId, 'messages', msg.id);
           let messageUpdates: Partial<ChatMessage> = {};
           if (!msg.deliveredToRecipientAt) {
-            console.log(`Current user (${user.uid}) is marking message ${msg.id} (from ${msg.senderId}) as DELIVERED for chat ${selectedChatId}`);
             messageUpdates.deliveredToRecipientAt = Timestamp.now();
             updatesMade = true;
           }
           if (currentCommittedUserProfile.readReceiptsEnabled && !msg.readByRecipientAt) {
-            console.log(`Current user (${user.uid}, receipts: ${currentCommittedUserProfile.readReceiptsEnabled}) is marking message ${msg.id} (from ${msg.senderId}) as READ for chat ${selectedChatId}`);
             messageUpdates.readByRecipientAt = Timestamp.now();
             updatesMade = true;
           }
@@ -524,7 +530,6 @@ export default function ChatPage() {
         }
       });
       if (updatesMade) {
-        console.log(`Current user (${user.uid}) attempting to commit batch updates for chat ${selectedChatId}`);
         batch.commit()
           .then(() => console.log(`Current user (${user.uid}): Batch commit SUCCESS for chat ${selectedChatId} message status updates.`))
           .catch(err => console.error(`Error batch updating message statuses for chat ${selectedChatId} by user ${user.uid}:`, err));
@@ -585,7 +590,7 @@ export default function ChatPage() {
     }
 
     return () => unsubscribeMessages();
-  }, [selectedChatId, user, userProfile]);
+  }, [selectedChatId, user, userProfile]); // Removed `db` from deps as it should be stable.
 
 
   useEffect(() => {
@@ -641,12 +646,14 @@ export default function ChatPage() {
         return;
     }
     
+    // Enforce chat rules: at least one admin must be involved
     if (userProfile.role !== 'admin' && targetParticipantProfile?.role !== 'admin') {
-      toast({ title: "Cannot Send", description: "Direct user-to-user chats are disabled.", variant: "destructive" });
+      toast({ title: "Cannot Send", description: "Direct user-to-user chats are disabled. One participant must be an admin.", variant: "destructive" });
       return;
     }
+    // If current user is not admin and target is admin, check if chat was initiated via support or already accepted
     if (userProfile.role !== 'admin' && targetParticipantProfile?.role === 'admin' && currentChatDetails.chatStatus !== 'accepted' && currentChatDetails.chatStatus !== 'pending_admin_response') {
-      toast({ title: "Cannot Send", description: "Chat with admin is not active. Please use support page.", variant: "destructive" });
+      toast({ title: "Cannot Send", description: "Chat with admin is not active. Please use support page if needed.", variant: "destructive" });
       return;
     }
     
@@ -673,7 +680,8 @@ export default function ChatPage() {
 
     let lastMessageText = '';
     
-    const canShareOrRequestPersonalDetails = userProfile.role === 'admin' || (targetParticipantProfile?.role === 'admin' && currentChatDetails.chatStatus === 'accepted');
+    // Only admins can share/request personal details in this current implementation
+    const canShareOrRequestPersonalDetails = userProfile.role === 'admin';
 
     if (isRequestingDetails && canShareOrRequestPersonalDetails) {
         newMessageContent.isDetailShareRequest = true;
@@ -725,6 +733,7 @@ export default function ChatPage() {
         updatedAt: serverTimestamp(),
         lastMessageSenderId: user.uid,
         lastMessageReadBy: [user.uid],
+        // Update actual username and profile picture in chat metadata
         [`participantUsernames.${user.uid}`]: userProfile.username || user.email?.split('@')[0] || 'User',
       };
       
@@ -743,7 +752,7 @@ export default function ChatPage() {
           chatUpdateData.chatStatus = 'accepted';
           batchOp.set(doc(messagesColRef), { 
               senderId: 'system',
-              text: `Admin ${userProfile.username} has joined and replied.`,
+              text: `An Admin from our support team has joined and replied.`, // Generic message
               messageType: 'system_admin_reply_received',
               timestamp: serverTimestamp(),
           });
@@ -788,7 +797,7 @@ export default function ChatPage() {
             chatStatus: 'closed_by_user',
             lastMessage: `${userProfile.username || 'User'} marked this issue as resolved.`,
             lastMessageTimestamp: serverTimestamp(),
-            lastMessageSenderId: 'system',
+            lastMessageSenderId: 'system', // System message
             lastMessageReadBy: [user.uid], 
         });
 
@@ -819,12 +828,16 @@ export default function ChatPage() {
     return chats.filter(chat => {
       const otherParticipantId = chat.participants.find(pId => pId !== user?.uid);
       if (otherParticipantId) {
+        // If viewer is not admin and other participant is admin, search for "Admin Support"
+        if(userProfile?.role !== 'admin' && otherParticipantProfiles[otherParticipantId]?.role === 'admin') {
+            return "admin support".includes(lowerSearchTerm);
+        }
         const chatPartnerUsername = chat.participantUsernames[otherParticipantId];
         return chatPartnerUsername?.toLowerCase().includes(lowerSearchTerm);
       }
       return false;
     });
-  }, [chats, chatSearchTerm, user]);
+  }, [chats, chatSearchTerm, user, userProfile, otherParticipantProfiles]);
 
   const _selectedChatDetails = useMemo(() => {
     return chats.find(c => c.id === selectedChatId) || 
@@ -862,7 +875,9 @@ export default function ChatPage() {
       
       const otherUserIdInChat = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
       const otherUserInChatProfile = otherUserIdInChat ? otherParticipantProfiles[otherUserIdInChat] : null;
-      const shouldShowBlueTicks = userProfile?.readReceiptsEnabled && (otherUserInChatProfile?.readReceiptsEnabled === undefined || otherUserInChatProfile?.readReceiptsEnabled);
+      // Show blue ticks only if current user has them enabled AND (other user profile doesn't exist OR other user has them enabled OR other user is admin)
+      const shouldShowBlueTicks = userProfile?.readReceiptsEnabled && 
+                                   (!otherUserInChatProfile || otherUserInChatProfile.readReceiptsEnabled === undefined || otherUserInChatProfile.readReceiptsEnabled || otherUserInChatProfile.role === 'admin');
 
 
       elements.push(
@@ -1040,14 +1055,14 @@ export default function ChatPage() {
   }, [messages, user, userProfile, otherParticipantProfiles, _selectedChatDetails]);
 
   const handleOpenWarnDialogInChat = () => {
-    if (userProfile?.role === 'admin' && otherUserId && otherUserActualProfile?.role !== 'admin') {
+    if (userProfile?.role === 'admin' && otherUserIdForHeader && otherUserActualProfileForHeader?.role !== 'admin') {
       setWarningReasonForChat('');
       setShowWarnUserDialogInChat(true);
     }
   };
 
   const submitWarningInChat = async () => {
-    if (!user || !userProfile || !otherUserId || !otherUsername || !warningReasonForChat.trim() || !db) return;
+    if (!user || !userProfile || !otherUserIdForHeader || !displayNameForHeader || !warningReasonForChat.trim() || !db) return;
     
     setIsSubmittingWarningInChat(true);
     let warningLogged = false;
@@ -1055,9 +1070,9 @@ export default function ChatPage() {
 
     try {
       await addDoc(collection(db, 'user_warnings'), {
-        warnedUserId: otherUserId,
-        warnedUserName: otherUsername,
-        warnedUserRole: otherUserActualProfile?.role || 'unknown',
+        warnedUserId: otherUserIdForHeader,
+        warnedUserName: displayNameForHeader, // Use displayed name (could be "Admin Support")
+        warnedUserRole: otherUserActualProfileForHeader?.role || 'unknown',
         adminId: user.uid,
         adminUsername: userProfile.username || 'Admin Action',
         reason: warningReasonForChat.trim(),
@@ -1067,32 +1082,38 @@ export default function ChatPage() {
       });
       warningLogged = true;
 
-      try {
-        const notificationMessage = `You have received a warning from an administrator regarding: ${warningReasonForChat.trim()}${_selectedChatDetails?.gigId ? ` (related to gig: ${currentGigForChat?.title || _selectedChatDetails.gigId})` : ''}.`;
-        await addDoc(collection(db, 'notifications'), {
-          recipientUserId: otherUserId,
-          message: notificationMessage,
-          type: 'account_warning',
-          relatedGigId: _selectedChatDetails?.gigId || null,
-          relatedGigTitle: currentGigForChat?.title || null,
-          isRead: false,
-          createdAt: serverTimestamp(),
-          adminActorId: user.uid,
-          adminActorUsername: userProfile.username || 'Admin Action',
-        });
-        notificationSent = true;
-      } catch (notificationError: any) {
-        console.error("Error creating notification for user:", notificationError);
-        toast({
-            title: "Warning Logged, Notification Failed",
-            description: `The warning for ${otherUsername} was recorded, but sending a notification to them failed. Error: ${notificationError.message}`,
-            variant: "destructive",
-            duration: 7000,
-        });
+      // Only send notification if the warned user is not an admin (to avoid notifying "Admin Support")
+      if (otherUserActualProfileForHeader?.role !== 'admin') {
+        try {
+          const notificationMessage = `You have received a warning from an administrator regarding: ${warningReasonForChat.trim()}${_selectedChatDetails?.gigId ? ` (related to gig: ${currentGigForChat?.title || _selectedChatDetails.gigId})` : ''}.`;
+          await addDoc(collection(db, 'notifications'), {
+            recipientUserId: otherUserIdForHeader,
+            message: notificationMessage,
+            type: 'account_warning',
+            relatedGigId: _selectedChatDetails?.gigId || null,
+            relatedGigTitle: currentGigForChat?.title || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            adminActorId: user.uid,
+            adminActorUsername: "Admin Support", // Use generic name for notification
+          });
+          notificationSent = true;
+        } catch (notificationError: any) {
+          console.error("Error creating notification for user:", notificationError);
+          toast({
+              title: "Warning Logged, Notification Failed",
+              description: `The warning for ${displayNameForHeader} was recorded, but sending a notification to them failed. Error: ${notificationError.message}`,
+              variant: "destructive",
+              duration: 7000,
+          });
+        }
+      } else {
+        notificationSent = true; // effectively, as no notification needed for "Admin Support"
       }
 
+
       if (warningLogged && notificationSent) {
-        toast({ title: "Warning Issued", description: `${otherUsername} has been warned and notified.` });
+        toast({ title: "Warning Issued", description: `${displayNameForHeader} has been warned. ${otherUserActualProfileForHeader?.role !== 'admin' ? 'They have been notified.' : ''}` });
       } else if (warningLogged && !notificationSent) {
         // Toast for notification failure was already shown
       }
@@ -1116,22 +1137,39 @@ export default function ChatPage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><p>Loading user session...</p></div>;
   }
 
-  const otherUserId = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
-  const otherUsername = otherUserId ? _selectedChatDetails?.participantUsernames[otherUserId] : 'User';
-  const otherUserProfilePicture = otherUserId ? _selectedChatDetails?.participantProfilePictures?.[otherUserId] : undefined;
-  const otherUserActualProfile = otherUserId ? otherParticipantProfiles[otherUserId] : null;
+  // Determine displayed name and avatar for the other participant
+  const otherUserIdForHeader = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
+  const otherUserActualProfileForHeader = otherUserIdForHeader ? otherParticipantProfiles[otherUserIdForHeader] : null;
+
+  let displayNameForHeader = 'User';
+  let profilePictureForHeader = undefined;
+  let displayRoleForHeader = otherUserActualProfileForHeader?.role;
+
+  if (otherUserActualProfileForHeader) {
+      if (userProfile.role !== 'admin' && otherUserActualProfileForHeader.role === 'admin') {
+          displayNameForHeader = "Admin Support";
+          // profilePictureForHeader = "/path/to/generic/support-avatar.png"; // Replace with actual generic avatar if desired
+      } else {
+          displayNameForHeader = otherUserActualProfileForHeader.username || otherUserActualProfileForHeader.email?.split('@')[0] || 'User';
+          profilePictureForHeader = otherUserActualProfileForHeader.profilePictureUrl;
+      }
+  } else if (otherUserIdForHeader && _selectedChatDetails) {
+      // Fallback if profile not fully loaded yet, use stored username
+      displayNameForHeader = _selectedChatDetails.participantUsernames[otherUserIdForHeader] || 'User';
+      profilePictureForHeader = _selectedChatDetails.participantProfilePictures?.[otherUserIdForHeader];
+  }
   
-  const isOtherUserBlockedByCurrentUser = otherUserId && userProfile?.blockedUserIds?.includes(otherUserId);
+  const isOtherUserBlockedByCurrentUser = otherUserIdForHeader && userProfile?.blockedUserIds?.includes(otherUserIdForHeader);
   const [isCurrentUserBlockedByOther, setIsCurrentUserBlockedByOther] = useState(false);
 
   useEffect(() => {
     const checkBlockedStatus = async () => {
-      if (otherUserId && db && user) {
-        const otherUserDocRef = doc(db, 'users', otherUserId);
+      if (otherUserIdForHeader && db && user) {
+        const otherUserDocRef = doc(db, 'users', otherUserIdForHeader);
         const otherUserSnap = await getDoc(otherUserDocRef);
         if (otherUserSnap.exists()) {
           const otherUserData = otherUserSnap.data() as UserProfile;
-          setOtherParticipantProfiles(prev => ({...prev, [otherUserId]: otherUserData})); 
+          setOtherParticipantProfiles(prev => ({...prev, [otherUserIdForHeader]: otherUserData})); 
           setIsCurrentUserBlockedByOther(otherUserData.blockedUserIds?.includes(user.uid) || false);
         } else {
           setIsCurrentUserBlockedByOther(false);
@@ -1143,18 +1181,18 @@ export default function ChatPage() {
     if (selectedChatId) {
       checkBlockedStatus();
     }
-  }, [selectedChatId, otherUserId, user, db]);
+  }, [selectedChatId, otherUserIdForHeader, user, db]);
 
 
   const canShareDetails = userProfile?.role === 'admin' &&
                           currentGigForChat?.status === 'in-progress' && 
-                          otherUserActualProfile?.role === 'student' && 
-                          currentGigForChat?.selectedStudentId === otherUserId &&
+                          otherUserActualProfileForHeader?.role === 'student' && 
+                          currentGigForChat?.selectedStudentId === otherUserIdForHeader &&
                           (!!userProfile?.personalEmail || !!userProfile?.personalPhone);
 
   const canRequestDetails = userProfile?.role === 'admin' && 
                             currentGigForChat?.status === 'in-progress' &&
-                            otherUserActualProfile?.role === 'student' &&
+                            otherUserActualProfileForHeader?.role === 'student' &&
                             currentGigForChat?.selectedStudentId === user?.uid; 
 
   const isChatPendingAdminResponse = _selectedChatDetails?.chatStatus === 'pending_admin_response';
@@ -1164,7 +1202,7 @@ export default function ChatPage() {
 
   let inputDisabledReason = "";
   if (!_selectedChatDetails) inputDisabledReason = "Loading chat...";
-  else if (userProfile.role !== 'admin' && otherUserActualProfile?.role !== 'admin') inputDisabledReason = "Direct user chats disabled.";
+  else if (userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role !== 'admin') inputDisabledReason = "Direct user chats disabled.";
   else if (isCurrentUserInitiatorOfAdminRequest && messages.length > 0) inputDisabledReason = "Waiting for admin to reply...";
   else if (isSending) inputDisabledReason = "Sending...";
   else if (isOtherUserBlockedByCurrentUser) inputDisabledReason = "You blocked this user.";
@@ -1216,8 +1254,16 @@ export default function ChatPage() {
                 )}
                 {filteredChats.map((chat) => {
                 const otherParticipantId = chat.participants.find(pId => pId !== user?.uid);
-                const chatPartnerUsername = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
-                const partnerProfilePic = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
+                const otherParticipantProfile = otherParticipantId ? otherParticipantProfiles[otherParticipantId] : null;
+                
+                let chatPartnerNameToDisplay = otherParticipantId ? chat.participantUsernames[otherParticipantId] : 'Unknown User';
+                let partnerProfilePicToDisplay = otherParticipantId ? chat.participantProfilePictures?.[otherParticipantId] : undefined;
+
+                if (userProfile?.role !== 'admin' && otherParticipantProfile?.role === 'admin') {
+                    chatPartnerNameToDisplay = "Admin Support";
+                    partnerProfilePicToDisplay = undefined; // Use fallback for admin
+                }
+
                 const isUnread = chat.lastMessageSenderId && chat.lastMessageSenderId !== user?.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user!.uid));
                 
                 let isPendingForCurrentUserAction = false;
@@ -1237,22 +1283,27 @@ export default function ChatPage() {
                             isPendingForCurrentUserAction ? "bg-amber-500 animate-pulse" : "bg-primary"
                         )} title={isPendingForCurrentUserAction ? "Action required" : "Unread messages"}></span>
                     )}
-                    <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}>
+                    <Link href={`/profile/${otherParticipantId}`} passHref onClick={(e) => e.stopPropagation()}
+                        className={cn(userProfile?.role !== 'admin' && otherParticipantProfile?.role === 'admin' ? "pointer-events-none" : "")} // Disable link for admin profile for users
+                    >
                         <Avatar className="h-10 w-10 ml-2">
-                            <AvatarImage src={partnerProfilePic} alt={chatPartnerUsername} />
-                            <AvatarFallback>{chatPartnerUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                            <AvatarImage src={partnerProfilePicToDisplay} alt={chatPartnerNameToDisplay} />
+                            <AvatarFallback>{chatPartnerNameToDisplay?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                         </Avatar>
                     </Link>
                     <div className="flex-grow overflow-hidden min-w-0">
                         {otherParticipantId ? (
                         <Link href={`/profile/${otherParticipantId}`} passHref
                             onClick={(e) => e.stopPropagation()}
-                            className={`text-sm truncate hover:underline ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`}
+                            className={cn(
+                                `text-sm truncate hover:underline ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`,
+                                userProfile?.role !== 'admin' && otherParticipantProfile?.role === 'admin' ? "pointer-events-none text-muted-foreground" : ""
+                                )}
                         >
-                            {chatPartnerUsername}
+                            {chatPartnerNameToDisplay}
                         </Link>
                         ) : (
-                        <p className={`text-sm truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerUsername}</p>
+                        <p className={`text-sm truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground' : 'text-muted-foreground'}`}>{chatPartnerNameToDisplay}</p>
                         )}
                         <p className={`text-xs truncate ${isUnread || isPendingForCurrentUserAction ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>
                         {chat.chatStatus === 'pending_admin_response' && chat.requestInitiatorId === user?.uid && "Support request sent..."}
@@ -1276,22 +1327,29 @@ export default function ChatPage() {
         "flex-grow glass-card flex flex-col h-full relative",
         !selectedChatId && 'hidden md:flex'
         )}>
-        {selectedChatId && _selectedChatDetails && otherUserId && user && userProfile ? (
+        {selectedChatId && _selectedChatDetails && otherUserIdForHeader && user && userProfile ? (
           <>
             <CardHeader className="border-b flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-2 sm:gap-0 flex-wrap">
               <div className="flex items-center gap-3 flex-grow min-w-0">
                 <Button variant="ghost" size="icon" className="md:hidden h-8 w-8" onClick={() => setSelectedChatId(null)}>
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <Link href={`/profile/${otherUserId}`} passHref>
+                 <Link href={`/profile/${otherUserIdForHeader}`} passHref
+                    className={cn(userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role === 'admin' ? "pointer-events-none" : "")}
+                 >
                   <Avatar className="h-10 w-10 cursor-pointer">
-                      <AvatarImage src={otherUserProfilePicture} alt={otherUsername} />
-                      <AvatarFallback>{otherUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                      <AvatarImage src={profilePictureForHeader} alt={displayNameForHeader} />
+                      <AvatarFallback>{displayNameForHeader?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
                 </Link>
                 <div className="overflow-hidden">
-                  <Link href={`/profile/${otherUserId}`} className="hover:underline">
-                    <CardTitle className="text-base truncate">{otherUsername} {otherUserActualProfile?.role === 'admin' && <Badge variant="outline" className="ml-1 text-xs">Admin</Badge>}</CardTitle>
+                   <Link href={`/profile/${otherUserIdForHeader}`} passHref
+                    className={cn(
+                        "hover:underline",
+                        userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role === 'admin' ? "pointer-events-none text-foreground" : ""
+                        )}
+                   >
+                    <CardTitle className="text-base truncate">{displayNameForHeader} {displayRoleForHeader === 'admin' && userProfile.role === 'admin' && <Badge variant="outline" className="ml-1 text-xs">Admin</Badge>}</CardTitle>
                   </Link>
                   {currentGigForChat?.title && _selectedChatDetails.chatStatus === 'accepted' && userProfile.role === 'admin' && (
                       <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline truncate block">
@@ -1306,7 +1364,7 @@ export default function ChatPage() {
                 </div>
               </div>
                <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                {userProfile.role === 'admin' && otherUserActualProfile?.role !== 'admin' && (
+                {userProfile.role === 'admin' && otherUserActualProfileForHeader?.role !== 'admin' && (
                     <Button variant="outline" size="sm" onClick={handleOpenWarnDialogInChat} className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/50">
                         <ShieldAlert className="mr-2 h-4 w-4" /> Warn User
                     </Button>
@@ -1320,7 +1378,7 @@ export default function ChatPage() {
                             <AlertDialogHeader>
                             <AlertDialogTitle>Share Admin Contact Details?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                You are about to share your admin contact details with {otherUsername}:
+                                You are about to share your admin contact details with {displayNameForHeader}:
                                 {userProfile.personalEmail && <div className="mt-2">Email: {userProfile.personalEmail}</div>}
                                 {userProfile.personalPhone && <div className="mt-0.5">Phone: {userProfile.personalPhone}</div>}
                                 This cannot be undone.
@@ -1376,7 +1434,7 @@ export default function ChatPage() {
                        {(_selectedChatDetails.chatStatus === 'accepted' || _selectedChatDetails.chatStatus === 'closed_by_user') && !isInputEffectivelyDisabled && "Send a message to start the conversation."}
                        {isOtherUserBlockedByCurrentUser && "You have blocked this user. Unblock them to send messages."}
                        {isCurrentUserBlockedByOther && "This user has blocked you. You cannot send messages."}
-                       {userProfile.role !== 'admin' && otherUserActualProfile?.role !== 'admin' && "Direct user-to-user chats are not enabled."}
+                       {userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role !== 'admin' && "Direct user-to-user chats are not enabled."}
                     </p>
                 )}
               </CardContent>
@@ -1466,9 +1524,9 @@ export default function ChatPage() {
         <Dialog open={showWarnUserDialogInChat} onOpenChange={setShowWarnUserDialogInChat}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Log Warning for {otherUsername || 'User'}</DialogTitle>
+                    <DialogTitle>Log Warning for {displayNameForHeader || 'User'}</DialogTitle>
                     <DialogDescription>
-                        Please provide a reason for this warning. This will be logged and a notification record will be created for the user.
+                        Please provide a reason for this warning. This will be logged and a notification record will be created for the user (if they are not an admin).
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
