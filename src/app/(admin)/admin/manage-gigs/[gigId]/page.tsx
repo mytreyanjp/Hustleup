@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, Timestamp, updateDoc, deleteDoc, collection, addDoc, serverTimestamp, query, where, getDocs, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, updateDoc, deleteDoc, collection, addDoc, serverTimestamp, query, where, getDocs, arrayUnion, arrayRemove } from 'firebase/firestore'; // Added getDoc
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -81,6 +81,39 @@ interface Gig {
   numberOfReports?: number;
   progressReports?: ProgressReport[];
 }
+
+type NotificationType = 'gig_deleted' | 'applicant_removed' | 'report_deleted' | 'account_warning';
+
+const createAdminActionNotification = async (
+    recipientUserId: string,
+    message: string,
+    type: NotificationType,
+    relatedGigId?: string,
+    relatedGigTitle?: string,
+    adminActorId?: string,
+    adminActorUsername?: string
+) => {
+    if (!db) {
+        console.error("Firestore (db) not available for creating notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type,
+            relatedGigId: relatedGigId || null,
+            relatedGigTitle: relatedGigTitle || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            adminActorId: adminActorId || 'system_admin',
+            adminActorUsername: adminActorUsername || 'Admin Action',
+        });
+        console.log(`Notification created for ${recipientUserId}: ${message}`);
+    } catch (error) {
+        console.error("Error creating notification document:", error);
+    }
+};
 
 
 export default function AdminGigDetailPage() {
@@ -178,11 +211,48 @@ export default function AdminGigDetailPage() {
   }, [adminLoading, adminRole, fetchGigAndRelatedData, router]);
 
   const handleDeleteGig = async () => {
-    if (!gigId || !db) return;
+    if (!gigId || !gig || !db || !adminUser) return;
     setIsDeletingGig(true);
     try {
       await deleteDoc(doc(db, 'gigs', gigId));
       toast({ title: "Gig Deleted", description: "The gig has been successfully deleted." });
+      
+      // Create notifications
+      await createAdminActionNotification(
+        gig.clientId,
+        `The gig "${gig.title}" has been deleted by an administrator.`,
+        'gig_deleted',
+        gig.id,
+        gig.title,
+        adminUser.uid,
+        adminProfile?.username
+      );
+      if (gig.selectedStudentId) {
+        await createAdminActionNotification(
+          gig.selectedStudentId,
+          `The gig "${gig.title}" you were assigned to has been deleted by an administrator.`,
+          'gig_deleted',
+          gig.id,
+          gig.title,
+          adminUser.uid,
+          adminProfile?.username
+        );
+      }
+      if (gig.applicants) {
+        for (const applicant of gig.applicants) {
+          if (applicant.studentId !== gig.selectedStudentId) { // Avoid double notifying selected student
+            await createAdminActionNotification(
+              applicant.studentId,
+              `Your application for the gig "${gig.title}" has been affected because the gig was deleted by an administrator.`,
+              'gig_deleted',
+              gig.id,
+              gig.title,
+              adminUser.uid,
+              adminProfile?.username
+            );
+          }
+        }
+      }
       router.push('/admin/manage-gigs');
     } catch (error: any) {
       console.error("Error deleting gig:", error);
@@ -192,13 +262,24 @@ export default function AdminGigDetailPage() {
   };
 
   const confirmDeleteApplicant = async () => {
-    if (!gig || !applicantToDelete || !db) return;
+    if (!gig || !applicantToDelete || !db || !adminUser) return;
     setIsDeletingApplicant(true);
     try {
       const updatedApplicants = gig.applicants?.filter(app => app.studentId !== applicantToDelete.studentId) || [];
       await updateDoc(doc(db, 'gigs', gig.id), { applicants: updatedApplicants });
       setGig(prev => prev ? { ...prev, applicants: updatedApplicants } : null);
-      toast({ title: "Applicant Removed", description: `${applicantToDelete.studentUsername} has been removed from applicants.` });
+      toast({ title: "Applicant Removed", description: `${applicantToDelete.studentUsername} has been removed. A notification record has been created for the student.` });
+
+      await createAdminActionNotification(
+        applicantToDelete.studentId,
+        `Your application for the gig "${gig.title}" was removed by an administrator.`,
+        'applicant_removed',
+        gig.id,
+        gig.title,
+        adminUser.uid,
+        adminProfile?.username
+      );
+
       setShowDeleteApplicantDialog(false);
       setApplicantToDelete(null);
     } catch (error: any) {
@@ -230,7 +311,18 @@ export default function AdminGigDetailPage() {
         gigTitle: gig?.title || null,
         timestamp: serverTimestamp(),
       });
-      toast({ title: "Warning Logged", description: `A warning has been logged for ${userToWarn.name}.` });
+      toast({ title: "Warning Logged", description: `A warning has been logged for ${userToWarn.name}. A notification record has been created.` });
+      
+      await createAdminActionNotification(
+        userToWarn.id,
+        `You have received a warning from an administrator regarding: ${warningReason.trim()}${gig ? ` (related to gig: ${gig.title})` : ''}.`,
+        'account_warning',
+        gig?.id,
+        gig?.title,
+        adminUser.uid,
+        adminProfile?.username
+      );
+
       setShowWarnUserDialog(false);
       setUserToWarn(null);
     } catch (error: any) {
@@ -242,13 +334,35 @@ export default function AdminGigDetailPage() {
   };
 
   const confirmDeleteReport = async () => {
-    if (!gig || reportToDeleteNumber === null || !db) return;
+    if (!gig || reportToDeleteNumber === null || !db || !adminUser) return;
     setIsDeletingReport(true);
     try {
       const updatedProgressReports = gig.progressReports?.filter(report => report.reportNumber !== reportToDeleteNumber) || [];
       await updateDoc(doc(db, 'gigs', gig.id), { progressReports: updatedProgressReports });
       setGig(prev => prev ? { ...prev, progressReports: updatedProgressReports } : null);
-      toast({ title: "Progress Report Deleted", description: `Report #${reportToDeleteNumber} has been removed. Client and Student would be notified.` });
+      toast({ title: "Progress Report Deleted", description: `Report #${reportToDeleteNumber} has been removed. Notification records created for client and student.` });
+
+      await createAdminActionNotification(
+        gig.clientId,
+        `Progress report #${reportToDeleteNumber} for your gig "${gig.title}" was deleted by an administrator.`,
+        'report_deleted',
+        gig.id,
+        gig.title,
+        adminUser.uid,
+        adminProfile?.username
+      );
+      if (gig.selectedStudentId) {
+        await createAdminActionNotification(
+          gig.selectedStudentId,
+          `Your progress report #${reportToDeleteNumber} for the gig "${gig.title}" was deleted by an administrator.`,
+          'report_deleted',
+          gig.id,
+          gig.title,
+          adminUser.uid,
+          adminProfile?.username
+        );
+      }
+
       setShowDeleteReportDialog(false);
       setReportToDeleteNumber(null);
     } catch (error: any) {
@@ -321,7 +435,7 @@ export default function AdminGigDetailPage() {
                     <AlertDialogHeader>
                     <AlertDialogTitle>Are you sure you want to delete this gig?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the gig "{gig.title}" and all its associated data.
+                        This action cannot be undone. This will permanently delete the gig "{gig.title}" and all its associated data. Notification records will be created for the client and involved students.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -372,7 +486,6 @@ export default function AdminGigDetailPage() {
                 <div className="flex items-center gap-2"><UserCircle className="h-5 w-5" /> Client Information</div>
                 <div className="flex gap-2">
                     <Button variant="outline" size="xs" onClick={() => handleOpenWarnDialog(clientProfile.uid, clientProfile.username || 'Client', 'client')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
-                    {/* Chat button removed as per instructions */}
                 </div>
             </CardTitle>
           </CardHeader>
@@ -400,7 +513,6 @@ export default function AdminGigDetailPage() {
                 <div className="flex items-center gap-2"><Briefcase className="h-5 w-5" /> Selected Student</div>
                  <div className="flex gap-2">
                     <Button variant="outline" size="xs" onClick={() => handleOpenWarnDialog(selectedStudentProfile.uid, selectedStudentProfile.username || 'Student', 'student')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
-                    {/* Chat button removed as per instructions */}
                 </div>
             </CardTitle>
           </CardHeader>
@@ -450,7 +562,6 @@ export default function AdminGigDetailPage() {
                          <Button variant="outline" size="xs" asChild className="text-xs">
                            <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
                          </Button>
-                         {/* Chat button removed */}
                          <Button variant="destructive" size="xs" className="text-xs" onClick={() => {setApplicantToDelete(applicant); setShowDeleteApplicantDialog(true);}} disabled={isDeletingApplicant && applicantToDelete?.studentId === applicant.studentId}>
                            {isDeletingApplicant && applicantToDelete?.studentId === applicant.studentId ? <Loader2 className="h-3 w-3 animate-spin"/> : <Trash2 className="h-3 w-3"/>}
                          </Button>
@@ -555,7 +666,7 @@ export default function AdminGigDetailPage() {
                 <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This will remove {applicantToDelete?.studentUsername || 'the applicant'}'s application from this gig. This action cannot be undone.
+                    This will remove {applicantToDelete?.studentUsername || 'the applicant'}'s application from this gig. This action cannot be undone. A notification record will be created for the student.
                 </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -574,7 +685,7 @@ export default function AdminGigDetailPage() {
                 <DialogHeader>
                 <DialogTitle>Log Warning for {userToWarn?.name || 'User'}</DialogTitle>
                 <DialogDescription>
-                    Please provide a reason for this warning. This will be logged for administrative review.
+                    Please provide a reason for this warning. This will be logged and a notification record will be created for the user.
                 </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -603,7 +714,7 @@ export default function AdminGigDetailPage() {
                 <AlertDialogHeader>
                 <AlertDialogTitle>Delete Progress Report #{reportToDeleteNumber}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This action will permanently remove this progress report. The client and student will be notified of this deletion (simulated).
+                    This action will permanently remove this progress report. Notification records will be created for the client and student.
                 </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -619,3 +730,4 @@ export default function AdminGigDetailPage() {
     </div>
   );
 }
+
