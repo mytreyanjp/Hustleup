@@ -192,11 +192,7 @@ export default function ClientApplicantsPage() {
                         ) : (
                           <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button>
                         )}
-                       <Button size="sm" asChild>
-                          <Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.gigId}`}>
-                              <MessageSquare className="mr-1 h-4 w-4" /> Chat
-                          </Link>
-                       </Button>
+                       {/* Chat button removed */}
                     </div>
                   </div>
                 ))}

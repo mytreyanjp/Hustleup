@@ -226,8 +226,10 @@ export default function PublicProfilePage() {
         toast({ title: "Login Required", description: "Please log in to share profiles.", variant: "destructive" });
         return;
     }
-    const shareUrl = `/chat?shareUserId=${profile.uid}&shareUsername=${encodeURIComponent(profile.username || 'User')}&shareUserProfilePictureUrl=${encodeURIComponent(profile.profilePictureUrl || '')}&shareUserRole=${profile.role || 'unknown'}`;
-    router.push(shareUrl);
+    // Chat sharing disabled
+    // const shareUrl = `/chat?shareUserId=${profile.uid}&shareUsername=${encodeURIComponent(profile.username || 'User')}&shareUserProfilePictureUrl=${encodeURIComponent(profile.profilePictureUrl || '')}&shareUserRole=${profile.role || 'unknown'}`;
+    // router.push(shareUrl);
+    toast({ title: "Feature Disabled", description: "Chat sharing is temporarily disabled.", variant: "default"});
   };
 
 
@@ -436,11 +438,7 @@ export default function PublicProfilePage() {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
-                                     <DropdownMenuItem onSelect={handleShareProfileToChat} className="cursor-pointer">
-                                        <Share2 className="mr-2 h-4 w-4" />
-                                        <span>Share Profile to Chat</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
+                                     {/* Share Profile to Chat item removed */}
                                     <DropdownMenuItem 
                                       onSelect={() => { setShowReportDialog(true); }} 
                                       className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
@@ -473,11 +471,7 @@ export default function PublicProfilePage() {
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
-                                <Button size="sm" asChild className="w-full sm:w-auto">
-                                    <Link href={`/chat?userId=${profile.uid}`}>
-                                        <MessageSquare className="mr-1 h-4 w-4" /> Contact
-                                    </Link>
-                                </Button>
+                                {/* Contact button removed */}
                             </>
                         )}
                     </div>
@@ -602,7 +596,7 @@ export default function PublicProfilePage() {
                   </div>
                )}
 
-               {!profile.bio && (!profile.skills || profile.skills.length === 0) && (!profile.portfolioLinks || profile.portfolioLinks.length === 0) && (
+               {!profile.bio && (!profile.skills || profile.skills.length === 0) && (!profile.portfolioLinks || profile.portfolioLinks.filter(link => link.trim() !== '').length === 0) && (
                     <p className="text-sm text-muted-foreground text-center py-4">This student hasn't added detailed profile information yet.</p>
                )}
             </CardContent>
@@ -752,7 +746,7 @@ export default function PublicProfilePage() {
                     <AlertDialogDescription>
                         {isBlockedByViewer
                             ? `Unblocking ${displayName} will allow you to see their content and interact with them again.`
-                            : `Blocking ${displayName} will prevent you from seeing their gigs, posts, and chatting with them. They will not be notified.`}
+                            : `Blocking ${displayName} will prevent you from seeing their gigs, posts, and interacting with them. They will not be notified.`}
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

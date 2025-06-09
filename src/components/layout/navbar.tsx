@@ -267,17 +267,7 @@ export default function Navbar() {
                     <Briefcase className="mr-1 h-4 w-4" /> Your Works
                 </Link>
               )}
-              {isClient && user && (
-                <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                  <MessageSquare className="mr-1 h-4 w-4" />
-                  <span className="hidden lg:inline-block">Messages</span>
-                  {totalUnreadChats > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px] -translate-y-1/3 translate-x-1/3 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] leading-none p-0">
-                      {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
-                    </span>
-                  )}
-                </Link>
-              )}
+              {/* Chat link removed from desktop navbar */}
             </nav>
             )}
           </div>

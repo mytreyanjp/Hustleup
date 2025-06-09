@@ -65,7 +65,8 @@ export default function FooterNav() {
     generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
   }
   
-  generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Messages", unreadCount: totalUnreadChats });
+  // Chat item removed from footer navigation
+  // generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Messages", unreadCount: totalUnreadChats });
   generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: role === 'student' ? "Profile" : "Dashboard" });
   
   const navItems = generatedNavItems.map(item => ({

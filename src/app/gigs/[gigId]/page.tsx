@@ -232,7 +232,9 @@ export default function GigDetailPage() {
         toast({ title: "Login Required", description: "Please log in to share gigs.", variant: "destructive" });
         return;
     }
-    router.push(`/chat?shareGigId=${gig.id}&shareGigTitle=${encodeURIComponent(gig.title)}`);
+    // Chat sharing is disabled
+    // router.push(`/chat?shareGigId=${gig.id}&shareGigTitle=${encodeURIComponent(gig.title)}`);
+    toast({ title: "Feature Disabled", description: "Chat sharing is temporarily disabled.", variant: "default"});
   };
 
   const formatDate = (timestamp: Timestamp | undefined): string => {
@@ -383,7 +385,7 @@ export default function GigDetailPage() {
                         size="icon" 
                         onClick={handleShareToChat} 
                         disabled={authLoading || isLoadingGig}
-                        title="Share to Chat"
+                        title="Share Gig (Chat Disabled)" // Updated title
                         className="shrink-0"
                     >
                         <Share2 className="h-5 w-5" />
@@ -578,11 +580,7 @@ export default function GigDetailPage() {
               })}
             </CardContent>
              <CardFooter>
-                <Button asChild className="w-full sm:w-auto">
-                  <Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}>
-                    <MessageSquare className="mr-2 h-4 w-4" />Chat with Client
-                  </Link>
-                </Button>
+                {/* Chat with client button removed */}
             </CardFooter>
         </Card>
       )}

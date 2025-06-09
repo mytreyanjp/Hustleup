@@ -226,57 +226,7 @@ export default function ManageGigPage() {
 
 
   const sendApplicationStatusNotification = async ( studentUsername: string, studentId: string, gigTitle: string, status: 'accepted' | 'rejected' | 'request approved' | 'request denied' ) => {
-    if (!user || !userProfile || !db) return;
-    const chatId = getChatId(user.uid, studentId);
-    const chatDocRef = doc(db, 'chats', chatId);
-    let messageText = `Your application for the gig "${gigTitle}" has been ${status}.`;
-    if (status === 'request approved') messageText = `Your request to apply for the gig "${gigTitle}" has been approved! You can now submit your full application.`;
-    if (status === 'request denied') messageText = `Your request to apply for the gig "${gigTitle}" has been denied.`;
-    
-    try {
-      const batch = writeBatch(db);
-      const chatSnap = await getDoc(chatDocRef);
-      const participantUsernames: {[key: string]: string} = { 
-        [user.uid]: userProfile.username || user.email?.split('@')[0] || 'Client', 
-        [studentId]: studentUsername, 
-      };
-      const participantProfilePictures: {[key: string]: string} = {};
-      if(userProfile.profilePictureUrl) participantProfilePictures[user.uid] = userProfile.profilePictureUrl;
-
-      if (!chatSnap.exists()) {
-        const newChatData: any = { 
-          id: chatId, 
-          participants: [user.uid, studentId], 
-          participantUsernames,
-          ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
-          gigId: gigId, 
-          chatStatus: 'accepted', // Auto-accept chat when client initiates for application update
-          createdAt: serverTimestamp(), 
-          updatedAt: serverTimestamp(),
-          lastMessage: messageText,
-          lastMessageTimestamp: serverTimestamp(),
-          lastMessageSenderId: user.uid,
-          lastMessageReadBy: [user.uid]
-        };
-        batch.set(chatDocRef, newChatData);
-      } else {
-         batch.update(chatDocRef, { 
-            lastMessage: messageText, 
-            lastMessageTimestamp: serverTimestamp(), 
-            updatedAt: serverTimestamp(), 
-            lastMessageSenderId: user.uid,
-            lastMessageReadBy: [user.uid],
-            participantUsernames, 
-            ...(Object.keys(participantProfilePictures).length > 0 && { participantProfilePictures }),
-            chatStatus: 'accepted', // Ensure chat becomes active
-            gigId: gigId, // Ensure gigId is associated
-         });
-      }
-      const newMessageRef = doc(collection(db, 'chats', chatId, 'messages'));
-      batch.set(newMessageRef, { senderId: user.uid, text: messageText, timestamp: serverTimestamp(), });
-      await batch.commit();
-      toast({ title: 'Notification Sent', description: `The student ${studentUsername} has been notified via chat.` });
-    } catch (chatError) { console.error('Error sending chat notification:', chatError); toast({ title: 'Notification Error', description: 'Could not send chat notification to the student.', variant: 'destructive' }); }
+    // Chat notifications disabled
   };
 
   const updateApplicationRequestStatus = async (studentId: string, newStatus: 'approved_to_apply' | 'denied_to_apply') => {
@@ -292,7 +242,7 @@ export default function ManageGigPage() {
         await updateDoc(gigDocRef, { applicationRequests: updatedRequests });
         setGig(prev => prev ? { ...prev, applicationRequests: updatedRequests } : null);
         toast({ title: `Request ${newStatus === 'approved_to_apply' ? 'Approved' : 'Denied'}`, description: `Student can ${newStatus === 'approved_to_apply' ? 'now apply' : 'no longer apply'}.` });
-        await sendApplicationStatusNotification(request.studentUsername, request.studentId, gig.title, newStatus === 'approved_to_apply' ? 'request approved' : 'request denied');
+        // Chat notification removed
     } catch (err: any) {
         console.error("Error updating application request status:", err);
         toast({ title: "Update Failed", description: `Could not update request status: ${err.message}`, variant: "destructive" });
@@ -363,7 +313,7 @@ export default function ManageGigPage() {
 
 
            toast({ title: `Applicant ${newStatus === 'accepted' ? 'Accepted' : 'Rejected'}`, description: `Status updated successfully.`});
-           await sendApplicationStatusNotification(applicant.studentUsername, applicant.studentId, gig.title, newStatus);
+           // Chat notification removed
        } catch (err: any) { console.error("Error updating applicant status:", err); toast({ title: "Update Failed", description: `Could not update status: ${err.message}`, variant: "destructive" });
        } finally { setUpdatingApplicantId(null); }
    };
@@ -525,7 +475,7 @@ export default function ManageGigPage() {
                   <div className="flex items-start gap-3 flex-grow"> <UserCircle className="h-10 w-10 text-muted-foreground mt-1 shrink-0" /> <div className="flex-grow"> <p className="font-semibold text-lg">{selectedStudent.studentUsername}</p> <p className="text-xs text-muted-foreground mb-1">Accepted application {formatDate(selectedStudent.appliedAt)}</p> </div> </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
                      {selectedStudent.studentId ? ( <Button size="sm" variant="outline" asChild><Link href={`/profile/${selectedStudent.studentId}`} target="_blank">View Profile</Link></Button> ) : ( <Button size="sm" variant="outline" disabled>View Profile (ID Missing)</Button> )}
-                     <Button size="sm" asChild><Link href={`/chat?userId=${selectedStudent.studentId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat with {selectedStudent.studentUsername}</Link></Button>
+                     {/* Chat button removed */}
                   </div>
               </div>
               {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
@@ -658,7 +608,7 @@ export default function ManageGigPage() {
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center shrink-0 pt-2 sm:pt-0">
                            {applicant.studentId ? (<Button size="sm" variant="outline" asChild><Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link></Button>) : (<Button size="sm" variant="outline" disabled>View Profile</Button>)}
-                           <Button size="sm" asChild><Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}><MessageSquare className="mr-1 h-4 w-4" />Chat</Link></Button>
+                           {/* Chat button removed */}
                            {applicant.status === 'pending' && (
                             <>
                                 <Button size="sm" variant="default" onClick={() => updateApplicantStatus(applicant.studentId, 'accepted')} disabled={updatingApplicantId === applicant.studentId}>
