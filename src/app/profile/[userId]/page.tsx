@@ -226,10 +226,8 @@ export default function PublicProfilePage() {
         toast({ title: "Login Required", description: "Please log in to share profiles.", variant: "destructive" });
         return;
     }
-    // Chat sharing disabled
-    // const shareUrl = `/chat?shareUserId=${profile.uid}&shareUsername=${encodeURIComponent(profile.username || 'User')}&shareUserProfilePictureUrl=${encodeURIComponent(profile.profilePictureUrl || '')}&shareUserRole=${profile.role || 'unknown'}`;
-    // router.push(shareUrl);
-    toast({ title: "Feature Disabled", description: "Chat sharing is temporarily disabled.", variant: "default"});
+    const shareUrl = `/chat?shareUserId=${profile.uid}&shareUsername=${encodeURIComponent(profile.username || 'User')}&shareUserProfilePictureUrl=${encodeURIComponent(profile.profilePictureUrl || '')}&shareUserRole=${profile.role || 'unknown'}`;
+    router.push(shareUrl);
   };
 
 
@@ -438,7 +436,13 @@ export default function PublicProfilePage() {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
-                                     {/* Share Profile to Chat item removed */}
+                                    <DropdownMenuItem 
+                                      onSelect={handleShareProfileToChat} 
+                                      className="cursor-pointer"
+                                    >
+                                        <Share2 className="mr-2 h-4 w-4" />
+                                        <span>Share Profile to Chat</span>
+                                    </DropdownMenuItem>
                                     <DropdownMenuItem 
                                       onSelect={() => { setShowReportDialog(true); }} 
                                       className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
@@ -471,7 +475,11 @@ export default function PublicProfilePage() {
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
-                                {/* Contact button removed */}
+                                <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
+                                    <Link href={`/chat?userId=${profile.uid}`}>
+                                        <MessageSquare className="mr-1 h-4 w-4"/>Chat
+                                    </Link>
+                                </Button>
                             </>
                         )}
                     </div>

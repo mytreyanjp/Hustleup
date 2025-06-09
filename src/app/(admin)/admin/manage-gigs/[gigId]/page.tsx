@@ -485,6 +485,11 @@ export default function AdminGigDetailPage() {
             <CardTitle className="text-lg sm:text-xl flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2"><UserCircle className="h-5 w-5" /> Client Information</div>
                 <div className="flex gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/chat?userId=${clientProfile.uid}&gigId=${gig.id}`}>
+                        <MessageSquare className="mr-1 h-3 w-3"/> Chat
+                      </Link>
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => handleOpenWarnDialog(clientProfile.uid, clientProfile.username || 'Client', 'client')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
                 </div>
             </CardTitle>
@@ -512,6 +517,11 @@ export default function AdminGigDetailPage() {
             <CardTitle className="text-lg sm:text-xl flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2"><Briefcase className="h-5 w-5" /> Selected Student</div>
                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/chat?userId=${selectedStudentProfile.uid}&gigId=${gig.id}`}>
+                        <MessageSquare className="mr-1 h-3 w-3"/> Chat
+                      </Link>
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => handleOpenWarnDialog(selectedStudentProfile.uid, selectedStudentProfile.username || 'Student', 'student')}><ShieldAlert className="mr-1 h-3 w-3"/> Warn</Button>
                 </div>
             </CardTitle>
@@ -559,6 +569,11 @@ export default function AdminGigDetailPage() {
                     <TableCell><Badge variant={getStatusBadgeVariant(applicant.status || 'pending')} className="capitalize text-xs">{applicant.status || 'pending'}</Badge></TableCell>
                     <TableCell className="text-right">
                        <div className="flex flex-col sm:flex-row gap-1.5 justify-end items-center">
+                         <Button variant="outline" size="xs" asChild className="text-xs">
+                           <Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}>
+                             <MessageSquare className="mr-1 h-3 w-3"/> Chat
+                           </Link>
+                         </Button>
                          <Button variant="outline" size="xs" asChild className="text-xs">
                            <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
                          </Button>
