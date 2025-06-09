@@ -58,11 +58,9 @@ export default function FooterNav() {
   let generatedNavItems: Omit<NavItemProps, 'isActive'>[] = [];
 
   if (role === 'admin') {
-    generatedNavItems.push({ href: "/admin/dashboard", icon: ShieldCheck, label: "Admin" });
+    // The /admin/dashboard link is handled by the generic getDashboardUrl() push below
     generatedNavItems.push({ href: "/admin/manage-admins", icon: Users, label: "Users" });
-    // Admins might want to see gigs too for moderation, or just explore:
     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore Gigs" });
-
   } else {
     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
     if (role === 'student') {
@@ -77,7 +75,7 @@ export default function FooterNav() {
   
   const navItems = generatedNavItems.map(item => ({
       ...item,
-      isActive: pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/'), // Broader active check for nested routes
+      isActive: pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/'),
       show: true, 
   }));
 
