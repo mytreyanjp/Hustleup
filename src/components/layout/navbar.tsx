@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -385,6 +385,7 @@ export default function Navbar() {
                         {role === 'admin' && (
                             <>
                                 <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link href="/admin/users"><Users className="mr-2 h-4 w-4" /><span>Browse Users</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
                             </>
                         )}
@@ -504,6 +505,7 @@ export default function Navbar() {
                       {role === 'admin' && (
                         <>
                             <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/admin/users"><Users className="mr-2 h-4 w-4" /><span>Browse Users</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
                         </>
                       )}
