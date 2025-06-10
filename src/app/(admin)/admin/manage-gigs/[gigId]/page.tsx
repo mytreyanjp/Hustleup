@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, Timestamp, updateDoc, deleteDoc, collection, addDoc, serverTimestamp, query, where, getDocs, arrayUnion, arrayRemove } from 'firebase/firestore'; // Added getDoc
+import { doc, getDoc, Timestamp, updateDoc, deleteDoc, collection, addDoc, serverTimestamp, query, where, getDocs, arrayUnion, arrayRemove, orderBy } from 'firebase/firestore'; // Added orderBy
 import { db } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
