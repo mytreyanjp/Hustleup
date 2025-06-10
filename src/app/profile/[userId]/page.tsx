@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore'; // Added writeBatch, deleteDoc
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import type { NotificationType } from '@/types/notifications';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 
 interface StudentPost {
@@ -662,6 +670,13 @@ export default function PublicProfilePage() {
                                       </Link>
                                   </Button>
                                 )}
+                                {viewerRole !== 'admin' && profile.role === 'admin' && !profile.isBanned && (
+                                  <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
+                                    <Link href={`/chat?userId=${profile.uid}`}>
+                                      <MessageSquare className="mr-1 h-4 w-4"/>Chat with Admin
+                                    </Link>
+                                  </Button>
+                                )}
                             </>
                         )}
                     </div>
@@ -1032,3 +1047,4 @@ export default function PublicProfilePage() {
     </div>
   );
 }
+
