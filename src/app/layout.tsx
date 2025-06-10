@@ -10,12 +10,16 @@ import { Toaster } from "@/components/ui/toaster"
 import { FirebaseProvider, useFirebase } from '@/context/firebase-context'; 
 import Navbar from '@/components/layout/navbar';
 import FooterNav from '@/components/layout/footer-nav';
-import { Loader2, Ban, MessageSquare } from 'lucide-react'; // Added Ban, MessageSquare
+import { Loader2, Ban, MessageSquare, LogOut as LogOutIcon } from 'lucide-react'; // Added LogOutIcon
 import React, { useRef, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Button } from '@/components/ui/button'; // Added Button
-import Link from 'next/link'; // Added Link
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { signOut } from 'firebase/auth'; // Import signOut
+import { auth } from '@/config/firebase'; // Import auth instance
+import { useToast } from '@/hooks/use-toast'; // Import useToast for sign-out messages (optional)
+
 
 const inter = Inter({
   variable: '--font-inter',
@@ -26,6 +30,7 @@ const inter = Inter({
 function AppBody({ children }: { children: React.ReactNode }) {
   const { user, userProfile, loading: firebaseContextLoading, firebaseActuallyInitialized, initializationError, role } = useFirebase(); 
   const [isClientHydrated, setIsClientHydrated] = React.useState(false);
+  const { toast } = useToast(); // Initialize toast
 
   const router = useRouter(); 
   const pathname = usePathname(); 
@@ -140,6 +145,22 @@ function AppBody({ children }: { children: React.ReactNode }) {
     isIntentionalHorizontalSwipeRef.current = false;
   };
 
+  const handleSignOut = async () => {
+    try {
+      if (auth) {
+        await signOut(auth);
+        toast({ title: "Logged Out", description: "You have been successfully logged out." });
+        router.push('/'); 
+      } else {
+        console.error("Firebase auth not available for sign out.");
+        toast({ title: "Error", description: "Could not log out at this moment.", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast({ title: "Sign Out Error", description: "An error occurred while logging out.", variant: "destructive" });
+    }
+  };
+
   if (!isClientHydrated || firebaseContextLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
@@ -185,7 +206,6 @@ function AppBody({ children }: { children: React.ReactNode }) {
 
   if (userProfile && userProfile.isBanned) {
     if (pathname === '/support') {
-      // Banned users can access the support page
       return (
         <div className={cn("relative flex min-h-screen flex-col", roleThemeClass)}>
           <Navbar />
@@ -201,7 +221,6 @@ function AppBody({ children }: { children: React.ReactNode }) {
         </div>
       );
     }
-    // For all other pages, show the "Account Suspended" message
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center p-6">
         <Ban className="h-20 w-20 text-destructive mb-6" />
@@ -212,11 +231,16 @@ function AppBody({ children }: { children: React.ReactNode }) {
         <p className="text-md text-muted-foreground mb-8">
           If you believe this is an error or wish to appeal, please contact our support team.
         </p>
-        <Button asChild size="lg">
-          <Link href="/support">
-            <MessageSquare className="mr-2 h-5 w-5" /> Contact Support
-          </Link>
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-4">
+            <Button asChild size="lg">
+            <Link href="/support">
+                <MessageSquare className="mr-2 h-5 w-5" /> Contact Support
+            </Link>
+            </Button>
+            <Button variant="outline" size="lg" onClick={handleSignOut}>
+                <LogOutIcon className="mr-2 h-5 w-5" /> Log Out
+            </Button>
+        </div>
       </div>
     );
   }
