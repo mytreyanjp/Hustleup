@@ -10,10 +10,12 @@ import { Toaster } from "@/components/ui/toaster"
 import { FirebaseProvider, useFirebase } from '@/context/firebase-context'; 
 import Navbar from '@/components/layout/navbar';
 import FooterNav from '@/components/layout/footer-nav';
-import { Loader2 } from 'lucide-react';
-import React, { useRef, useMemo } from 'react'; // Added useRef, useMemo
-import { useRouter, usePathname } from 'next/navigation'; // Added
-import { useIsMobile } from '@/hooks/use-mobile'; // Added
+import { Loader2, Ban, MessageSquare } from 'lucide-react'; // Added Ban, MessageSquare
+import React, { useRef, useMemo } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Button } from '@/components/ui/button'; // Added Button
+import Link from 'next/link'; // Added Link
 
 const inter = Inter({
   variable: '--font-inter',
@@ -22,20 +24,20 @@ const inter = Inter({
 
 
 function AppBody({ children }: { children: React.ReactNode }) {
-  const { user, role, loading: firebaseContextLoading, firebaseActuallyInitialized, initializationError } = useFirebase(); 
+  const { user, userProfile, loading: firebaseContextLoading, firebaseActuallyInitialized, initializationError, role } = useFirebase(); 
   const [isClientHydrated, setIsClientHydrated] = React.useState(false);
 
-  const router = useRouter(); // Added
-  const pathname = usePathname(); // Added
-  const isMobile = useIsMobile(); // Added
+  const router = useRouter(); 
+  const pathname = usePathname(); 
+  const isMobile = useIsMobile(); 
 
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
   const touchCurrentXRef = useRef<number>(0);
   const touchCurrentYRef = useRef<number>(0);
   const isIntentionalHorizontalSwipeRef = useRef<boolean>(false);
-  const SWIPE_THRESHOLD = 75; // Min pixels for a swipe to navigate
-  const INITIAL_DRAG_THRESHOLD = 10; // Min pixels to determine swipe intent
+  const SWIPE_THRESHOLD = 75; 
+  const INITIAL_DRAG_THRESHOLD = 10; 
 
   React.useEffect(() => {
     setIsClientHydrated(true);
@@ -50,9 +52,9 @@ function AppBody({ children }: { children: React.ReactNode }) {
 
   const orderedFooterPaths = useMemo(() => {
     const paths: string[] = [];
-    if (!user || !isMobile) return []; // Swipe nav only for logged-in mobile users
+    if (!user || !isMobile) return []; 
 
-    paths.push("/gigs/browse"); // Explore
+    paths.push("/gigs/browse"); 
     if (role === 'student') {
       paths.push("/student/works");
     } else if (role === 'client') {
@@ -92,7 +94,6 @@ function AppBody({ children }: { children: React.ReactNode }) {
         if (Math.abs(deltaX) > Math.abs(deltaY)) {
           isIntentionalHorizontalSwipeRef.current = true;
         } else {
-          // It's a vertical scroll, reset start points to ignore this gesture for horizontal nav
           touchStartXRef.current = 0;
           touchStartYRef.current = 0;
         }
@@ -100,13 +101,12 @@ function AppBody({ children }: { children: React.ReactNode }) {
     }
     
     if (isIntentionalHorizontalSwipeRef.current && e.cancelable) {
-      e.preventDefault(); // Prevent vertical scroll if horizontal swipe is intended
+      e.preventDefault(); 
     }
   };
 
   const handleTouchEnd = () => {
     if (!isIntentionalHorizontalSwipeRef.current || !touchStartXRef.current) {
-      // Reset if not an intentional swipe or no start point
       touchStartXRef.current = 0; touchStartYRef.current = 0;
       isIntentionalHorizontalSwipeRef.current = false;
       return;
@@ -118,22 +118,14 @@ function AppBody({ children }: { children: React.ReactNode }) {
       if (orderedFooterPaths.length === 0) return;
 
       let currentIndex = orderedFooterPaths.findIndex(p => pathname === p);
-      // If not exact match, check for parent path match (e.g. /gigs/browse from /gigs/browse/details)
       if (currentIndex === -1) {
           currentIndex = orderedFooterPaths.findIndex(p => pathname.startsWith(p + '/') && p !== '/');
       }
-       // If still -1, it means current page isn't a primary footer nav item, find closest one.
-      if (currentIndex === -1) {
-        // This part is tricky. For simplicity, we'll only navigate if on a footer path.
-        // console.warn("Swipe navigation: Current path not directly in footer nav items.");
-      }
-
-
       if (currentIndex !== -1) {
           let newIndex = currentIndex;
-          if (deltaX > 0) { // Swipe Right (to previous item)
+          if (deltaX > 0) { 
             newIndex = Math.max(0, currentIndex - 1);
-          } else { // Swipe Left (to next item)
+          } else { 
             newIndex = Math.min(orderedFooterPaths.length - 1, currentIndex + 1);
           }
     
@@ -148,8 +140,6 @@ function AppBody({ children }: { children: React.ReactNode }) {
     isIntentionalHorizontalSwipeRef.current = false;
   };
 
-
-  // Wait for client hydration and Firebase context to be definitively loaded or errored
   if (!isClientHydrated || firebaseContextLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
@@ -193,9 +183,44 @@ function AppBody({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (userProfile && userProfile.isBanned) {
+    if (pathname === '/support') {
+      // Banned users can access the support page
+      return (
+        <div className={cn("relative flex min-h-screen flex-col", roleThemeClass)}>
+          <Navbar />
+          <main 
+            className="flex-1 container mx-auto px-4 py-8 md:pb-8 pb-20"
+            onTouchStart={isMobile ? handleTouchStart : undefined}
+            onTouchMove={isMobile ? handleTouchMove : undefined}
+            onTouchEnd={isMobile ? handleTouchEnd : undefined}
+          >
+            {children}
+          </main>
+          <FooterNav />
+        </div>
+      );
+    }
+    // For all other pages, show the "Account Suspended" message
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center p-6">
+        <Ban className="h-20 w-20 text-destructive mb-6" />
+        <h1 className="text-3xl font-bold text-destructive mb-3">Account Suspended</h1>
+        <p className="text-lg text-muted-foreground mb-8 max-w-md">
+          Your account has been suspended due to a violation of our community guidelines or terms of service.
+        </p>
+        <p className="text-md text-muted-foreground mb-8">
+          If you believe this is an error or wish to appeal, please contact our support team.
+        </p>
+        <Button asChild size="lg">
+          <Link href="/support">
+            <MessageSquare className="mr-2 h-5 w-5" /> Contact Support
+          </Link>
+        </Button>
+      </div>
+    );
+  }
 
-  // If we've reached here, Firebase is initialized and context is no longer loading.
-  // It's now safe to render the main layout.
   return (
     <div className={cn("relative flex min-h-screen flex-col", roleThemeClass)}>
       <Navbar />
@@ -240,5 +265,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-    
