@@ -38,7 +38,7 @@ interface SuggestedGig {
 }
 
 export default function Navbar() {
-  const { user, userProfile, loading, role, totalUnreadChats, clientUnreadNotificationCount, generalUnreadNotificationsCount } = useFirebase(); // Added generalUnreadNotificationsCount
+  const { user, userProfile, loading, role, totalUnreadChats, clientUnreadNotificationCount, generalUnreadNotificationsCount } = useFirebase();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [isClient, setIsClient] = useState(false);
@@ -379,6 +379,14 @@ export default function Navbar() {
                             </>
                         )}
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild><Link href="/notifications">
+                            <Bell className="mr-2 h-4 w-4" /> Notifications
+                            {generalUnreadNotificationsCount > 0 && (
+                                <span className="ml-auto text-xs bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5">
+                                {generalUnreadNotificationsCount > 9 ? '9+' : generalUnreadNotificationsCount}
+                                </span>
+                            )}
+                        </Link></DropdownMenuItem>
                         <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
                         <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -491,6 +499,14 @@ export default function Navbar() {
                         </>
                       )}
                       <DropdownMenuSeparator />
+                       <DropdownMenuItem asChild><Link href="/notifications">
+                            <Bell className="mr-2 h-4 w-4" /> Notifications
+                            {generalUnreadNotificationsCount > 0 && (
+                                <span className="ml-auto text-xs bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5">
+                                {generalUnreadNotificationsCount > 9 ? '9+' : generalUnreadNotificationsCount}
+                                </span>
+                            )}
+                        </Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
                       <DropdownMenuSeparator />
