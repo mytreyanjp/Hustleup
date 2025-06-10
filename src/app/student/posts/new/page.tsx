@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,19 +16,19 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UploadCloud, Image as ImageIcon, ArrowLeft } from 'lucide-react';
-// import { Progress } from '@/components/ui/progress'; // Media upload disabled
+import { Loader2, UploadCloud, Image as ImageIcon, ArrowLeft, X } from 'lucide-react';
+import NextImage from 'next/image';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 const postSchema = z.object({
   caption: z.string().max(1000, { message: 'Caption cannot exceed 1000 characters' }).optional(),
-  // Image field is still in schema, but UI for it will be disabled.
-  // This means the form might not be submittable as is.
   image: z.instanceof(File, { message: 'An image is required.' })
     .refine(file => file.size <= 5 * 1024 * 1024, `Max image size is 5MB.`)
     .refine(
       file => ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type),
       "Only .jpg, .jpeg, .png, .webp and .gif formats are supported."
-    ).optional(), // Making it optional since UI is disabled for now
+    ),
 });
 
 type PostFormValues = z.infer<typeof postSchema>;
@@ -38,9 +38,9 @@ export default function NewPostPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
-  // const [imagePreview, setImagePreview] = useState<string | null>(null); // Media upload disabled
-  // const [uploadProgress, setUploadProgress] = useState<number | null>(null); // Media upload disabled
-  // const fileInputRef = useRef<HTMLInputElement>(null); // Media upload disabled
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postSchema),
@@ -59,40 +59,78 @@ export default function NewPostPage() {
     }
   }, [authLoading, user, role, router, toast]);
 
-  // handleImageChange removed as media upload is disabled
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      form.setValue('image', file, { shouldValidate: true });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      form.setValue('image', undefined);
+      setImagePreview(null);
+    }
+  };
+
+  const clearImagePreview = () => {
+    setImagePreview(null);
+    form.setValue('image', undefined);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Reset file input
+    }
+  };
 
   const onSubmit = async (data: PostFormValues) => {
-    if (!user || !userProfile || role !== 'student') {
-      toast({ title: "Cannot Post", description: "User not authorized or profile missing.", variant: "destructive" });
+    if (!user || !userProfile || role !== 'student' || !data.image) {
+      toast({ title: "Cannot Post", description: "User not authorized, profile missing, or image not selected.", variant: "destructive" });
       return;
     }
-    // Image upload is disabled, so we can't proceed if an image is required by schema.
-    // For now, we'll just show a toast if an image is expected but not provided via UI.
-    if (!data.image && postSchema.shape.image.isOptional() === false) {
-        toast({ title: "Image Required", description: "An image is required to create a post. Media uploads are currently disabled.", variant: "destructive" });
-        return;
-    }
-    if (!storage && data.image) { // If image was somehow set (e.g. schema changed)
+    if (!storage) {
         toast({ title: "Storage Error", description: "Firebase Storage is not configured.", variant: "destructive" });
         return;
     }
 
     setIsSubmittingPost(true);
-    // setUploadProgress(0); // Media upload disabled
+    setUploadProgress(0);
 
     try {
-      // Image upload logic removed as media upload is disabled
-      // If we were to allow posts without images, the logic would simplify significantly here.
-      // For now, this function will likely not be fully executed due to image requirement.
+      const imageFile = data.image;
+      const storagePath = `student_posts/${user.uid}/${Date.now()}_${imageFile.name}`;
+      const imageRef = storageRefFn(storage, storagePath);
+      const uploadTask = uploadBytesResumable(imageRef, imageFile);
 
-      // const imageUrl = "DISABLED"; // Placeholder if we were to proceed without image
+      let imageUrl = "";
+
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setUploadProgress(progress);
+          },
+          (error) => {
+            console.error('Upload error:', error);
+            reject(error);
+          },
+          async () => {
+            imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve();
+          }
+        );
+      });
+      
+      if (!imageUrl) {
+        throw new Error("Image URL not obtained after upload.");
+      }
 
       const postsCollectionRef = collection(db, 'student_posts');
       await addDoc(postsCollectionRef, {
         studentId: user.uid,
         studentUsername: userProfile.username || user.email?.split('@')[0] || 'Student',
         studentProfilePictureUrl: userProfile.profilePictureUrl || '',
-        // imageUrl: imageUrl, // Would be undefined or a placeholder
+        imageUrl: imageUrl,
         caption: data.caption || '',
         createdAt: serverTimestamp(),
         likes: [],
@@ -100,7 +138,7 @@ export default function NewPostPage() {
       });
 
       toast({
-        title: 'Post Created (Text Only)!', // Modified message
+        title: 'Post Created Successfully!',
         description: 'Your post is now live on your profile.',
       });
       router.push(`/profile/${user.uid}`);
@@ -116,7 +154,7 @@ export default function NewPostPage() {
          });
     } finally {
       setIsSubmittingPost(false);
-      // setUploadProgress(null); // Media upload disabled
+      setUploadProgress(null);
     }
   };
 
@@ -136,7 +174,7 @@ export default function NewPostPage() {
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-2xl">Create a New Post</CardTitle>
-          <CardDescription>Share an image and a caption with your followers. (Image uploads currently disabled)</CardDescription>
+          <CardDescription>Share an image and a caption with your followers.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -146,20 +184,59 @@ export default function NewPostPage() {
                 name="image"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Image (Uploads Disabled)</FormLabel>
+                    <FormLabel>Image (Max 5MB)</FormLabel>
                     <FormControl>
                       <div>
-                        {/* File input button and preview removed as media upload is disabled */}
-                         <p className="text-sm text-muted-foreground p-4 border rounded-md bg-muted/50 text-center">
-                           <ImageIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                           Image uploads are temporarily disabled.
-                         </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "w-full flex items-center justify-center gap-2 h-auto py-6 border-dashed",
+                            imagePreview && "hidden" 
+                          )}
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isSubmittingPost || !!uploadProgress}
+                        >
+                          <UploadCloud className="h-6 w-6 text-muted-foreground" />
+                          <span className="text-muted-foreground">Click to upload image</span>
+                        </Button>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          className="hidden"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          onChange={handleImageChange}
+                          disabled={isSubmittingPost || !!uploadProgress}
+                        />
+                        {imagePreview && (
+                          <div className="mt-2 relative aspect-video w-full max-w-md mx-auto rounded-md overflow-hidden border">
+                            <NextImage src={imagePreview} alt="Selected image preview" layout="fill" objectFit="contain" />
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-2 right-2 h-7 w-7 opacity-80 hover:opacity-100"
+                                onClick={clearImagePreview}
+                                disabled={isSubmittingPost || !!uploadProgress}
+                                title="Remove image"
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              
+              {uploadProgress !== null && (
+                <div className="space-y-1">
+                    <Progress value={uploadProgress} className="w-full h-2" />
+                    <p className="text-xs text-muted-foreground text-center">{Math.round(uploadProgress)}% uploaded</p>
+                </div>
+              )}
 
               <FormField
                 control={form.control}
@@ -183,10 +260,10 @@ export default function NewPostPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={isSubmittingPost /* || !form.formState.isValid - Image field might make it invalid */}
+                disabled={isSubmittingPost || !!uploadProgress || !form.formState.isValid}
               >
                 {isSubmittingPost && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Post (Text Only)
+                {isSubmittingPost ? (uploadProgress !== null && uploadProgress < 100 ? 'Uploading...' : 'Creating Post...') : 'Create Post'}
               </Button>
             </form>
           </Form>
@@ -195,3 +272,6 @@ export default function NewPostPage() {
     </div>
   );
 }
+
+
+    
