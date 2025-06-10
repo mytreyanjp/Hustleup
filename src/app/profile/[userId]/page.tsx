@@ -489,7 +489,7 @@ export default function PublicProfilePage() {
         status: 'pending_review',
       };
       await addDoc(collection(db, 'account_reports'), reportData);
-      toast({ title: "Report Submitted", description: "Thank you for helping keep HustleUp safe. Your report has been received." });
+      toast({ title: "Report Submitted", description: "Thank you for helping HustleUp safe. Your report has been received." });
       setShowReportDialog(false);
       setReportReason('');
       setReportDetails('');
@@ -820,7 +820,7 @@ export default function PublicProfilePage() {
                         {posts.map(post => (
                             <div key={post.id} className="aspect-square relative group overflow-hidden rounded-md">
                                 <Image
-                                    src={post.imageUrl}
+                                    src={post.imageUrl || '/placeholder-image.png'} // Fallback for safety
                                     alt={post.caption || `Post by ${profile.username || 'user'}`}
                                     layout="fill"
                                     objectFit="cover"
@@ -1048,3 +1048,5 @@ export default function PublicProfilePage() {
   );
 }
 
+
+    
