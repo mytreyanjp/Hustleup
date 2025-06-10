@@ -8,7 +8,7 @@ import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDo
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, BellOff, CheckCheck, ArrowLeft, Info, Briefcase, UserWarning, UserCheck, AlertTriangle, Send, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, BellOff, CheckCheck, ArrowLeft, Info, Briefcase, UserX, UserCheck, AlertTriangle, Send, CheckCircle, XCircle } from 'lucide-react'; // Changed UserWarning to UserX
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Notification, NotificationType } from '@/types/notifications';
@@ -18,8 +18,8 @@ import { cn } from '@/lib/utils';
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
     case 'gig_closed_due_to_ban': return <Briefcase className="h-5 w-5 text-destructive" />;
-    case 'student_removed_due_to_ban': return <UserWarning className="h-5 w-5 text-destructive" />;
-    case 'applicant_removed_due_to_ban': return <UserWarning className="h-5 w-5 text-destructive" />;
+    case 'student_removed_due_to_ban': return <UserX className="h-5 w-5 text-destructive" />; // Changed
+    case 'applicant_removed_due_to_ban': return <UserX className="h-5 w-5 text-destructive" />; // Changed
     case 'account_warning': return <AlertTriangle className="h-5 w-5 text-amber-500" />;
     case 'role_updated': return <UserCheck className="h-5 w-5 text-blue-500" />;
     case 'payment_released': return <Send className="h-5 w-5 text-green-500" />;

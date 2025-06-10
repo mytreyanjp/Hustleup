@@ -59,7 +59,7 @@ export default function GigDetailPage() {
   const params = useParams();
   const gigId = params.gigId as string;
   const router = useRouter();
-  const { user, userProfile, loading: authLoading, role, refreshUserProfile } = useFirebase();
+  const { user: viewerUser, userProfile: viewerUserProfile, loading: authLoading, role: viewerRole, refreshUserProfile } = useFirebase();
   const { toast } = useToast();
 
   const [gig, setGig] = useState<Gig | null>(null);
@@ -157,19 +157,19 @@ export default function GigDetailPage() {
   }, [fetchGigData]);
 
   useEffect(() => {
-    if (gig && user && role === 'student' && userProfile) {
-      setHasApplied(gig.applicants?.some(app => app.studentId === user.uid) || false);
-      setIsBookmarked(userProfile.bookmarkedGigIds?.includes(gig.id) || false);
+    if (gig && viewerUser && viewerRole === 'student' && viewerUserProfile) {
+      setHasApplied(gig.applicants?.some(app => app.studentId === viewerUser.uid) || false);
+      setIsBookmarked(viewerUserProfile.bookmarkedGigIds?.includes(gig.id) || false);
     } else {
       setHasApplied(false);
       setIsBookmarked(false);
     }
-  }, [gig, user, role, userProfile]);
+  }, [gig, viewerUser, viewerRole, viewerUserProfile]);
 
 
   const handleApply = async () => {
-    if (!user || !userProfile || role !== 'student' || !gig || hasApplied || gig.status !== 'open') return;
-    if (userProfile.isBanned) {
+    if (!viewerUser || !viewerUserProfile || viewerRole !== 'student' || !gig || hasApplied || gig.status !== 'open') return;
+    if (viewerUserProfile.isBanned) {
         toast({ title: "Account Suspended", description: "Your account is suspended, you cannot apply for gigs.", variant: "destructive", duration: 7000 });
         return;
     }
@@ -178,8 +178,8 @@ export default function GigDetailPage() {
     try {
       const gigDocRef = doc(db, 'gigs', gigId);
       const newApplicant = {
-        studentId: user.uid,
-        studentUsername: userProfile.username || user.email?.split('@')[0] || 'Unknown Student',
+        studentId: viewerUser.uid,
+        studentUsername: viewerUserProfile.username || viewerUser.email?.split('@')[0] || 'Unknown Student',
         message: applicationMessage.trim() || '',
         appliedAt: Timestamp.now(),
         status: 'pending',
@@ -210,8 +210,8 @@ export default function GigDetailPage() {
   };
   
   const handleToggleBookmark = async () => {
-    if (!user || !userProfile || role !== 'student' || !gig) return;
-    if (userProfile.isBanned) {
+    if (!viewerUser || !viewerUserProfile || viewerRole !== 'student' || !gig) return;
+    if (viewerUserProfile.isBanned) {
         toast({ title: "Account Suspended", description: "Your account is suspended. Bookmarking is disabled.", variant: "destructive", duration: 7000 });
         return;
     }
@@ -221,7 +221,7 @@ export default function GigDetailPage() {
     }
 
     setIsTogglingBookmark(true);
-    const userDocRef = doc(db, 'users', user.uid);
+    const userDocRef = doc(db, 'users', viewerUser.uid);
     try {
       if (isBookmarked) {
         await updateDoc(userDocRef, {
@@ -245,11 +245,11 @@ export default function GigDetailPage() {
   };
 
   const handleShareToChat = () => {
-    if (!user || !gig) {
+    if (!viewerUser || !gig) {
         toast({ title: "Login Required", description: "Please log in to share gigs.", variant: "destructive" });
         return;
     }
-    if (role !== 'admin') {
+    if (viewerRole !== 'admin') {
       toast({ title: "Feature Disabled", description: "Only admins can share gigs to chat.", variant: "default"});
       return;
     }
@@ -293,7 +293,7 @@ export default function GigDetailPage() {
   };
 
   const handleSubmitReport = async () => {
-    if (!currentSubmittingReportNumber || !gig || !user || !db) { 
+    if (!currentSubmittingReportNumber || !gig || !viewerUser || !db) { 
       toast({ title: "Error", description: "Cannot submit report. Missing context.", variant: "destructive" });
       return;
     }
@@ -301,7 +301,7 @@ export default function GigDetailPage() {
       toast({ title: "Description Required", description: "Please provide a description for your report.", variant: "destructive" });
       return;
     }
-    if (userProfile?.isBanned) {
+    if (viewerUserProfile?.isBanned) {
         toast({ title: "Account Suspended", description: "Your account is suspended, you cannot submit reports.", variant: "destructive", duration: 7000 });
         return;
     }
@@ -385,8 +385,8 @@ export default function GigDetailPage() {
      );
    }
 
-   const isClientOwner = user && role === 'client' && user.uid === gig.clientId;
-   const isSelectedStudent = user && role === 'student' && gig.selectedStudentId === user.uid;
+   const isClientOwner = viewerUser && viewerRole === 'client' && viewerUser.uid === gig.clientId;
+   const isSelectedStudent = viewerUser && viewerRole === 'student' && gig.selectedStudentId === viewerUser.uid;
    const isGigInProgressForCurrentUser = isSelectedStudent && gig.status === 'in-progress';
    const clientDisplayName = clientProfileDetails?.companyName || clientProfileDetails?.username || gig.clientUsername || 'Client';
 
@@ -402,7 +402,7 @@ export default function GigDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
             <CardTitle className="text-2xl md:text-3xl flex-grow">{gig.title}</CardTitle>
             <div className="flex items-center gap-2 shrink-0">
-                {user && role === 'admin' && ( // Share button for admin
+                {viewerUser && viewerRole === 'admin' && ( // Share button for admin
                     <Button 
                         variant="outline" 
                         size="icon" 
@@ -414,12 +414,12 @@ export default function GigDetailPage() {
                         <Share2 className="h-5 w-5" />
                     </Button>
                 )}
-                {role === 'student' && gig.status === 'open' && (
+                {viewerRole === 'student' && gig.status === 'open' && (
                     <Button 
                         variant="outline" 
                         size="icon" 
                         onClick={handleToggleBookmark} 
-                        disabled={isTogglingBookmark || authLoading || isLoadingGig || userProfile?.isBanned}
+                        disabled={isTogglingBookmark || authLoading || isLoadingGig || viewerUserProfile?.isBanned}
                         title={isBookmarked ? "Remove Bookmark" : "Bookmark Gig"}
                         className="shrink-0"
                     >
@@ -463,6 +463,15 @@ export default function GigDetailPage() {
               )}
             </div>
           )}
+          {viewerUser && viewerRole === 'student' && gig.clientId !== viewerUser.uid && gig.status === 'open' && clientProfileDetails && !clientProfileDetails.isBanned && clientProfileDetails.role === 'admin' && (
+            <div className="mt-3">
+              <Button asChild variant="outline" size="sm">
+                  <Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> Chat with Admin
+                  </Link>
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
            <div>
@@ -488,7 +497,7 @@ export default function GigDetailPage() {
               </div>
            </div>
         </CardContent>
-        {!isGigInProgressForCurrentUser && role !== 'admin' && (
+        {!isGigInProgressForCurrentUser && viewerRole !== 'admin' && (
             <CardFooter>
             {(() => {
                 if (isLoadingGig || authLoading) {
@@ -501,7 +510,7 @@ export default function GigDetailPage() {
                     return <p className="text-sm text-muted-foreground w-full text-center">This gig is currently {statusText} and not accepting new applications.</p>;
                 }
 
-                if (!user) { 
+                if (!viewerUser) { 
                     return (
                     <Button asChild className="w-full sm:w-auto">
                         <Link href={`/auth/login?redirect=/gigs/${gigId}`}>Login or Sign Up to Apply</Link>
@@ -509,15 +518,15 @@ export default function GigDetailPage() {
                     );
                 }
                 
-                if (user && !role && !authLoading && userProfile === null) {
+                if (viewerUser && !viewerRole && !authLoading && viewerUserProfile === null) {
                     return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type...</p>;
                 }
 
-                if (userProfile?.isBanned) {
+                if (viewerUserProfile?.isBanned) {
                    return <p className="text-sm text-destructive font-medium text-center w-full flex items-center justify-center gap-2"><Ban className="h-4 w-4"/>Your account is suspended. You cannot apply for gigs.</p>;
                 }
 
-                if (role === 'student') {
+                if (viewerRole === 'student') {
                     if (hasApplied) {
                     return <p className="text-sm text-green-600 font-medium text-center w-full">✅ You have already applied to this gig.</p>;
                     } else {
@@ -529,11 +538,11 @@ export default function GigDetailPage() {
                             value={applicationMessage}
                             onChange={(e) => setApplicationMessage(e.target.value)}
                             rows={3}
-                            disabled={isApplying || userProfile?.isBanned}
+                            disabled={isApplying || viewerUserProfile?.isBanned}
                         />
                         <Button
                             onClick={handleApply}
-                            disabled={isApplying || hasApplied || userProfile?.isBanned}
+                            disabled={isApplying || hasApplied || viewerUserProfile?.isBanned}
                             className="w-full sm:w-auto"
                         >
                             {isApplying ? (
@@ -546,7 +555,7 @@ export default function GigDetailPage() {
                         </div>
                     );
                     }
-                } else if (role === 'client') {
+                } else if (viewerRole === 'client') {
                     if (isClientOwner) {
                     return (
                         <Button asChild variant="secondary" className="w-full sm:w-auto">
@@ -562,14 +571,14 @@ export default function GigDetailPage() {
             })()}
             </CardFooter>
         )}
-        {isClientOwner && role === 'client' && (
+        {isClientOwner && viewerRole === 'client' && (
              <CardFooter>
                  <Button asChild variant="secondary" className="w-full sm:w-auto">
                     <Link href={`/client/gigs/${gigId}/manage`}>Manage This Gig</Link>
                  </Button>
              </CardFooter>
         )}
-         {role === 'admin' && (
+         {viewerRole === 'admin' && (
              <CardFooter>
                  <Button asChild variant="secondary" className="w-full sm:w-auto">
                     <Link href={`/admin/manage-gigs/${gigId}`}>Admin: Manage This Gig</Link>
@@ -616,7 +625,7 @@ export default function GigDetailPage() {
                       </div>
                     )}
                     {(!report.studentSubmission || isRejected) && canSubmitThisReport && (
-                        <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(report.reportNumber)} disabled={userProfile?.isBanned}>
+                        <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(report.reportNumber)} disabled={viewerUserProfile?.isBanned}>
                             <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{report.reportNumber}
                         </Button>
                     )}
@@ -700,4 +709,3 @@ export default function GigDetailPage() {
   );
 }
 
-    
