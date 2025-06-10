@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -136,85 +136,107 @@ export default function PublicProfilePage() {
   const [isBanningProcessing, setIsBanningProcessing] = useState(false);
 
 
+  const fetchProfileData = useCallback(async () => {
+    if (!userId) {
+      setError("User ID is missing.");
+      setIsLoading(false); // Ensure loading is stopped if userId is missing early
+      return;
+    }
+    // No setIsLoading(true) here, it's set in the useEffect or before calling this
+    // setError(null); // Reset error at the beginning of a fetch attempt
+    // setClientOpenGigs([]); // Reset dependent data
+
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const docSnap = await getDoc(userDocRef);
+
+      if (docSnap.exists()) {
+         const fetchedProfile = {
+             uid: docSnap.id,
+             ...docSnap.data(),
+             averageRating: docSnap.data().averageRating || 0,
+             totalRatings: docSnap.data().totalRatings || 0,
+             following: docSnap.data().following || [],
+             followersCount: docSnap.data().followersCount || 0,
+             blockedUserIds: docSnap.data().blockedUserIds || [],
+             isBanned: docSnap.data().isBanned || false,
+          } as UserProfile;
+         setProfile(fetchedProfile);
+
+         if (viewerUserProfile) {
+           setIsFollowingThisUser(viewerUserProfile.following?.includes(fetchedProfile.uid) || false);
+           setIsBlockedByViewer(viewerUserProfile.blockedUserIds?.includes(fetchedProfile.uid) || false);
+         }
+
+
+         if (fetchedProfile.role === 'student') {
+            setIsLoadingPosts(true);
+            const postsQuery = query(
+              collection(db, 'student_posts'),
+              where('studentId', '==', userId),
+              orderBy('createdAt', 'desc')
+            );
+            const postsSnapshot = await getDocs(postsQuery);
+            const fetchedPosts = postsSnapshot.docs.map(postDoc => ({
+              id: postDoc.id,
+              ...postDoc.data()
+            })) as StudentPost[];
+            setPosts(fetchedPosts);
+            setIsLoadingPosts(false);
+         } else if (fetchedProfile.role === 'client') {
+            setIsLoadingClientGigs(true);
+            const clientGigsQuery = query(
+              collection(db, 'gigs'),
+              where('clientId', '==', userId),
+              where('status', '==', 'open'),
+              orderBy('createdAt', 'desc')
+            );
+            const gigsSnapshot = await getDocs(clientGigsQuery);
+            const fetchedClientGigs = gigsSnapshot.docs.map(gigDoc => ({
+              id: gigDoc.id,
+              ...gigDoc.data()
+            })) as ClientGigForProfile[];
+            setClientOpenGigs(fetchedClientGigs);
+            setIsLoadingClientGigs(false);
+         }
+      } else {
+        setError("Profile not found.");
+        setProfile(null);
+      }
+    } catch (err: any) {
+      console.error("Error fetching profile or related data:", err);
+      setError("Failed to load profile details. Please try again later. This could be due to a missing Firestore index.");
+      setProfile(null); // Ensure profile is null on error
+    }
+    // No setIsLoading(false) here; it should be handled by the calling useEffect
+  }, [userId, toast, viewerUserProfile]); // Added viewerUserProfile as a dependency
+
   useEffect(() => {
     if (!userId) {
       setError("User ID is missing.");
       setIsLoading(false);
       return;
     }
-
-    const fetchProfileData = async () => {
-      setIsLoading(true);
-      setError(null);
-      setClientOpenGigs([]);
-
-      try {
-        const userDocRef = doc(db, 'users', userId);
-        const docSnap = await getDoc(userDocRef);
-
-        if (docSnap.exists()) {
-           const fetchedProfile = {
-               uid: docSnap.id,
-               ...docSnap.data(),
-               averageRating: docSnap.data().averageRating || 0,
-               totalRatings: docSnap.data().totalRatings || 0,
-               following: docSnap.data().following || [],
-               followersCount: docSnap.data().followersCount || 0,
-               blockedUserIds: docSnap.data().blockedUserIds || [],
-               isBanned: docSnap.data().isBanned || false,
-            } as UserProfile;
-           setProfile(fetchedProfile);
-
-           if (viewerUserProfile) {
-             setIsFollowingThisUser(viewerUserProfile.following?.includes(fetchedProfile.uid) || false);
-             setIsBlockedByViewer(viewerUserProfile.blockedUserIds?.includes(fetchedProfile.uid) || false);
-           }
+    setIsLoading(true); // Set loading true at the start of the effect
+    setError(null);     // Reset error
+    setClientOpenGigs([]); // Reset client gigs
+    fetchProfileData().finally(() => setIsLoading(false)); // Call fetch and set loading false in finally
+  }, [userId, fetchProfileData]); // fetchProfileData is now stable due to useCallback
 
 
-           if (fetchedProfile.role === 'student') {
-              setIsLoadingPosts(true);
-              const postsQuery = query(
-                collection(db, 'student_posts'),
-                where('studentId', '==', userId),
-                orderBy('createdAt', 'desc')
-              );
-              const postsSnapshot = await getDocs(postsQuery);
-              const fetchedPosts = postsSnapshot.docs.map(postDoc => ({
-                id: postDoc.id,
-                ...postDoc.data()
-              })) as StudentPost[];
-              setPosts(fetchedPosts);
-              setIsLoadingPosts(false);
-           } else if (fetchedProfile.role === 'client') {
-              setIsLoadingClientGigs(true);
-              const clientGigsQuery = query(
-                collection(db, 'gigs'),
-                where('clientId', '==', userId),
-                where('status', '==', 'open'),
-                orderBy('createdAt', 'desc')
-              );
-              const gigsSnapshot = await getDocs(clientGigsQuery);
-              const fetchedClientGigs = gigsSnapshot.docs.map(gigDoc => ({
-                id: gigDoc.id,
-                ...gigDoc.data()
-              })) as ClientGigForProfile[];
-              setClientOpenGigs(fetchedClientGigs);
-              setIsLoadingClientGigs(false);
-           }
-        } else {
-          setError("Profile not found.");
-          setProfile(null);
-        }
-      } catch (err: any) {
-        console.error("Error fetching profile or related data:", err);
-        setError("Failed to load profile details. Please try again later. This could be due to a missing Firestore index.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  useEffect(() => {
+    // This effect only runs when profile or viewerUserProfile changes,
+    // to update following/blocked status if viewer logs in/out or profile data loads.
+    if (profile && viewerUserProfile) {
+      setIsFollowingThisUser(viewerUserProfile.following?.includes(profile.uid) || false);
+      setIsBlockedByViewer(viewerUserProfile.blockedUserIds?.includes(profile.uid) || false);
+    } else {
+      // If there's no viewer profile (e.g., logged out) or no target profile, reset these states
+      setIsFollowingThisUser(false);
+      setIsBlockedByViewer(false);
+    }
+  }, [profile, viewerUserProfile]);
 
-    fetchProfileData();
-  }, [userId, viewerUserProfile]);
 
    const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
      const nameToUse = profile?.role === 'client' ? companyName : username;
