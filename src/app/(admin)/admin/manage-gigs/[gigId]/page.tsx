@@ -503,7 +503,7 @@ export default function AdminGigDetailPage() {
           <Separator />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <h4 className="font-medium text-sm mb-1">Budget</h4>
+              <h4 className="font-medium text-sm mb-1">Payment</h4>
               <p className="text-sm text-muted-foreground flex items-center"><DollarSign className="mr-1.5 h-4 w-4" /> {gig.currency} {gig.budget.toFixed(2)}</p>
             </div>
             <div>

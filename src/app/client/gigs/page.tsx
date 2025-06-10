@@ -163,7 +163,7 @@ export default function ClientGigsPage() {
             Deadline: {formatDeadline(gig.deadline)}
          </div>
          <div className="text-xs sm:text-sm text-muted-foreground">
-            Budget: {gig.currency} {gig.budget.toFixed(2)}
+            Payment: {gig.currency} {gig.budget.toFixed(2)}
          </div>
          <div className="flex items-center text-xs sm:text-sm text-muted-foreground mt-2">
             <Users className="mr-1 h-4 w-4" /> {gig.applicantCount} Applicant(s)

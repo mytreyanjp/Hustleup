@@ -220,7 +220,7 @@ export default function AdminManageGigsPage() {
                 <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Client</TableHead>
                 <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Student</TableHead>
                 <TableHead className="min-w-[100px] text-xs sm:text-sm hidden md:table-cell">Status</TableHead>
-                <TableHead className="min-w-[100px] text-xs sm:text-sm hidden md:table-cell">Budget</TableHead>
+                <TableHead className="min-w-[100px] text-xs sm:text-sm hidden md:table-cell">Payment</TableHead>
                 <TableHead className="min-w-[150px] text-xs sm:text-sm hidden md:table-cell">Deadline</TableHead>
                 <TableHead className="min-w-[150px] text-xs sm:text-sm hidden md:table-cell">Created</TableHead>
                 <TableHead className="text-right min-w-[80px] sm:min-w-[100px] text-xs sm:text-sm">Actions</TableHead>

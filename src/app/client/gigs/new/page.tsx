@@ -27,7 +27,7 @@ import type { ProgressReport } from '@/app/student/works/page';
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
   description: z.string().min(20, { message: 'Description must be at least 20 characters' }).max(2000, { message: 'Description cannot exceed 2000 characters'}),
-  budget: z.coerce.number().positive({ message: 'Budget must be a positive number' }),
+  budget: z.coerce.number().positive({ message: 'Payment must be a positive number' }),
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
@@ -260,11 +260,11 @@ export default function NewGigPage() {
                    name="budget"
                    render={({ field }) => (
                      <FormItem>
-                       <FormLabel>Budget (INR)</FormLabel>
+                       <FormLabel>Gig Payment (INR)</FormLabel>
                        <FormControl>
                          <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} min="1" step="any" />
                        </FormControl>
-                       <FormDescription>Enter the total amount in INR.</FormDescription>
+                       <FormDescription>Enter the total payment amount in INR.</FormDescription>
                        <FormMessage />
                      </FormItem>
                    )}

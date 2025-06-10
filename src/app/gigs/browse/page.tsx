@@ -39,7 +39,7 @@ interface Gig {
 }
 
 const budgetRanges = [
-  { label: "Any Budget", value: "any" },
+  { label: "Any Payment", value: "any" },
   { label: "< ₹5,000", value: "0-5000" },
   { label: "₹5,000 - ₹20,000", value: "5000-20000" },
   { label: "₹20,000 - ₹50,000", value: "20000-50000" },
@@ -253,10 +253,10 @@ export default function BrowseGigsPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="budget-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Budget (INR)</label>
+                            <label htmlFor="budget-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Payment (INR)</label>
                             <Select value={selectedBudgetFilter} onValueChange={setSelectedBudgetFilter}>
                                 <SelectTrigger id="budget-filter-gigs" className="w-full">
-                                <SelectValue placeholder="Select budget range" />
+                                <SelectValue placeholder="Select payment range" />
                                 </SelectTrigger>
                                 <SelectContent>
                                 {budgetRanges.map(range => (
@@ -325,7 +325,7 @@ export default function BrowseGigsPage() {
                       </div>
                    </div>
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
-                       <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
+                       <DollarSign className="mr-1 h-4 w-4" /> Payment: {gig.currency} {gig.budget.toFixed(2)}
                    </div>
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                        <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}

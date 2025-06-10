@@ -495,7 +495,7 @@ export default function GigDetailPage() {
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="flex items-center text-sm">
                   <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span>
+                  <span className="text-muted-foreground mr-1">Payment:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span>
               </div>
               <div className="flex items-center text-sm">
                   <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />

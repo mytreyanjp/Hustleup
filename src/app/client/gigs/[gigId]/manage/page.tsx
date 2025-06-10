@@ -535,7 +535,7 @@ export default function ManageGigPage() {
               )}
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
-                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Ready to pay **INR {gig.budget.toFixed(2)}** for the completed work by {selectedStudent.studentUsername}? </p>
+                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Gig Payment: **INR {gig.budget.toFixed(2)}**. Ready to pay for the completed work by {selectedStudent.studentUsername}? </p>
                 <Button size="lg" onClick={() => initiatePayment(selectedStudent)} disabled={!isRazorpayLoaded || isLoading || payingStudent?.studentId === selectedStudent.studentId || !allReportsApproved} className="w-full sm:w-auto">
                    {(isLoading && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
                    Pay INR {gig.budget.toFixed(2)}

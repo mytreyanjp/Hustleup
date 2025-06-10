@@ -185,7 +185,7 @@ function SearchResultsPageContent() {
                     </div>
                   </div>
                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
-                    <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
+                    <DollarSign className="mr-1 h-4 w-4" /> Payment: {gig.currency} {gig.budget.toFixed(2)}
                   </div>
                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
                     <CalendarDays className="mr-1 h-4 w-4" /> Deadline: {formatDeadline(gig.deadline)}

@@ -820,7 +820,7 @@ export default function PublicProfilePage() {
                         {posts.map(post => (
                             <div key={post.id} className="aspect-square relative group overflow-hidden rounded-md">
                                 <Image
-                                    src={post.imageUrl || '/placeholder-image.png'} // Fallback for safety
+                                    src={post.imageUrl || null}
                                     alt={post.caption || `Post by ${profile.username || 'user'}`}
                                     layout="fill"
                                     objectFit="cover"
@@ -867,7 +867,7 @@ export default function PublicProfilePage() {
                                     <CardContent className="space-y-1 pb-3 p-3 sm:p-4 pt-0">
                                         <p className="text-xs sm:text-sm flex items-center gap-1">
                                             <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-                                            Budget: {gig.currency} {gig.budget.toFixed(2)}
+                                            Payment: {gig.currency} {gig.budget.toFixed(2)}
                                         </p>
                                         <p className="text-xs sm:text-sm flex items-center gap-1">
                                             <CalendarDays className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -1048,5 +1048,3 @@ export default function PublicProfilePage() {
   );
 }
 
-
-    
