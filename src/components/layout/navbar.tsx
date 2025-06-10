@@ -28,6 +28,7 @@ import type { Skill } from '@/lib/constants';
 import { useTheme } from 'next-themes';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 interface SuggestedGig {
@@ -235,6 +236,7 @@ export default function Navbar() {
   );
   
   return (
+    <TooltipProvider>
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
         
@@ -247,35 +249,67 @@ export default function Navbar() {
               <span className="font-bold inline-block">Hustle Up</span>
             </Link>
             {!isMobile && ( 
-            <nav className="items-center space-x-2 sm:space-x-4 hidden md:flex">
-              <Link href="/gigs/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                <Compass className="mr-1 h-4 w-4" />
-                {isClient && role === 'student' ? 'Explore' : 'Gigs'}
-              </Link>
+            <nav className="items-center space-x-1 sm:space-x-1 hidden md:flex"> {/* Reduced space-x */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/gigs/browse" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                    <Compass className="h-5 w-5" />
+                    <span className="sr-only">{isClient && role === 'student' ? 'Explore' : 'Gigs'}</span>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isClient && role === 'student' ? 'Explore' : 'Gigs'}</p>
+                </TooltipContent>
+              </Tooltip>
+
               {isClient && role === 'client' && (
                 <>
-                  <Link href="/hustlers/browse" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                    <HustlersIcon className="mr-1 h-4 w-4" /> Hustlers
-                  </Link>
-                  <Link href="/client/gigs" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                    <Briefcase className="mr-1 h-4 w-4" /> My Gigs
-                  </Link>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link href="/hustlers/browse" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                        <HustlersIcon className="h-5 w-5" />
+                         <span className="sr-only">Hustlers</span>
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Hustlers</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link href="/client/gigs" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                        <Briefcase className="h-5 w-5" />
+                        <span className="sr-only">My Gigs</span>
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>My Gigs</p></TooltipContent>
+                  </Tooltip>
                 </>
               )}
               {isClient && role === 'student' && (
-                <Link href="/student/works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                    <Briefcase className="mr-1 h-4 w-4" /> Your Works
-                </Link>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Link href="/student/works" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                            <Briefcase className="h-5 w-5" />
+                            <span className="sr-only">Your Works</span>
+                        </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Your Works</p></TooltipContent>
+                 </Tooltip>
               )}
               {isClient && (role === 'student' || role === 'client' || role === 'admin') && (
-                <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
-                  <MessageSquare className="mr-1 h-4 w-4" /> Chat
-                  {totalUnreadChats > 0 && (
-                    <span className="absolute -top-1 -right-2 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-destructive-foreground">
-                      {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
-                    </span>
-                  )}
-                </Link>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Link href="/chat" className="relative text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                          <MessageSquare className="h-5 w-5" />
+                          <span className="sr-only">Chat</span>
+                          {totalUnreadChats > 0 && (
+                            <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-destructive-foreground transform translate-x-1/3 -translate-y-1/3">
+                              {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                            </span>
+                          )}
+                        </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Chat</p></TooltipContent>
+                 </Tooltip>
               )}
             </nav>
             )}
@@ -430,14 +464,20 @@ export default function Navbar() {
             <>
               {SearchBarComponent}
               {isClient && user && (
-                <Link href="/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
-                    <Bell className="h-5 w-5" />
-                    {generalUnreadNotificationsCount > 0 && (
-                        <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
-                        {generalUnreadNotificationsCount > 9 ? '9+' : generalUnreadNotificationsCount}
-                        </span>
-                    )}
-                </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href="/notifications" className="relative text-muted-foreground hover:text-primary p-2 rounded-md" aria-label="Notifications">
+                        <Bell className="h-5 w-5" />
+                        <span className="sr-only">Notifications</span>
+                        {generalUnreadNotificationsCount > 0 && (
+                            <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground transform translate-x-1/3 -translate-y-1/3">
+                            {generalUnreadNotificationsCount > 9 ? '9+' : generalUnreadNotificationsCount}
+                            </span>
+                        )}
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Notifications</p></TooltipContent>
+                </Tooltip>
               )}
               {!isMobile && <ModeToggle />} 
               {isClient ? (
@@ -545,5 +585,7 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+    </TooltipProvider>
   );
 }
+
