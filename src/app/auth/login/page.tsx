@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { useFirebase } from '@/context/firebase-context'; // Import useFirebase
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
@@ -48,10 +49,12 @@ const GitHubIcon = () => (
 
 export default function LoginPage() {
   const router = useRouter();
+  const pathname = usePathname(); // Get current pathname
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { user, role, loading: authContextLoading } = useFirebase(); // Get user, role, and context loading state
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -60,6 +63,24 @@ export default function LoginPage() {
       password: '',
     },
   });
+
+  useEffect(() => {
+    // Redirect if user is already logged in and has a role
+    if (!authContextLoading && user && role) {
+      if (!isLoading && !isOAuthLoading) { // Ensure not in the middle of a login attempt
+        const targetPath =
+          role === 'student' ? '/student/profile' :
+          role === 'client' ? '/client/dashboard' :
+          role === 'admin' ? '/admin/dashboard' :
+          null;
+
+        if (targetPath && pathname !== targetPath) {
+          router.replace(targetPath);
+        }
+      }
+    }
+  }, [user, role, authContextLoading, isLoading, isOAuthLoading, router, pathname]);
+
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
@@ -70,7 +91,7 @@ export default function LoginPage() {
         title: 'Login Successful',
         description: 'Welcome back!',
       });
-       router.push('/');
+      // No router.push('/') here. Let the useEffect handle redirection based on context.
     } catch (error: any) {
       console.error('Login error:', error);
       let errorMessage = 'An unexpected error occurred during login.';
@@ -99,7 +120,8 @@ export default function LoginPage() {
         description: errorMessage,
         variant: 'destructive',
       });
-       setIsLoading(false);
+    } finally {
+       setIsLoading(false); // Set loading to false here so useEffect can proceed
     }
   };
 
@@ -127,16 +149,15 @@ export default function LoginPage() {
           title: 'Login Successful',
           description: `Welcome back, ${user.displayName || user.email}!`,
         });
-        router.push('/'); 
+        // No router.push('/') here. Let the useEffect handle redirection.
       } else {
         toast({
           title: `Welcome ${user.displayName || user.email}!`,
           description: 'Please complete your profile to continue.',
         });
-        router.push('/auth/complete-profile');
+        router.push('/auth/complete-profile'); // This redirection is still needed for new OAuth users
       }
     } catch (error: any) {
-      // Removed explicit console.error here
       let errorMessage = `${providerName} Sign-In failed. Please try again.`;
       if (error.code) {
         switch (error.code) {
@@ -180,7 +201,7 @@ export default function LoginPage() {
         duration: 10000, 
       });
     } finally {
-      setIsOAuthLoading(false);
+      setIsOAuthLoading(false); // Set loading to false here so useEffect can proceed
     }
   };
 
@@ -238,7 +259,7 @@ export default function LoginPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isLoading || isOAuthLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || isOAuthLoading || authContextLoading}>
                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                  Log In
               </Button>
@@ -261,7 +282,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthSignIn(googleAuthProvider, "Google")}
-              disabled={isLoading || isOAuthLoading}
+              disabled={isLoading || isOAuthLoading || authContextLoading}
             >
               {isOAuthLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -275,7 +296,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthSignIn(appleAuthProvider, "Apple")}
-              disabled={isLoading || isOAuthLoading || !appleAuthProvider} 
+              disabled={isLoading || isOAuthLoading || !appleAuthProvider || authContextLoading} 
             >
               {isOAuthLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -289,7 +310,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthSignIn(githubAuthProvider, "GitHub")}
-              disabled={isLoading || isOAuthLoading || !githubAuthProvider} 
+              disabled={isLoading || isOAuthLoading || !githubAuthProvider || authContextLoading} 
             >
               {isOAuthLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
