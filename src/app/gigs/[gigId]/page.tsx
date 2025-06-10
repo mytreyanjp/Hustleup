@@ -472,6 +472,12 @@ export default function GigDetailPage() {
               </Button>
             </div>
           )}
+           {gig.numberOfReports && gig.numberOfReports > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5 shrink-0" />
+              <span>Requires {gig.numberOfReports} progress report{gig.numberOfReports > 1 ? 's' : ''}.</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
            <div>
