@@ -1,14 +1,15 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'; // Added addDoc, serverTimestamp
 import { db } from '@/config/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ArrowLeft, ShieldCheck, UserMinus, UserPlus } from 'lucide-react';
+import { Input } from '@/components/ui/input'; // Added Input for search
+import { Loader2, ArrowLeft, ShieldCheck, UserMinus, UserPlus, Search } from 'lucide-react'; // Added Search icon
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -48,9 +49,10 @@ export default function ManageAdminsPage() {
   const { toast } = useToast();
   const router = useRouter();
 
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -65,7 +67,7 @@ export default function ManageAdminsPage() {
         uid: doc.id,
         ...doc.data(),
       })) as UserProfile[];
-      setUsers(fetchedUsers);
+      setAllUsers(fetchedUsers);
     } catch (error: any) {
       console.error("Error fetching users:", error);
       toast({ title: "Error", description: "Could not load users.", variant: "destructive" });
@@ -77,6 +79,17 @@ export default function ManageAdminsPage() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return allUsers;
+    }
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return allUsers.filter(user =>
+      user.username?.toLowerCase().includes(lowerSearchTerm) ||
+      user.email?.toLowerCase().includes(lowerSearchTerm)
+    );
+  }, [allUsers, searchTerm]);
 
   const handleRoleChange = async (targetUserId: string, newRole: 'admin' | 'student' | 'client' | null) => {
     if (!currentAdmin || !db) {
@@ -91,7 +104,7 @@ export default function ManageAdminsPage() {
     setIsUpdatingRole(targetUserId);
     try {
       const userDocRef = doc(db, 'users', targetUserId);
-      const roleToSet = newRole === 'admin' ? 'admin' : 'student'; 
+      const roleToSet = newRole === 'admin' ? 'admin' : (newRole || 'student'); // Default to student if null
 
       await updateDoc(userDocRef, { role: roleToSet });
       toast({
@@ -99,7 +112,6 @@ export default function ManageAdminsPage() {
         description: `User's role successfully changed to ${roleToSet}. A notification has been sent to the user.`,
       });
 
-      // Create notification for the user whose role was changed
       const notificationMessage = `Your role on the platform has been updated to ${roleToSet} by an administrator.`;
       await createAdminRoleUpdateNotification(
         targetUserId,
@@ -140,9 +152,19 @@ export default function ManageAdminsPage() {
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-lg sm:text-xl">Manage Admin Access</CardTitle>
-          <CardDescription>Promote users to admin or demote admins.</CardDescription>
+          <CardDescription>Promote users to admin or demote admins. Search by username or email.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <div className="mb-4 relative">
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search users by username or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 w-full sm:max-w-sm text-sm"
+            />
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -153,7 +175,7 @@ export default function ManageAdminsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((userItem) => (
+              {filteredUsers.map((userItem) => (
                 <TableRow key={userItem.uid}>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -176,7 +198,7 @@ export default function ManageAdminsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleRoleChange(userItem.uid, 'student')}
+                            onClick={() => handleRoleChange(userItem.uid, userItem.previousRole || 'student')} // Revert to previous or default to student
                             disabled={isUpdatingRole === userItem.uid || (currentAdmin?.uid === userItem.uid)}
                             className="w-full sm:w-auto text-xs sm:text-sm"
                           >
@@ -192,7 +214,7 @@ export default function ManageAdminsPage() {
                             className="w-full sm:w-auto text-xs sm:text-sm"
                           >
                             {isUpdatingRole === userItem.uid ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />}
-                            Promote
+                            Promote to Admin
                           </Button>
                         )}
                     </div>
@@ -201,13 +223,14 @@ export default function ManageAdminsPage() {
               ))}
             </TableBody>
           </Table>
-          {users.length === 0 && !isLoading && (
-            <p className="text-center text-muted-foreground py-8">No users found.</p>
+          {filteredUsers.length === 0 && !isLoading && (
+            <p className="text-center text-muted-foreground py-8">
+              {searchTerm.trim() ? 'No users match your search.' : 'No users found.'}
+            </p>
           )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
     
