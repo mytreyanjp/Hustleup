@@ -38,7 +38,7 @@ interface SuggestedGig {
 }
 
 export default function Navbar() {
-  const { user, userProfile, loading, role, totalUnreadChats, clientUnreadNotificationCount } = useFirebase();
+  const { user, userProfile, loading, role, totalUnreadChats, clientUnreadNotificationCount, generalUnreadNotificationsCount } = useFirebase(); // Added generalUnreadNotificationsCount
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [isClient, setIsClient] = useState(false);
@@ -286,10 +286,8 @@ export default function Navbar() {
 
         <div className="flex items-center space-x-1 sm:space-x-2">
           {isMobile ? (
-            // Mobile View
             <>
               {isLoginPage ? (
-                // Mobile + Login Page: Show Explore, Theme
                 <>
                   <Link href="/gigs/browse" className="text-muted-foreground hover:text-primary p-1.5" aria-label="Explore Gigs">
                     <Compass className="h-5 w-5" />
@@ -297,7 +295,6 @@ export default function Navbar() {
                   <ModeToggle />
                 </>
               ) : isMobileSearchVisible ? (
-                // Mobile + Search Active (not login page): Show Back button + Search Bar
                 <div className="flex items-center w-full">
                   <Button variant="ghost" size="icon" onClick={handleHideMobileSearch} className="mr-2 shrink-0">
                     <ArrowLeft className="h-5 w-5" />
@@ -305,27 +302,16 @@ export default function Navbar() {
                   {SearchBarComponent}
                 </div>
               ) : (
-                // Mobile + Default (not login, not search active): Show Search Icon (and other icons like Chat, Notifications)
                 <>
                   <Button variant="ghost" size="icon" onClick={handleShowMobileSearch} aria-label="Open search" className="h-8 w-8">
                     <SearchIcon className="h-5 w-5" />
                   </Button>
-                  {isClient && user && (role === 'student' || role === 'client') && (
-                     <Link href="/chat" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Chat">
-                       <MessageSquare className="h-5 w-5" />
-                       {totalUnreadChats > 0 && (
-                         <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
-                           {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
-                         </span>
-                       )}
-                     </Link>
-                  )}
-                  {isClient && user && role === 'client' && (
-                    <Link href="/client/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
+                  {isClient && user && (
+                    <Link href="/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
                         <Bell className="h-5 w-5" />
-                        {clientUnreadNotificationCount > 0 && (
+                        {generalUnreadNotificationsCount > 0 && (
                            <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
-                             {clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}
+                             {generalUnreadNotificationsCount > 9 ? '9+' : generalUnreadNotificationsCount}
                            </span>
                         )}
                     </Link>
@@ -373,11 +359,6 @@ export default function Navbar() {
                         {role === 'client' && (
                           <>
                             <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
-                             <DropdownMenuItem asChild><Link href="/client/notifications">
-                                <Bell className="mr-2 h-4 w-4" />
-                                <span>Notifications</span>
-                                {clientUnreadNotificationCount > 0 && <span className="ml-auto text-xs bg-destructive text-destructive-foreground h-4 w-4 rounded-full flex items-center justify-center">{clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}</span>}
-                            </Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
                           </>
@@ -430,25 +411,14 @@ export default function Navbar() {
               )}
             </>
           ) : (
-            // Desktop View
             <>
               {SearchBarComponent}
-              {isClient && user && (role === 'student' || role === 'client') && (
-                <Link href="/chat" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Chat">
-                    <MessageSquare className="h-5 w-5" />
-                    {totalUnreadChats > 0 && (
-                        <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
-                        {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
-                        </span>
-                    )}
-                </Link>
-              )}
-              {isClient && user && role === 'client' && (
-                <Link href="/client/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
+              {isClient && user && (
+                <Link href="/notifications" className="relative text-muted-foreground hover:text-primary p-1.5" aria-label="Notifications">
                     <Bell className="h-5 w-5" />
-                    {clientUnreadNotificationCount > 0 && (
+                    {generalUnreadNotificationsCount > 0 && (
                         <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-destructive-foreground">
-                        {clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}
+                        {generalUnreadNotificationsCount > 9 ? '9+' : generalUnreadNotificationsCount}
                         </span>
                     )}
                 </Link>
@@ -493,11 +463,6 @@ export default function Navbar() {
                       {role === 'client' && (
                         <>
                           <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
-                           <DropdownMenuItem asChild><Link href="/client/notifications">
-                                <Bell className="mr-2 h-4 w-4" />
-                                <span>Notifications</span>
-                                {clientUnreadNotificationCount > 0 && <span className="ml-auto text-xs bg-destructive text-destructive-foreground h-4 w-4 rounded-full flex items-center justify-center">{clientUnreadNotificationCount > 9 ? '9+' : clientUnreadNotificationCount}</span>}
-                            </Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
                         </>

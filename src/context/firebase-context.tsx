@@ -7,6 +7,7 @@ import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QueryS
 import { auth, db, firebaseInitializationDetails } from '@/config/firebase';
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat';
+import type { Notification } from '@/types/notifications'; // Import Notification type
 
 type UserRole = 'student' | 'client' | 'admin' | null;
 
@@ -47,6 +48,7 @@ interface FirebaseContextType {
   refreshUserProfile: () => Promise<void>;
   totalUnreadChats: number;
   clientUnreadNotificationCount: number;
+  generalUnreadNotificationsCount: number; // New state for general notifications
   firebaseActuallyInitialized: boolean;
   initializationError: string | null;
 }
@@ -69,6 +71,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [initializationErrorState, setInitializationErrorState] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
   const [clientUnreadNotificationCount, setClientUnreadNotificationCount] = useState(0);
+  const [generalUnreadNotificationsCount, setGeneralUnreadNotificationsCount] = useState(0); // New state
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
     if (!db) {
@@ -97,7 +100,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalPhone: docSnap.data().personalPhone || '',
             blockedUserIds: docSnap.data().blockedUserIds || [],
             readReceiptsEnabled: docSnap.data().readReceiptsEnabled === undefined ? true : docSnap.data().readReceiptsEnabled,
-            isBanned: docSnap.data().isBanned || false, // Fetch isBanned, default to false
+            isBanned: docSnap.data().isBanned || false, 
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client' || profileData.role === 'admin') {
@@ -122,7 +125,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalPhone: '',
             blockedUserIds: [],
             readReceiptsEnabled: true,
-            isBanned: false, // Default for new/unfound profiles
+            isBanned: false, 
           };
           setUserProfile(basicProfile);
           setRole(null);
@@ -142,7 +145,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           personalPhone: '',
           blockedUserIds: [],
           readReceiptsEnabled: true,
-          isBanned: false, // Default on error
+          isBanned: false, 
         });
         setRole(null);
       }
@@ -254,7 +257,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user]);
 
-  // Effect for client notification count
   useEffect(() => {
     if (user && role === 'client' && db) {
       const gigsRef = collection(db, "gigs");
@@ -287,8 +289,39 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, role]);
 
+  // Listener for general notifications
+  useEffect(() => {
+    if (!user || !db) {
+      setGeneralUnreadNotificationsCount(0);
+      return;
+    }
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
+      where('recipientUserId', '==', user.uid),
+      where('isRead', '==', false)
+    );
+    const unsubscribeGeneralNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+      setGeneralUnreadNotificationsCount(snapshot.size);
+    }, (error) => {
+      console.error("Error fetching general unread notifications count:", error);
+      setGeneralUnreadNotificationsCount(0);
+    });
+    return () => unsubscribeGeneralNotifications();
+  }, [user]);
 
-  const value = { user, userProfile, loading, role, refreshUserProfile, totalUnreadChats, clientUnreadNotificationCount, firebaseActuallyInitialized: firebaseActuallyInitializedState, initializationError: initializationErrorState };
+
+  const value = { 
+    user, 
+    userProfile, 
+    loading, 
+    role, 
+    refreshUserProfile, 
+    totalUnreadChats, 
+    clientUnreadNotificationCount, 
+    generalUnreadNotificationsCount, // Added to context value
+    firebaseActuallyInitialized: firebaseActuallyInitializedState, 
+    initializationError: initializationErrorState 
+  };
 
   return (
     <FirebaseContext.Provider value={value}>
@@ -304,6 +337,3 @@ export const useFirebase = () => {
   }
   return context;
 };
-    
-
-    

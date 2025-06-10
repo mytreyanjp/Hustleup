@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore'; // Added writeBatch, deleteDoc
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,13 +19,13 @@ import { StarRating } from '@/components/ui/star-rating';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import type { NotificationType } from '@/types/notifications';
 
 
 interface StudentPost {
@@ -33,9 +33,10 @@ interface StudentPost {
   imageUrl: string;
   caption?: string;
   createdAt: Timestamp;
+  studentId: string; // Ensure studentId is part of the post
 }
 
-interface ClientGig {
+interface ClientGigForProfile { // Renamed to avoid conflict
   id: string;
   title: string;
   budget: number;
@@ -43,6 +44,8 @@ interface ClientGig {
   deadline: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   createdAt: Timestamp;
+  clientId: string;
+  selectedStudentId?: string;
 }
 
 const REPORT_REASONS = [
@@ -57,6 +60,39 @@ const REPORT_REASONS = [
 
 type ReportReason = typeof REPORT_REASONS[number];
 
+async function createSystemNotification(
+    recipientUserId: string,
+    message: string,
+    type: NotificationType,
+    adminActorId: string,
+    adminActorUsername: string,
+    relatedGigId?: string,
+    relatedGigTitle?: string,
+    link?: string,
+) {
+    if (!db) {
+        console.error("Firestore (db) not available for creating system notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type,
+            relatedGigId: relatedGigId || null,
+            relatedGigTitle: relatedGigTitle || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            adminActorId,
+            adminActorUsername,
+            link: link || (relatedGigId ? `/gigs/${relatedGigId}` : '/dashboard'),
+        });
+    } catch (error) {
+        console.error("Error creating system notification document:", error);
+    }
+}
+
+
 export default function PublicProfilePage() {
   const params = useParams();
   const userId = params.userId as string;
@@ -66,7 +102,7 @@ export default function PublicProfilePage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<StudentPost[]>([]);
-  const [clientOpenGigs, setClientOpenGigs] = useState<ClientGig[]>([]);
+  const [clientOpenGigs, setClientOpenGigs] = useState<ClientGigForProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [isLoadingClientGigs, setIsLoadingClientGigs] = useState(false);
@@ -153,7 +189,7 @@ export default function PublicProfilePage() {
               const fetchedClientGigs = gigsSnapshot.docs.map(gigDoc => ({
                 id: gigDoc.id,
                 ...gigDoc.data()
-              })) as ClientGig[];
+              })) as ClientGigForProfile[];
               setClientOpenGigs(fetchedClientGigs);
               setIsLoadingClientGigs(false);
            }
@@ -225,7 +261,7 @@ export default function PublicProfilePage() {
   };
   
   const handleShareProfileToChat = () => {
-    if (!viewerUser || !profile || viewerRole !== 'admin') { // Only admins can share profiles now
+    if (!viewerUser || !profile || viewerRole !== 'admin') { 
         toast({ title: "Action Not Allowed", description: "Only admins can share profiles.", variant: "destructive" });
         return;
     }
@@ -250,8 +286,6 @@ export default function PublicProfilePage() {
             await updateDoc(viewerUserDocRef, { blockedUserIds: arrayUnion(profile.uid) });
             toast({ title: "User Blocked", description: `${profile.companyName || profile.username} has been blocked.` });
             setIsBlockedByViewer(true);
-            // If admin blocks, also unban if they were banned by this admin? (Optional, could be complex)
-            // For now, block is a separate action from ban.
         }
         if (refreshUserProfile) await refreshUserProfile();
     } catch (err: any) {
@@ -264,30 +298,104 @@ export default function PublicProfilePage() {
   };
 
   const handleBanToggle = async () => {
-    if (!viewerUser || viewerRole !== 'admin' || !profile || !db) {
+    if (!viewerUser || viewerRole !== 'admin' || !profile || !db || !viewerUserProfile) {
       toast({ title: "Permission Denied", description: "Only admins can ban users.", variant: "destructive" });
       return;
     }
     setIsBanningProcessing(true);
     const targetUserDocRef = doc(db, 'users', profile.uid);
+    const batch = writeBatch(db);
+    const newBanStatus = !profile.isBanned;
+
     try {
-      const newBanStatus = !profile.isBanned;
-      await updateDoc(targetUserDocRef, { isBanned: newBanStatus });
+      batch.update(targetUserDocRef, { isBanned: newBanStatus });
+      let cascadingActionsMessage = "";
+
+      if (newBanStatus) { // User is being BANNED
+        if (profile.role === 'client') {
+          const clientGigsQuery = query(collection(db, 'gigs'), where('clientId', '==', profile.uid), where('status', 'in', ['open', 'in-progress']));
+          const clientGigsSnap = await getDocs(clientGigsQuery);
+          if (!clientGigsSnap.empty) cascadingActionsMessage += ` ${clientGigsSnap.size} client gig(s) will be closed.`;
+          
+          for (const gigDoc of clientGigsSnap.docs) {
+            batch.update(gigDoc.ref, { status: 'closed' });
+            const gigData = gigDoc.data() as ClientGigForProfile;
+            if (gigData.selectedStudentId) {
+              await createSystemNotification(
+                gigData.selectedStudentId,
+                `The gig "${gigData.title}" has been closed because the client ${profile.companyName || profile.username}'s account was suspended.`,
+                'gig_closed_due_to_ban',
+                viewerUser.uid,
+                viewerUserProfile.username || 'Admin',
+                gigDoc.id,
+                gigData.title
+              );
+            }
+          }
+        } else if (profile.role === 'student') {
+          // Gigs where student is selected
+          const assignedGigsQuery = query(collection(db, 'gigs'), where('selectedStudentId', '==', profile.uid), where('status', 'in', ['in-progress', 'awaiting_payout']));
+          const assignedGigsSnap = await getDocs(assignedGigsQuery);
+          if (!assignedGigsSnap.empty) cascadingActionsMessage += ` Student will be unassigned from ${assignedGigsSnap.size} active gig(s).`;
+
+          for (const gigDoc of assignedGigsSnap.docs) {
+            batch.update(gigDoc.ref, { status: 'open', selectedStudentId: null, progressReports: [] }); // Reset progress reports
+            const gigData = gigDoc.data() as ClientGigForProfile;
+             await createSystemNotification(
+                gigData.clientId,
+                `The student ${profile.username} working on your gig "${gigData.title}" has had their account suspended. The gig is now open for new applicants.`,
+                'student_removed_due_to_ban',
+                viewerUser.uid,
+                viewerUserProfile.username || 'Admin',
+                gigDoc.id,
+                gigData.title
+            );
+          }
+
+          // Remove student from applicants list of open gigs
+          const openGigsQuery = query(collection(db, 'gigs'), where('status', '==', 'open'));
+          const openGigsSnap = await getDocs(openGigsQuery);
+          let applicationsRemovedCount = 0;
+          for (const gigDoc of openGigsSnap.docs) {
+            const gigData = gigDoc.data() as ClientGigForProfile;
+            const currentApplicants = (gigData.applicants || []) as { studentId: string; [key: string]: any }[];
+            if (currentApplicants.some(app => app.studentId === profile.uid)) {
+              const updatedApplicants = currentApplicants.filter(app => app.studentId !== profile.uid);
+              batch.update(gigDoc.ref, { applicants: updatedApplicants });
+              applicationsRemovedCount++;
+            }
+          }
+           if (applicationsRemovedCount > 0) cascadingActionsMessage += ` Student removed from ${applicationsRemovedCount} gig application(s).`;
+
+
+          // Delete student posts
+          const studentPostsQuery = query(collection(db, 'student_posts'), where('studentId', '==', profile.uid));
+          const studentPostsSnap = await getDocs(studentPostsQuery);
+           if (!studentPostsSnap.empty) cascadingActionsMessage += ` ${studentPostsSnap.size} student post(s) will be deleted.`;
+          studentPostsSnap.forEach(postDoc => batch.delete(postDoc.ref));
+        }
+      } else { // User is being UNBANNED
+        // Potentially re-open client gigs if they weren't manually closed for other reasons (complex, out of scope for now)
+        // Student posts are not automatically restored.
+      }
+
+      await batch.commit();
       toast({
         title: newBanStatus ? "User Banned" : "User Unbanned",
-        description: `${profile.username || 'User'} has been ${newBanStatus ? 'banned' : 'unbanned'}.`,
+        description: `${profile.username || 'User'} has been ${newBanStatus ? 'banned' : 'unbanned'}.${cascadingActionsMessage}`,
+        duration: 7000,
       });
       setProfile(prev => prev ? { ...prev, isBanned: newBanStatus } : null);
       
-      // If admin bans a user they had previously blocked, unblock them for consistency.
       if (newBanStatus && viewerUserProfile?.blockedUserIds?.includes(profile.uid)) {
         await updateDoc(doc(db, 'users', viewerUser.uid), { blockedUserIds: arrayRemove(profile.uid) });
-        setIsBlockedByViewer(false); // Update local state for block button
+        setIsBlockedByViewer(false);
         if (refreshUserProfile) await refreshUserProfile();
       }
 
     } catch (error: any) {
-      toast({ title: "Error", description: `Could not update ban status: ${error.message}`, variant: "destructive" });
+      console.error("Error during ban/unban process:", error);
+      toast({ title: "Error", description: `Could not update ban status or perform cascading actions: ${error.message}`, variant: "destructive" });
     } finally {
       setIsBanningProcessing(false);
       setShowBanConfirmDialog(false);
@@ -547,7 +655,7 @@ export default function PublicProfilePage() {
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
-                                {viewerRole === 'admin' && profile.role !== 'admin' && !profile.isBanned && ( // Admins can chat with non-admins if not banned
+                                {viewerRole === 'admin' && profile.role !== 'admin' && !profile.isBanned && ( 
                                   <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
                                       <Link href={`/chat?userId=${profile.uid}`}>
                                           <MessageSquare className="mr-1 h-4 w-4"/>Chat
@@ -775,7 +883,6 @@ export default function PublicProfilePage() {
         )}
       </Card>
 
-      {/* Report Dialog */}
       <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
         <AlertDialogContent>
             <AlertDialogHeader>
@@ -820,7 +927,6 @@ export default function PublicProfilePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Block/Unblock Confirm Dialog */}
         <AlertDialog open={showBlockConfirmDialog} onOpenChange={setShowBlockConfirmDialog}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -845,7 +951,6 @@ export default function PublicProfilePage() {
             </AlertDialogContent>
         </AlertDialog>
 
-      {/* Ban/Unban Confirm Dialog (Admin Only) */}
       {viewerRole === 'admin' && (
         <AlertDialog open={showBanConfirmDialog} onOpenChange={setShowBanConfirmDialog}>
             <AlertDialogContent>
@@ -854,7 +959,7 @@ export default function PublicProfilePage() {
                     <AlertDialogDescription>
                         {profile?.isBanned
                             ? `Unbanning ${displayName} will restore their access to platform features.`
-                            : `Banning ${displayName} will restrict their ability to post gigs, apply for work, and use other platform features. They will be notified of this action.`}
+                            : `Banning ${displayName} will restrict their ability to post gigs, apply for work, and use other platform features. Their active work and posts may be affected. They will be notified of this action.`}
                         Are you sure?
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -873,90 +978,57 @@ export default function PublicProfilePage() {
         </AlertDialog>
       )}
 
-
-      {/* Followers Modal */}
       <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Followers</DialogTitle>
-            <DialogDescription>
-              Users who follow {displayName}.
-            </DialogDescription>
+            <DialogDescription>Users who follow {displayName}.</DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[300px] py-4">
             {isLoadingModalList ? (
-              <div className="flex justify-center items-center h-20">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
+              <div className="flex justify-center items-center h-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
                 {modalUserList.map(userItem => (
                   <li key={userItem.uid} className="flex items-center justify-between">
                     <Link href={`/profile/${userItem.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowersModal(false)}>
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} />
-                        <AvatarFallback>{getInitials(userItem.email, userItem.username, userItem.companyName)}</AvatarFallback>
-                      </Avatar>
+                      <Avatar className="h-8 w-8"><AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} /><AvatarFallback>{getInitials(userItem.email, userItem.username, userItem.companyName)}</AvatarFallback></Avatar>
                       <span className="text-sm font-medium">{userItem.companyName || userItem.username || 'User'}</span>
                     </Link>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center">This user has no followers yet.</p>
-            )}
+            ) : (<p className="text-sm text-muted-foreground text-center">This user has no followers yet.</p>)}
           </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">Close</Button>
-            </DialogClose>
-          </DialogFooter>
+          <DialogFooter><DialogClose asChild><Button type="button" variant="secondary">Close</Button></DialogClose></DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Following Modal */}
       <Dialog open={showFollowingModal} onOpenChange={setShowFollowingModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Following</DialogTitle>
-            <DialogDescription>
-              Users {displayName} is following.
-            </DialogDescription>
+            <DialogDescription>Users {displayName} is following.</DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[300px] py-4">
             {isLoadingModalList ? (
-              <div className="flex justify-center items-center h-20">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
+              <div className="flex justify-center items-center h-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
                 {modalUserList.map((followedUser) => (
                   <li key={followedUser.uid} className="flex items-center justify-between">
                     <Link href={`/profile/${followedUser.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={followedUser.profilePictureUrl} alt={followedUser.username} />
-                        <AvatarFallback>{getInitials(followedUser.email, followedUser.username, followedUser.companyName)}</AvatarFallback>
-                      </Avatar>
+                      <Avatar className="h-8 w-8"><AvatarImage src={followedUser.profilePictureUrl} alt={followedUser.username} /><AvatarFallback>{getInitials(followedUser.email, followedUser.username, followedUser.companyName)}</AvatarFallback></Avatar>
                       <span className="text-sm font-medium">{followedUser.companyName || followedUser.username || 'User'}</span>
                     </Link>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center">Not following anyone yet.</p>
-            )}
+            ) : (<p className="text-sm text-muted-foreground text-center">Not following anyone yet.</p>)}
           </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">Close</Button>
-            </DialogClose>
-          </DialogFooter>
+          <DialogFooter><DialogClose asChild><Button type="button" variant="secondary">Close</Button></DialogClose></DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
-    
-
-    
