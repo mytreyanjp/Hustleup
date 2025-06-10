@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -9,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Star, Filter as FilterIcon, X as XIcon } from 'lucide-react';
+import { Loader2, CalendarDays, DollarSign, Star, Filter as FilterIcon, X as XIcon, Settings2 } from 'lucide-react'; // Added Settings2
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -331,11 +330,19 @@ export default function BrowseGigsPage() {
                    </div>
                 </CardContent>
                 <CardFooter className="p-4 sm:p-6 pt-0">
-                  <Button asChild className="w-full" size="sm">
-                    <Link href={`/gigs/${gig.id}`}>
-                      {role === 'client' ? "View Details" : "View Details & Apply"}
-                    </Link>
-                  </Button>
+                  {role === 'admin' ? (
+                    <Button asChild className="w-full" size="sm" variant="secondary">
+                        <Link href={`/admin/manage-gigs/${gig.id}`}>
+                            <Settings2 className="mr-2 h-4 w-4" /> Manage Gig
+                        </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild className="w-full" size="sm">
+                        <Link href={`/gigs/${gig.id}`}>
+                        {role === 'client' ? "View Details" : "View Details & Apply"}
+                        </Link>
+                    </Button>
+                  )}
                 </CardFooter>
               </Card>
             ))}
@@ -346,4 +353,3 @@ export default function BrowseGigsPage() {
   );
 }
     
-
