@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -8,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Star, Filter as FilterIcon, X as XIcon, Settings2 } from 'lucide-react'; // Added Settings2
+import { Loader2, CalendarDays, DollarSign, Star, Filter as FilterIcon, X as XIcon, Settings2, Layers } from 'lucide-react'; // Added Layers
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -34,6 +35,7 @@ interface Gig {
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
   applicationRequests?: { studentId: string; studentUsername: string; requestedAt: Timestamp; status: 'pending' | 'approved_to_apply' | 'denied_to_apply' }[];
   isFromFollowedClient?: boolean;
+  numberOfReports?: number;
 }
 
 const budgetRanges = [
@@ -325,9 +327,14 @@ export default function BrowseGigsPage() {
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                        <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
                    </div>
-                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
+                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                        <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
                    </div>
+                   {gig.numberOfReports && gig.numberOfReports > 0 && (
+                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
+                       <Layers className="mr-1 h-4 w-4" /> Requires {gig.numberOfReports} progress report{gig.numberOfReports > 1 ? 's' : ''}
+                   </div>
+                   )}
                 </CardContent>
                 <CardFooter className="p-4 sm:p-6 pt-0">
                   {role === 'admin' ? (

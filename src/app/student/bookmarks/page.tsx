@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, BookmarkX, CalendarDays, DollarSign, Search, ArrowLeft, UserCircle } from 'lucide-react';
+import { Loader2, BookmarkX, CalendarDays, DollarSign, Search, ArrowLeft, UserCircle, Layers } from 'lucide-react'; // Added Layers
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
@@ -29,6 +29,7 @@ interface BookmarkedGig {
   clientAvatarUrl?: string;
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
+  numberOfReports?: number; // Added to show report count
 }
 
 export default function StudentBookmarksPage() {
@@ -188,9 +189,14 @@ export default function StudentBookmarksPage() {
                  <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                      <DollarSign className="mr-1 h-4 w-4" /> Budget: {gig.currency} {gig.budget.toFixed(2)}
                  </div>
-                 <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
+                 <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                      <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
                  </div>
+                 {gig.numberOfReports && gig.numberOfReports > 0 && (
+                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
+                       <Layers className="mr-1 h-4 w-4" /> Requires {gig.numberOfReports} progress report{gig.numberOfReports > 1 ? 's' : ''}
+                   </div>
+                 )}
                  {gig.status !== 'open' && (
                     <Badge variant="destructive" className="mt-2 text-xs">Gig is {gig.status}</Badge>
                  )}
