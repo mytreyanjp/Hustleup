@@ -36,6 +36,7 @@ export interface UserProfile extends DocumentData {
   
   blockedUserIds?: string[]; // Array of UIDs this user has blocked
   readReceiptsEnabled?: boolean; // For chat read receipts
+  isBanned?: boolean; // For admin banning
 }
 
 interface FirebaseContextType {
@@ -96,6 +97,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalPhone: docSnap.data().personalPhone || '',
             blockedUserIds: docSnap.data().blockedUserIds || [],
             readReceiptsEnabled: docSnap.data().readReceiptsEnabled === undefined ? true : docSnap.data().readReceiptsEnabled,
+            isBanned: docSnap.data().isBanned || false, // Fetch isBanned, default to false
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client' || profileData.role === 'admin') {
@@ -120,6 +122,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             personalPhone: '',
             blockedUserIds: [],
             readReceiptsEnabled: true,
+            isBanned: false, // Default for new/unfound profiles
           };
           setUserProfile(basicProfile);
           setRole(null);
@@ -139,6 +142,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           personalPhone: '',
           blockedUserIds: [],
           readReceiptsEnabled: true,
+          isBanned: false, // Default on error
         });
         setRole(null);
       }

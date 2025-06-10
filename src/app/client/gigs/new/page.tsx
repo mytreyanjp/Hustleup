@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2, Info, ArrowLeft, PlusCircle, Trash2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Info, ArrowLeft, PlusCircle, Trash2, UserX } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -115,13 +115,20 @@ export default function NewGigPage() {
       if (!user || role !== 'client') {
         toast({ title: "Access Denied", description: "You must be logged in as a client to post a gig.", variant: "destructive"});
         router.push('/auth/login?redirect=/client/gigs/new');
+      } else if (userProfile?.isBanned) {
+        toast({ title: "Account Suspended", description: "Your account is currently suspended. You cannot post new gigs.", variant: "destructive", duration: 7000 });
+        router.push('/client/dashboard');
       }
     }
-  }, [authLoading, user, role, router, toast]);
+  }, [authLoading, user, role, router, toast, userProfile?.isBanned]);
 
   const onSubmit = async (data: GigFormValues) => {
     if (!user || role !== 'client' || !userProfile) {
         toast({ title: "Action Failed", description: "You are not authorized or your profile is not loaded.", variant: "destructive"});
+        return;
+    }
+    if (userProfile.isBanned) {
+        toast({ title: "Account Suspended", description: "Your account is currently suspended. You cannot post new gigs.", variant: "destructive", duration: 7000 });
         return;
     }
     setIsSubmitting(true);
@@ -184,14 +191,26 @@ export default function NewGigPage() {
     );
   }
 
-  if (!user || role !== 'client') {
+  if (!user || role !== 'client' || userProfile?.isBanned) { // Add banned check here for initial render if not redirected
     return (
-      <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Checking authorization...</p>
+      <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center p-4">
+        {userProfile?.isBanned ? (
+            <>
+                <UserX className="h-12 w-12 text-destructive mb-4" />
+                <h2 className="text-xl font-semibold text-destructive">Account Suspended</h2>
+                <p className="text-muted-foreground">You cannot post new gigs as your account is suspended.</p>
+                <Button variant="outline" onClick={() => router.push('/client/dashboard')} className="mt-4">Go to Dashboard</Button>
+            </>
+        ) : (
+            <>
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                <p className="text-muted-foreground">Checking authorization...</p>
+            </>
+        )}
       </div>
     );
   }
+
 
   return (
      <div className="max-w-3xl mx-auto py-8">
@@ -418,3 +437,4 @@ export default function NewGigPage() {
     </div>
   );
 }
+

@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass } from 'lucide-react'; // Added Hourglass
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban } from 'lucide-react'; // Added Hourglass, Ban
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -121,12 +121,21 @@ export default function GigDetailPage() {
             const clientDocRef = doc(db, 'users', fetchedGig.clientId);
             const clientDocSnap = await getDoc(clientDocRef);
             if (clientDocSnap.exists()) {
-              setClientProfileDetails({ uid: clientDocSnap.id, ...clientDocSnap.data() } as UserProfile);
+              const clientData = { uid: clientDocSnap.id, ...clientDocSnap.data() } as UserProfile;
+              setClientProfileDetails(clientData);
+              if (clientData.isBanned) { // If client who posted the gig is banned, don't show gig
+                  setError("This gig is currently unavailable.");
+                  setGig(null);
+              }
             } else {
               console.warn(`Client profile not found for clientId: ${fetchedGig.clientId}`);
+               setError("This gig is currently unavailable as the client profile could not be loaded.");
+               setGig(null);
             }
           } catch (clientProfileError) {
             console.error("Error fetching client profile for gig:", clientProfileError);
+            setError("Error loading client details. Gig may be unavailable.");
+            setGig(null);
           }
         }
 
@@ -160,6 +169,10 @@ export default function GigDetailPage() {
 
   const handleApply = async () => {
     if (!user || !userProfile || role !== 'student' || !gig || hasApplied || gig.status !== 'open') return;
+    if (userProfile.isBanned) {
+        toast({ title: "Account Suspended", description: "Your account is suspended, you cannot apply for gigs.", variant: "destructive", duration: 7000 });
+        return;
+    }
 
     setIsApplying(true);
     try {
@@ -198,6 +211,10 @@ export default function GigDetailPage() {
   
   const handleToggleBookmark = async () => {
     if (!user || !userProfile || role !== 'student' || !gig) return;
+    if (userProfile.isBanned) {
+        toast({ title: "Account Suspended", description: "Your account is suspended. Bookmarking is disabled.", variant: "destructive", duration: 7000 });
+        return;
+    }
     if (!db) {
         toast({ title: "Database Error", description: "Cannot update bookmark.", variant: "destructive" });
         return;
@@ -283,6 +300,10 @@ export default function GigDetailPage() {
     if (!reportText.trim()) {
       toast({ title: "Description Required", description: "Please provide a description for your report.", variant: "destructive" });
       return;
+    }
+    if (userProfile?.isBanned) {
+        toast({ title: "Account Suspended", description: "Your account is suspended, you cannot submit reports.", variant: "destructive", duration: 7000 });
+        return;
     }
     setIsSubmittingReport(true);
     // setReportUploadProgress(0); // Media upload disabled
@@ -398,7 +419,7 @@ export default function GigDetailPage() {
                         variant="outline" 
                         size="icon" 
                         onClick={handleToggleBookmark} 
-                        disabled={isTogglingBookmark || authLoading || isLoadingGig}
+                        disabled={isTogglingBookmark || authLoading || isLoadingGig || userProfile?.isBanned}
                         title={isBookmarked ? "Remove Bookmark" : "Bookmark Gig"}
                         className="shrink-0"
                     >
@@ -492,6 +513,10 @@ export default function GigDetailPage() {
                     return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type...</p>;
                 }
 
+                if (userProfile?.isBanned) {
+                   return <p className="text-sm text-destructive font-medium text-center w-full flex items-center justify-center gap-2"><Ban className="h-4 w-4"/>Your account is suspended. You cannot apply for gigs.</p>;
+                }
+
                 if (role === 'student') {
                     if (hasApplied) {
                     return <p className="text-sm text-green-600 font-medium text-center w-full">✅ You have already applied to this gig.</p>;
@@ -504,11 +529,11 @@ export default function GigDetailPage() {
                             value={applicationMessage}
                             onChange={(e) => setApplicationMessage(e.target.value)}
                             rows={3}
-                            disabled={isApplying}
+                            disabled={isApplying || userProfile?.isBanned}
                         />
                         <Button
                             onClick={handleApply}
-                            disabled={isApplying || hasApplied}
+                            disabled={isApplying || hasApplied || userProfile?.isBanned}
                             className="w-full sm:w-auto"
                         >
                             {isApplying ? (
@@ -591,7 +616,7 @@ export default function GigDetailPage() {
                       </div>
                     )}
                     {(!report.studentSubmission || isRejected) && canSubmitThisReport && (
-                        <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(report.reportNumber)}>
+                        <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(report.reportNumber)} disabled={userProfile?.isBanned}>
                             <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{report.reportNumber}
                         </Button>
                     )}

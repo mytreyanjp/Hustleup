@@ -4,7 +4,7 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, Users, CreditCard, Briefcase, Loader2, FileText } from 'lucide-react';
+import { PlusCircle, Users, CreditCard, Briefcase, Loader2, FileText, UserX } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -34,7 +34,7 @@ export default function ClientDashboardPage() {
   }, [user, role, authLoading, router]);
 
   useEffect(() => {
-    if (user && role === 'client' && db) {
+    if (user && role === 'client' && db && !userProfile?.isBanned) { // Don't fetch if banned
       setIsLoadingStats(true);
       const gigsRef = collection(db, "gigs");
       const q = query(gigsRef, where("clientId", "==", user.uid));
@@ -68,12 +68,16 @@ export default function ClientDashboardPage() {
 
       return () => unsubscribe(); // Cleanup listener on unmount
     } else {
-      setIsLoadingStats(false); // Ensure loading state is false if user/db not ready
+      setIsLoadingStats(false); // Ensure loading state is false if user/db not ready or user is banned
+      if (userProfile?.isBanned) { // Clear stats if banned
+        setActiveGigsCount(0);
+        setPendingApplicantsCount(0);
+      }
     }
-  }, [user, role]);
+  }, [user, role, userProfile?.isBanned]);
 
 
-  if (authLoading || (isLoadingStats && user && role === 'client')) {
+  if (authLoading || (isLoadingStats && user && role === 'client' && !userProfile?.isBanned)) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -93,12 +97,23 @@ export default function ClientDashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Client Dashboard</h1>
-         <Button asChild size="lg" className="sm:text-base">
+         <Button asChild size="lg" className="sm:text-base" disabled={userProfile?.isBanned}>
             <Link href="/client/gigs/new">
                 <PlusCircle className="mr-2 h-5 w-5" /> Post a New Gig
             </Link>
          </Button>
       </div>
+
+      {userProfile?.isBanned && (
+        <Card className="glass-card border-destructive mb-6 col-span-full">
+            <CardHeader className="p-4">
+                <CardTitle className="text-destructive flex items-center gap-2"><UserX className="h-6 w-6"/> Account Suspended</CardTitle>
+                <CardDescription className="text-destructive/90">
+                Your account is currently suspended. You cannot post new gigs or use most platform features. Please contact support if you believe this is an error.
+                </CardDescription>
+            </CardHeader>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
          <Card className="glass-card">
@@ -108,7 +123,7 @@ export default function ClientDashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
             <div className="text-2xl sm:text-3xl font-bold">
-                {activeGigsCount === null && isLoadingStats ? <Loader2 className="h-7 w-7 animate-spin" /> : activeGigsCount}
+                {(activeGigsCount === null && isLoadingStats && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : activeGigsCount}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Gigs that are open or in-progress.
@@ -126,7 +141,7 @@ export default function ClientDashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
             <div className="text-2xl sm:text-3xl font-bold">
-                {pendingApplicantsCount === null && isLoadingStats ? <Loader2 className="h-7 w-7 animate-spin" /> : pendingApplicantsCount}
+                {(pendingApplicantsCount === null && isLoadingStats && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : pendingApplicantsCount}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Students awaiting review for your open gigs.
@@ -162,9 +177,10 @@ export default function ClientDashboardPage() {
          </CardHeader>
          <CardContent className="p-4 sm:p-6 pt-0">
            {/* TODO: Implement recent activity feed (e.g., list of last 5 applied/accepted applicants) */}
-           <p className="text-sm text-muted-foreground">No recent activity to display. Post a gig to get started!</p>
+           <p className="text-sm text-muted-foreground">{userProfile?.isBanned ? 'Account functionality is limited.' : 'No recent activity to display. Post a gig to get started!'}</p>
          </CardContent>
        </Card>
     </div>
   );
 }
+

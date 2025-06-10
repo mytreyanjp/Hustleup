@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIconLucide, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIconLucide, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon, UserX } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -169,7 +169,7 @@ export default function StudentProfilePage() {
   }, [user, userProfile, authLoading, role, router, populateFormAndPreview]);
 
   useEffect(() => {
-    if (user && userProfile && role === 'student' && db) {
+    if (user && userProfile && role === 'student' && db && !userProfile.isBanned) { // Don't fetch stats if banned
       const fetchStudentDashboardStats = async () => {
         setIsLoadingStats(true);
         try {
@@ -237,7 +237,7 @@ export default function StudentProfilePage() {
         }
       };
       fetchStudentDashboardStats();
-    } else if (!authLoading && userProfile === null && user && role === 'student') {
+    } else if (!authLoading && userProfile && (userProfile.isBanned || userProfile === null || !user || role !== 'student')) {
       setIsLoadingStats(false);
       setAvailableGigsCount(0);
       setActiveApplicationsCount(0);
@@ -250,6 +250,10 @@ export default function StudentProfilePage() {
 
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user || !db) return;
+    if (userProfile?.isBanned) {
+        toast({ title: "Account Suspended", description: "Your account is currently suspended. You cannot edit your profile.", variant: "destructive", duration: 7000 });
+        return;
+    }
     setIsSubmitting(true);
     try {
       const userDocRef = doc(db, 'users', user.uid);
@@ -365,6 +369,16 @@ export default function StudentProfilePage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
+      {userProfile?.isBanned && (
+        <Card className="glass-card border-destructive mb-6">
+            <CardHeader className="p-4">
+                <CardTitle className="text-destructive flex items-center gap-2"><UserX className="h-6 w-6"/> Account Suspended</CardTitle>
+                <CardDescription className="text-destructive/90">
+                Your account is currently suspended. You cannot apply for gigs, post content, or use most platform features. Please contact support if you believe this is an error.
+                </CardDescription>
+            </CardHeader>
+        </Card>
+      )}
       <Card className="glass-card">
         <CardHeader className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
@@ -390,7 +404,7 @@ export default function StudentProfilePage() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <CardTitle className="text-xl sm:text-2xl">{userProfile?.username || user?.email?.split('@')[0] || 'Your Profile'}</CardTitle>
                 {!isEditing && (
-                  <Button variant="outline" onClick={() => setIsEditing(true)} className="text-xs sm:text-sm w-full sm:w-auto">
+                  <Button variant="outline" onClick={() => setIsEditing(true)} className="text-xs sm:text-sm w-full sm:w-auto" disabled={userProfile?.isBanned}>
                     <Edit className="mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Edit Profile
                   </Button>
                 )}
@@ -577,7 +591,7 @@ export default function StudentProfilePage() {
                   </ul>
                 </div>
               )}
-              {!userProfile?.bio && (!userProfile?.skills || userProfile.skills.length === 0) && (!userProfile?.portfolioLinks || userProfile.portfolioLinks.filter(link => link.trim() !== '').length === 0) && (
+              {!userProfile?.bio && (!userProfile?.skills || userProfile.skills.length === 0) && (!userProfile?.portfolioLinks || userProfile.portfolioLinks.filter(link => link.trim() !== '').length === 0) && !userProfile?.isBanned && (
                 <p className="text-muted-foreground text-center py-4">Your profile is looking a bit empty. Click "Edit Profile" to add your details!</p>
               )}
             </div>
@@ -597,7 +611,7 @@ export default function StudentProfilePage() {
             </CardHeader>
             <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
               <div className="text-2xl sm:text-3xl font-bold">
-                {isLoadingStats && availableGigsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : availableGigsCount}
+                {(isLoadingStats && availableGigsCount === null && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : availableGigsCount}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Opportunities matching your skills.</p>
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/gigs/browse">Browse Gigs</Link></Button>
@@ -610,7 +624,7 @@ export default function StudentProfilePage() {
             </CardHeader>
             <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
               <div className="text-2xl sm:text-3xl font-bold">
-                {isLoadingStats && activeApplicationsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : activeApplicationsCount}
+                {(isLoadingStats && activeApplicationsCount === null && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : activeApplicationsCount}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Applications that are pending or accepted.</p>
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/applications">View Applications</Link></Button>
@@ -623,7 +637,7 @@ export default function StudentProfilePage() {
             </CardHeader>
             <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
               <div className="text-2xl sm:text-3xl font-bold">
-                {isLoadingStats && bookmarkedGigsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : bookmarkedGigsCount}
+                {(isLoadingStats && bookmarkedGigsCount === null && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : bookmarkedGigsCount}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Gigs you've saved for later.</p>
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/bookmarks">View Bookmarks</Link></Button>
@@ -636,7 +650,7 @@ export default function StudentProfilePage() {
             </CardHeader>
             <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
               <div className="text-2xl sm:text-3xl font-bold">
-                {isLoadingStats && currentWorksCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : currentWorksCount}
+                {(isLoadingStats && currentWorksCount === null && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : currentWorksCount}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Gigs you are currently working on.</p>
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/works">Manage Works</Link></Button>
@@ -649,7 +663,7 @@ export default function StudentProfilePage() {
             </CardHeader>
             <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
               <div className="text-2xl sm:text-3xl font-bold">
-                {isLoadingStats && reviewsCount === null ? <Loader2 className="h-7 w-7 animate-spin" /> : reviewsCount}
+                {(isLoadingStats && reviewsCount === null && !userProfile?.isBanned) ? <Loader2 className="h-7 w-7 animate-spin" /> : reviewsCount}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Total feedback received from clients.</p>
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/reviews">View Reviews</Link></Button>
@@ -674,7 +688,9 @@ export default function StudentProfilePage() {
       <Card className="glass-card">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle>My Recent Posts</CardTitle>
-          <CardDescription>A quick look at your latest content. <Link href="/student/posts/new" className="text-sm text-primary hover:underline">Create a new post</Link></CardDescription>
+          <CardDescription>A quick look at your latest content. 
+            {!userProfile?.isBanned && <Link href="/student/posts/new" className="text-sm text-primary hover:underline"> Create a new post</Link>}
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 pt-0">
           {/* Placeholder for recent posts preview - will need to fetch student's own posts here */}
@@ -767,3 +783,4 @@ export default function StudentProfilePage() {
     </div>
   );
 }
+

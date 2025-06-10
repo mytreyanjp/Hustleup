@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2 } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2, Ban } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -88,6 +88,8 @@ export default function PublicProfilePage() {
   const [reportDetails, setReportDetails] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [showBlockConfirmDialog, setShowBlockConfirmDialog] = useState(false);
+  const [showBanConfirmDialog, setShowBanConfirmDialog] = useState(false);
+  const [isBanningProcessing, setIsBanningProcessing] = useState(false);
 
 
   useEffect(() => {
@@ -115,6 +117,7 @@ export default function PublicProfilePage() {
                following: docSnap.data().following || [],
                followersCount: docSnap.data().followersCount || 0,
                blockedUserIds: docSnap.data().blockedUserIds || [],
+               isBanned: docSnap.data().isBanned || false,
             } as UserProfile;
            setProfile(fetchedProfile);
 
@@ -247,6 +250,8 @@ export default function PublicProfilePage() {
             await updateDoc(viewerUserDocRef, { blockedUserIds: arrayUnion(profile.uid) });
             toast({ title: "User Blocked", description: `${profile.companyName || profile.username} has been blocked.` });
             setIsBlockedByViewer(true);
+            // If admin blocks, also unban if they were banned by this admin? (Optional, could be complex)
+            // For now, block is a separate action from ban.
         }
         if (refreshUserProfile) await refreshUserProfile();
     } catch (err: any) {
@@ -255,6 +260,37 @@ export default function PublicProfilePage() {
     } finally {
         setIsBlockProcessing(false);
         setShowBlockConfirmDialog(false);
+    }
+  };
+
+  const handleBanToggle = async () => {
+    if (!viewerUser || viewerRole !== 'admin' || !profile || !db) {
+      toast({ title: "Permission Denied", description: "Only admins can ban users.", variant: "destructive" });
+      return;
+    }
+    setIsBanningProcessing(true);
+    const targetUserDocRef = doc(db, 'users', profile.uid);
+    try {
+      const newBanStatus = !profile.isBanned;
+      await updateDoc(targetUserDocRef, { isBanned: newBanStatus });
+      toast({
+        title: newBanStatus ? "User Banned" : "User Unbanned",
+        description: `${profile.username || 'User'} has been ${newBanStatus ? 'banned' : 'unbanned'}.`,
+      });
+      setProfile(prev => prev ? { ...prev, isBanned: newBanStatus } : null);
+      
+      // If admin bans a user they had previously blocked, unblock them for consistency.
+      if (newBanStatus && viewerUserProfile?.blockedUserIds?.includes(profile.uid)) {
+        await updateDoc(doc(db, 'users', viewerUser.uid), { blockedUserIds: arrayRemove(profile.uid) });
+        setIsBlockedByViewer(false); // Update local state for block button
+        if (refreshUserProfile) await refreshUserProfile();
+      }
+
+    } catch (error: any) {
+      toast({ title: "Error", description: `Could not update ban status: ${error.message}`, variant: "destructive" });
+    } finally {
+      setIsBanningProcessing(false);
+      setShowBanConfirmDialog(false);
     }
   };
 
@@ -398,6 +434,25 @@ export default function PublicProfilePage() {
     );
   }
 
+  if (profile.isBanned && viewerRole !== 'admin') {
+    return (
+      <div className="max-w-xl mx-auto py-8 text-center space-y-4">
+         <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2 self-start absolute top-20 left-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </Button>
+        <Card className="glass-card p-8 border-destructive">
+            <CardHeader>
+                <Ban className="mx-auto h-16 w-16 text-destructive mb-3"/>
+                <CardTitle className="text-destructive">Account Suspended</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">This account is currently suspended and cannot be viewed.</p>
+            </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
 
   const isOwnProfile = viewerUser?.uid === profile.uid;
   const displayName = profile.role === 'client'
@@ -426,6 +481,9 @@ export default function PublicProfilePage() {
                             {displayName}
                             {profile.role === 'student' && <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
                             {profile.role === 'client' && <Building className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />}
+                            {profile.isBanned && viewerRole === 'admin' && (
+                               <Badge variant="destructive" className="text-xs sm:text-sm ml-2"><Ban className="mr-1 h-3 w-3"/>BANNED</Badge>
+                            )}
                         </h1>
                         {!isOwnProfile && viewerUser && (
                             <DropdownMenu>
@@ -459,6 +517,18 @@ export default function PublicProfilePage() {
                                         {isBlockedByViewer ? <UserCheck className="mr-2 h-4 w-4" /> : <UserX className="mr-2 h-4 w-4" />}
                                         <span>{isBlockedByViewer ? "Unblock Account" : "Block Account"}</span>
                                     </DropdownMenuItem>
+                                    {viewerRole === 'admin' && (
+                                        <>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                onSelect={() => setShowBanConfirmDialog(true)}
+                                                className={cn("cursor-pointer", profile.isBanned ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
+                                            >
+                                                {profile.isBanned ? <UserCheck className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
+                                                <span>{profile.isBanned ? "Unban User" : "Ban User"}</span>
+                                            </DropdownMenuItem>
+                                        </>
+                                    )}
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         )}
@@ -477,14 +547,13 @@ export default function PublicProfilePage() {
                                   {isFollowProcessing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : (isFollowingThisUser ? <UserCheck className="mr-1 h-4 w-4" /> : <UserPlus className="mr-1 h-4 w-4" />)}
                                   {isFollowingThisUser ? 'Unfollow' : 'Follow'}
                                 </Button>
-                                {viewerRole === 'admin' && profile.role !== 'admin' && ( // Admins can chat with non-admins
+                                {viewerRole === 'admin' && profile.role !== 'admin' && !profile.isBanned && ( // Admins can chat with non-admins if not banned
                                   <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
                                       <Link href={`/chat?userId=${profile.uid}`}>
                                           <MessageSquare className="mr-1 h-4 w-4"/>Chat
                                       </Link>
                                   </Button>
                                 )}
-                                {/* Removed the "User Chat Disabled" button entirely for cleaner UI */}
                             </>
                         )}
                     </div>
@@ -775,6 +844,34 @@ export default function PublicProfilePage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+      {/* Ban/Unban Confirm Dialog (Admin Only) */}
+      {viewerRole === 'admin' && (
+        <AlertDialog open={showBanConfirmDialog} onOpenChange={setShowBanConfirmDialog}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm {profile?.isBanned ? "Unban" : "Ban"} User</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        {profile?.isBanned
+                            ? `Unbanning ${displayName} will restore their access to platform features.`
+                            : `Banning ${displayName} will restrict their ability to post gigs, apply for work, and use other platform features. They will be notified of this action.`}
+                        Are you sure?
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setShowBanConfirmDialog(false)} disabled={isBanningProcessing}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                        onClick={handleBanToggle}
+                        disabled={isBanningProcessing}
+                        className={cn(profile?.isBanned ? "" : "bg-destructive hover:bg-destructive/90 text-destructive-foreground")}
+                    >
+                        {isBanningProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {profile?.isBanned ? "Yes, Unban User" : "Yes, Ban User"}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+      )}
 
 
       {/* Followers Modal */}
