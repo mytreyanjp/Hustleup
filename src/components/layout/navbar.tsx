@@ -267,7 +267,7 @@ export default function Navbar() {
                     <Briefcase className="mr-1 h-4 w-4" /> Your Works
                 </Link>
               )}
-              {isClient && (role === 'student' || role === 'client') && (
+              {isClient && (role === 'student' || role === 'client' || role === 'admin') && (
                 <Link href="/chat" className="relative text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center">
                   <MessageSquare className="mr-1 h-4 w-4" /> Chat
                   {totalUnreadChats > 0 && (
@@ -368,6 +368,14 @@ export default function Navbar() {
                                 <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link href="/admin/users"><Users className="mr-2 h-4 w-4" /><span>Browse Users</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link href="/chat">
+                                  <MessageSquare className="mr-2 h-4 w-4" /> Chat
+                                  {totalUnreadChats > 0 && (
+                                    <span className="ml-auto text-xs bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5">
+                                      {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                                    </span>
+                                  )}
+                                </Link></DropdownMenuItem>
                             </>
                         )}
                         <DropdownMenuSeparator />
@@ -472,6 +480,14 @@ export default function Navbar() {
                             <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/admin/users"><Users className="mr-2 h-4 w-4" /><span>Browse Users</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/chat">
+                              <MessageSquare className="mr-2 h-4 w-4" /> Chat
+                              {totalUnreadChats > 0 && (
+                                <span className="ml-auto text-xs bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5">
+                                  {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                                </span>
+                              )}
+                            </Link></DropdownMenuItem>
                         </>
                       )}
                       <DropdownMenuSeparator />
