@@ -16,8 +16,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
-import type { ChatMetadata } from '@/types/chat'; // Added for chat status check
-import { getChatId } from '@/lib/utils'; // Added for getting chat ID
+import type { ChatMetadata } from '@/types/chat';
+import { getChatId } from '@/lib/utils';
 
 interface AnswerEntry {
   answerText: string;
@@ -35,11 +35,14 @@ interface FAQEntry {
   answers: AnswerEntry[];
 }
 
+// Local AdminChatRequest type definition for this page
 interface AdminChatRequest {
-    id?: string;
+    id?: string; // Firestore document ID if fetched
     requesterUid: string;
     requestedAt: Timestamp;
     status: 'pending' | 'in_progress' | 'resolved' | 'closed';
+    handledByAdminUid?: string; // UID of the admin who handled/is handling
+    initialMessage?: string; // Stored from the request dialog
 }
 
 export default function SupportPage() {
@@ -65,10 +68,6 @@ export default function SupportPage() {
   const [hasActiveChatRequestMessage, setHasActiveChatRequestMessage] = useState<string | null>(null);
   const [isLoadingChatRequestEligibility, setIsLoadingChatRequestEligibility] = useState(true);
 
-  // IMPORTANT: Replace this with a REAL Admin User ID from your Firebase project.
-  // This UID will be used as the "target" admin for chat requests initiated from this page.
-  // While multiple admins can see and handle requests from the admin panel,
-  // a specific admin UID is needed to form the initial chat ID.
   const TARGET_ADMIN_UID_FOR_SUPPORT = "Z2X9gmcjA9P4S29Q3n0zHFp7YqJ3"; 
   const isAdminChatConfigured = TARGET_ADMIN_UID_FOR_SUPPORT !== "YOUR_ACTUAL_ADMIN_UID_GOES_HERE";
 
@@ -112,44 +111,65 @@ export default function SupportPage() {
         const activeRequestsSnapshot = await getDocs(activeRequestsQuery);
 
         if (!activeRequestsSnapshot.empty) {
-          // User has an active admin_chat_request. Now check the corresponding chat document.
-          const chatId = getChatId(user.uid, TARGET_ADMIN_UID_FOR_SUPPORT);
-          const chatDocRef = doc(db, 'chats', chatId);
-          const chatSnap = await getDoc(chatDocRef);
+          const activeRequestDoc = activeRequestsSnapshot.docs[0]; // Assuming one active request at most
+          const activeRequestData = activeRequestDoc.data() as AdminChatRequest;
+          
+          if (activeRequestData.status === 'pending' && !activeRequestData.handledByAdminUid) {
+            setCanSubmitChatRequest(false);
+            setHasActiveChatRequestMessage("Your support request is pending. An admin will attend to it soon.");
+          } else if (activeRequestData.handledByAdminUid) {
+            const chatIdForActualAdmin = getChatId(user.uid, activeRequestData.handledByAdminUid);
+            const chatDocRef = doc(db, 'chats', chatIdForActualAdmin);
+            const chatSnap = await getDoc(chatDocRef);
 
-          if (chatSnap.exists()) {
-            const chatData = chatSnap.data() as ChatMetadata;
-            if (chatData.chatStatus === 'closed_by_user') {
-              // Chat was closed by user, so they can make a new request
-              setCanSubmitChatRequest(true);
-              setHasActiveChatRequestMessage(null);
+            if (chatSnap.exists()) {
+              const chatData = chatSnap.data() as ChatMetadata;
+              if (chatData.chatStatus === 'closed_by_user') {
+                const adminChatRequestDocRef = doc(db, 'admin_chat_requests', activeRequestDoc.id);
+                 if (activeRequestData.status === 'in_progress' || activeRequestData.status === 'pending') {
+                    try {
+                        await updateDoc(adminChatRequestDocRef, { status: 'closed', resolutionNotes: 'Chat resolved and closed by user.' });
+                        console.log(`Admin chat request ${adminChatRequestDocRef.id} marked as closed because chat was closed by user.`);
+                    } catch (updateError) {
+                        console.error(`Failed to update admin_chat_request ${adminChatRequestDocRef.id} to closed:`, updateError);
+                    }
+                }
+                setCanSubmitChatRequest(true);
+                setHasActiveChatRequestMessage(null);
+              } else {
+                setCanSubmitChatRequest(false);
+                setHasActiveChatRequestMessage("You already have an active support request/chat. Please wait for it to be resolved or close it from the chat page.");
+              }
             } else {
-              // Chat is still active from admin side or pending admin response
+              // Chat document with the handling admin doesn't exist. This could mean the admin accepted the request
+              // but the chat document itself was never created or was deleted.
+              // Or the initial TARGET_ADMIN_UID_FOR_SUPPORT was used to check the chat and it was not found
+              // because a different admin handled it.
+              // For safety, block new request. If the admin_chat_request is 'in_progress', it's likely an admin is meant to be in a chat.
               setCanSubmitChatRequest(false);
-              setHasActiveChatRequestMessage("You already have an active support request. Please wait for an admin to respond or for it to be resolved.");
+              setHasActiveChatRequestMessage("You have an active support interaction. If you believe it's resolved, please close it from the chat page or contact support via email.");
             }
           } else {
-            // No chat document found, means admin hasn't "accepted" it yet, or it's purely pending.
-            // This implies the admin_chat_request is still effectively active.
+            // Fallback for inconsistent states (e.g. in_progress but no handledByAdminUid)
             setCanSubmitChatRequest(false);
-            setHasActiveChatRequestMessage("You have a pending support request. Please wait for an admin to respond.");
+            setHasActiveChatRequestMessage("You have an active support request with an unusual status. Please wait or contact support via email.");
           }
         } else {
-          // No active admin_chat_requests found for this user
+          // No active admin_chat_requests found for this user.
           setCanSubmitChatRequest(true);
           setHasActiveChatRequestMessage(null);
         }
       } catch (error) {
         console.error("Error checking chat request eligibility:", error);
         toast({ title: "Error", description: "Could not verify chat request status. Please try again.", variant: "destructive" });
-        setCanSubmitChatRequest(false);
+        setCanSubmitChatRequest(false); 
       } finally {
         setIsLoadingChatRequestEligibility(false);
       }
     };
 
     checkEligibility();
-  }, [user, db, authLoading, toast, showSupportChatRequestDialog, TARGET_ADMIN_UID_FOR_SUPPORT]); 
+  }, [user, db, authLoading, toast, TARGET_ADMIN_UID_FOR_SUPPORT, showSupportChatRequestDialog]); 
 
   const handleAskQuestion = async () => {
     if (!user || !userProfile || !newQuestion.trim() || !db) {
@@ -262,8 +282,8 @@ export default function SupportPage() {
       toast({ title: "Support Request Sent!", description: "An admin will contact you via chat shortly." });
       setSupportRequestMessage('');
       setShowSupportChatRequestDialog(false);
-      setCanSubmitChatRequest(false); // Prevent immediate re-submission
-      setIsLoadingChatRequestEligibility(true); // Trigger re-check
+      setCanSubmitChatRequest(false); 
+      setIsLoadingChatRequestEligibility(true);
     } catch (error: any) {
       console.error("Error submitting support request:", error);
       toast({ title: "Request Failed", description: `Could not submit your request: ${error.message}`, variant: "destructive" });
