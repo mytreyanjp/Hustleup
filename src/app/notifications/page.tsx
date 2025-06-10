@@ -18,8 +18,8 @@ import { cn } from '@/lib/utils';
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
     case 'gig_closed_due_to_ban': return <Briefcase className="h-5 w-5 text-destructive" />;
-    case 'student_removed_due_to_ban': return <UserX className="h-5 w-5 text-destructive" />; // Changed
-    case 'applicant_removed_due_to_ban': return <UserX className="h-5 w-5 text-destructive" />; // Changed
+    case 'student_removed_due_to_ban': return <UserX className="h-5 w-5 text-destructive" />;
+    case 'applicant_removed_due_to_ban': return <UserX className="h-5 w-5 text-destructive" />;
     case 'account_warning': return <AlertTriangle className="h-5 w-5 text-amber-500" />;
     case 'role_updated': return <UserCheck className="h-5 w-5 text-blue-500" />;
     case 'payment_released': return <Send className="h-5 w-5 text-green-500" />;
