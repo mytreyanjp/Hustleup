@@ -98,6 +98,7 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     if (gig.status === 'completed') return 'completed';
 
     if (!gig.progressReports || gig.progressReports.length === 0 || (gig.numberOfReports === 0)) {
+        // If no reports are defined, but it's in-progress, it remains in-progress until payment request/completion.
         return 'in-progress';
     }
     const hasRejected = gig.progressReports.some(r => r.clientStatus === 'rejected');
@@ -105,12 +106,20 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
 
     const hasPendingReview = gig.progressReports.some(r => r.studentSubmission && r.clientStatus === 'pending_review');
     if (hasPendingReview) return 'pending-review';
+    
+    // Check if there's any report that has been submitted but not yet reviewed by client (clientStatus is null/undefined)
+    const hasSubmittedButNotReviewed = gig.progressReports.some(r => r.studentSubmission && !r.clientStatus);
+    if (hasSubmittedButNotReviewed) return 'pending-review';
+
 
     const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
     if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
+        // All reports approved, gig is in progress, student can request payment.
         return 'in-progress';
     }
-
+    
+    // Default to in-progress if none of the above specific states match
+    // This could be when some reports are approved, but not all required reports are submitted yet.
     return 'in-progress';
 };
 
@@ -333,7 +342,9 @@ export default function StudentWorksPage() {
   const handleOpenSubmitReportDialog = (gigId: string, reportNumber: number) => {
     setCurrentSubmittingGigId(gigId);
     setCurrentReportNumber(reportNumber);
-    setReportText("");
+    const gig = activeGigs.find(g => g.id === gigId);
+    const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
+    setReportText(report?.studentSubmission?.text || "");
   };
 
 
@@ -365,14 +376,15 @@ export default function StudentWorksPage() {
         progressReports[reportIndex] = {
           ...progressReports[reportIndex],
           studentSubmission,
-          clientStatus: 'pending_review',
-          clientFeedback: null,
-          reviewedAt: null,
+          clientStatus: 'pending_review', // Always reset to pending_review on new submission/resubmission
+          clientFeedback: null, // Clear previous feedback if any
+          reviewedAt: null,     // Clear previous review timestamp
         };
       } else {
+        // This case should ideally not happen if reports are pre-defined, but as a fallback:
         progressReports.push({
           reportNumber: currentReportNumber as number,
-          deadline: null,
+          deadline: null, // Or fetch existing deadline if available
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null,
@@ -481,7 +493,7 @@ export default function StudentWorksPage() {
   if (error) return (
       <div
         className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] mt-[-2rem] mb-[-2rem] bg-cover bg-center bg-no-repeat bg-fixed flex items-center justify-center"
-        style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
+        style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=Dynamic+Background')" }}
         data-ai-hint="workspace desk"
       >
         <div className="absolute inset-0 bg-background/80 backdrop-blur-lg"></div>
@@ -495,7 +507,7 @@ export default function StudentWorksPage() {
   return (
     <div
       className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] mt-[-2rem] mb-[-2rem] bg-cover bg-center bg-no-repeat bg-fixed"
-      style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
+      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=Dynamic+Background')" }}
       data-ai-hint="workspace desk"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
@@ -632,7 +644,26 @@ export default function StudentWorksPage() {
                             const previousReport = gig.progressReports?.find(r => r.reportNumber === report.reportNumber - 1);
                             const canSubmitThisReport = report.reportNumber === 1 || (previousReport?.clientStatus === 'approved');
                             const isRejected = report.clientStatus === 'rejected';
+                            const isPendingReview = report.clientStatus === 'pending_review';
+                            const neverReviewedAfterSubmission = report.studentSubmission && !report.clientStatus;
 
+                            const canEditOrSubmitReport =
+                              gig.status === 'in-progress' &&
+                              canSubmitThisReport &&
+                              (!report.studentSubmission ||
+                               isRejected ||
+                               (report.studentSubmission && (isPendingReview || neverReviewedAfterSubmission))
+                              );
+
+                            let reportButtonText = `Submit Report #${report.reportNumber}`;
+                            if (report.studentSubmission) {
+                              if (isRejected) {
+                                reportButtonText = `Resubmit Report #${report.reportNumber}`;
+                              } else if (isPendingReview || neverReviewedAfterSubmission) {
+                                reportButtonText = `Edit & Resubmit Report #${report.reportNumber}`;
+                              }
+                            }
+                            
                             return (
                               <Card key={report.reportNumber} className="bg-background/50 p-2 sm:p-3">
                                 <div className="flex justify-between items-center mb-1">
@@ -657,9 +688,9 @@ export default function StudentWorksPage() {
                                      <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
                                   </div>
                                 )}
-                                {(!report.studentSubmission || isRejected) && canSubmitThisReport && gig.status === 'in-progress' && (
+                                {canEditOrSubmitReport && (
                                     <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)}>
-                                        <Edit className="mr-1 h-3 w-3" /> {isRejected ? 'Resubmit Report' : 'Submit Report'} #{report.reportNumber}
+                                        <Edit className="mr-1 h-3 w-3" /> {reportButtonText}
                                     </Button>
                                 )}
                                  {!canSubmitThisReport && !report.studentSubmission && report.reportNumber > (gig.progressReports?.filter(r => r.studentSubmission && r.clientStatus !== 'rejected').length || 0) && (
@@ -742,3 +773,4 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+
