@@ -121,10 +121,10 @@ export default function NotificationsPage() {
       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2 self-start">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
         {notifications.some(n => !n.isRead) && (
-          <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+          <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="w-full sm:w-auto">
             <CheckCheck className="mr-2 h-4 w-4" /> Mark All as Read
           </Button>
         )}
