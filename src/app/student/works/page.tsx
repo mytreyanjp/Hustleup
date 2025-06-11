@@ -98,7 +98,6 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     if (gig.status === 'completed') return 'completed';
 
     if (!gig.progressReports || gig.progressReports.length === 0 || (gig.numberOfReports === 0)) {
-        // If no reports are defined, but it's in-progress, it remains in-progress until payment request/completion.
         return 'in-progress';
     }
     const hasRejected = gig.progressReports.some(r => r.clientStatus === 'rejected');
@@ -107,19 +106,15 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     const hasPendingReview = gig.progressReports.some(r => r.studentSubmission && r.clientStatus === 'pending_review');
     if (hasPendingReview) return 'pending-review';
     
-    // Check if there's any report that has been submitted but not yet reviewed by client (clientStatus is null/undefined)
     const hasSubmittedButNotReviewed = gig.progressReports.some(r => r.studentSubmission && !r.clientStatus);
     if (hasSubmittedButNotReviewed) return 'pending-review';
 
 
     const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
     if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
-        // All reports approved, gig is in progress, student can request payment.
         return 'in-progress';
     }
     
-    // Default to in-progress if none of the above specific states match
-    // This could be when some reports are approved, but not all required reports are submitted yet.
     return 'in-progress';
 };
 
@@ -158,6 +153,8 @@ export default function StudentWorksPage() {
   const [currentSubmittingGigId, setCurrentSubmittingGigId] = useState<string | null>(null);
   const [currentReportNumber, setCurrentReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
+  const [isSubmittingUnsubmit, setIsSubmittingUnsubmit] = useState<number | null>(null);
+
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<EffectiveStatusType | 'all'>('all');
@@ -376,15 +373,14 @@ export default function StudentWorksPage() {
         progressReports[reportIndex] = {
           ...progressReports[reportIndex],
           studentSubmission,
-          clientStatus: 'pending_review', // Always reset to pending_review on new submission/resubmission
-          clientFeedback: null, // Clear previous feedback if any
-          reviewedAt: null,     // Clear previous review timestamp
+          clientStatus: 'pending_review', 
+          clientFeedback: null, 
+          reviewedAt: null,     
         };
       } else {
-        // This case should ideally not happen if reports are pre-defined, but as a fallback:
         progressReports.push({
           reportNumber: currentReportNumber as number,
-          deadline: null, // Or fetch existing deadline if available
+          deadline: null, 
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null,
@@ -397,7 +393,6 @@ export default function StudentWorksPage() {
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
 
-      // Create notification for the client
       await createNotification(
         currentGigData.clientId,
         `"${userProfile.username || 'The student'}" has submitted Report #${currentReportNumber} for your gig "${currentGigData.title}".`,
@@ -415,6 +410,54 @@ export default function StudentWorksPage() {
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
     } finally {
       setIsSubmittingReport(false);
+    }
+  };
+
+  const handleUnsubmitReport = async (gigId: string, reportNumberToUnsubmit: number) => {
+    if (!user || !db) {
+        toast({ title: "Error", description: "Cannot unsubmit report. User or DB not available.", variant: "destructive" });
+        return;
+    }
+    setIsSubmittingUnsubmit(reportNumberToUnsubmit);
+    try {
+        const gigDocRef = doc(db, 'gigs', gigId);
+        const gigSnap = await getDoc(gigDocRef);
+        if (!gigSnap.exists()) throw new Error("Gig not found to unsubmit report from.");
+
+        const currentGigData = gigSnap.data() as WorkGig;
+        let progressReports: ProgressReport[] = currentGigData.progressReports || [];
+        const reportIndex = progressReports.findIndex(r => r.reportNumber === reportNumberToUnsubmit);
+
+        if (reportIndex === -1 || !progressReports[reportIndex].studentSubmission) {
+            throw new Error("Report not found or not submitted.");
+        }
+
+        // Clear submission details for the report
+        progressReports[reportIndex] = {
+            ...progressReports[reportIndex],
+            studentSubmission: undefined, // Or null, depending on your data model preference
+            clientStatus: null,
+            clientFeedback: null,
+            reviewedAt: null,
+        };
+
+        await updateDoc(gigDocRef, { progressReports });
+        toast({ title: "Report Unsubmitted", description: `Report #${reportNumberToUnsubmit} has been unsubmitted.` });
+
+        // Optionally update local state if not relying solely on onSnapshot
+        setActiveGigs(prevGigs => 
+            prevGigs.map(g => 
+                g.id === gigId 
+                ? { ...g, progressReports: progressReports.map(pr => ({...pr})) } // Deep copy to trigger re-render
+                : g
+            )
+        );
+
+    } catch (error: any) {
+        console.error("Error unsubmitting report:", error);
+        toast({ title: "Unsubmit Failed", description: `Could not unsubmit report: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsSubmittingUnsubmit(null);
     }
   };
 
@@ -643,25 +686,25 @@ export default function StudentWorksPage() {
                           {gig.progressReports?.map(report => {
                             const previousReport = gig.progressReports?.find(r => r.reportNumber === report.reportNumber - 1);
                             const canSubmitThisReport = report.reportNumber === 1 || (previousReport?.clientStatus === 'approved');
-                            const isRejected = report.clientStatus === 'rejected';
-                            const isPendingReview = report.clientStatus === 'pending_review';
-                            const neverReviewedAfterSubmission = report.studentSubmission && !report.clientStatus;
-
-                            const canEditOrSubmitReport =
-                              gig.status === 'in-progress' &&
-                              canSubmitThisReport &&
-                              (!report.studentSubmission ||
-                               isRejected ||
-                               (report.studentSubmission && (isPendingReview || neverReviewedAfterSubmission))
-                              );
-
-                            let reportButtonText = `Submit Report #${report.reportNumber}`;
-                            if (report.studentSubmission) {
-                              if (isRejected) {
-                                reportButtonText = `Resubmit Report #${report.reportNumber}`;
-                              } else if (isPendingReview || neverReviewedAfterSubmission) {
-                                reportButtonText = `Edit & Resubmit Report #${report.reportNumber}`;
-                              }
+                            
+                            const reportSubmitted = !!report.studentSubmission;
+                            const isPendingClientReview = reportSubmitted && (report.clientStatus === 'pending_review' || !report.clientStatus);
+                            const isRejectedByClient = reportSubmitted && report.clientStatus === 'rejected';
+                            const isApprovedByClient = reportSubmitted && report.clientStatus === 'approved';
+                            
+                            let reportButton;
+                            if (isPendingClientReview) {
+                                reportButton = (
+                                    <Button size="xs" variant="destructive" className="mt-2 text-xs h-7 px-2" onClick={() => handleUnsubmitReport(gig.id, report.reportNumber)} disabled={isSubmittingUnsubmit === report.reportNumber || userProfile?.isBanned}>
+                                        {isSubmittingUnsubmit === report.reportNumber ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <XIcon className="mr-1 h-3 w-3" />} Unsubmit
+                                    </Button>
+                                );
+                            } else if ((!reportSubmitted && canSubmitThisReport) || (isRejectedByClient && canSubmitThisReport)) {
+                                reportButton = (
+                                    <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)} disabled={userProfile?.isBanned}>
+                                        <Edit className="mr-1 h-3 w-3" /> {isRejectedByClient ? `Resubmit Report #${report.reportNumber}` : `Submit Report #${report.reportNumber}`}
+                                    </Button>
+                                );
                             }
                             
                             return (
@@ -688,11 +731,7 @@ export default function StudentWorksPage() {
                                      <p className="text-muted-foreground">Reviewed: {report.reviewedAt ? format(report.reviewedAt.toDate(), "PPp") : 'N/A'}</p>
                                   </div>
                                 )}
-                                {canEditOrSubmitReport && (
-                                    <Button size="xs" variant="outline" className="mt-2 text-xs h-7 px-2" onClick={() => handleOpenSubmitReportDialog(gig.id, report.reportNumber)}>
-                                        <Edit className="mr-1 h-3 w-3" /> {reportButtonText}
-                                    </Button>
-                                )}
+                                {reportButton}
                                  {!canSubmitThisReport && !report.studentSubmission && report.reportNumber > (gig.progressReports?.filter(r => r.studentSubmission && r.clientStatus !== 'rejected').length || 0) && (
                                     <p className="text-xs text-muted-foreground italic mt-1">Previous report needs approval before submitting this one.</p>
                                 )}
@@ -712,7 +751,7 @@ export default function StudentWorksPage() {
                             size="sm"
                             variant={canRequestPayment ? "default" : "outline"}
                             onClick={() => { if(canRequestPayment) {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}}
-                            disabled={!canRequestPayment}
+                            disabled={!canRequestPayment || userProfile?.isBanned}
                             title={paymentButtonTitle}
                             className="w-full sm:w-auto mt-2 sm:mt-0"
                         >
