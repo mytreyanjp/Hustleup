@@ -590,7 +590,7 @@ export default function ChatPage() {
     }
 
     return () => unsubscribeMessages();
-  }, [selectedChatId, user, userProfile]); // Removed `db` from deps as it should be stable.
+  }, [selectedChatId, user, userProfile]); 
 
 
   useEffect(() => {
@@ -1140,23 +1140,33 @@ export default function ChatPage() {
   // Determine displayed name and avatar for the other participant
   const otherUserIdForHeader = _selectedChatDetails?.participants.find(pId => pId !== user?.uid);
   const otherUserActualProfileForHeader = otherUserIdForHeader ? otherParticipantProfiles[otherUserIdForHeader] : null;
+  
+  // Determine if we are still waiting for the specific partner's profile to load
+  const isLoadingPartnerProfile = !!(selectedChatId && otherUserIdForHeader && !otherUserActualProfileForHeader);
 
-  let displayNameForHeader = 'User';
+  let displayNameForHeader = 'Chat Partner'; // Generic default for when no chat is selected
   let profilePictureForHeader = undefined;
-  let displayRoleForHeader = otherUserActualProfileForHeader?.role;
+  let displayRoleForHeader: UserProfile['role'] | undefined = undefined;
 
-  if (otherUserActualProfileForHeader) {
+  if (!selectedChatId) {
+    displayNameForHeader = 'Select a chat';
+  } else if (isLoadingPartnerProfile && otherUserIdForHeader && _selectedChatDetails) {
+    // If partner profile is loading
+    displayNameForHeader = (userProfile.role !== 'admin') ? 
+                              'Loading...' : 
+                              (_selectedChatDetails.participantUsernames[otherUserIdForHeader] || 'Loading...');
+    profilePictureForHeader = (userProfile.role === 'admin' && _selectedChatDetails.participantProfilePictures) ? 
+                                _selectedChatDetails.participantProfilePictures[otherUserIdForHeader] : 
+                                undefined;
+  } else if (otherUserActualProfileForHeader) { // Full profile is loaded
+      displayRoleForHeader = otherUserActualProfileForHeader.role;
       if (userProfile.role !== 'admin' && otherUserActualProfileForHeader.role === 'admin') {
           displayNameForHeader = "Admin Support";
-          // profilePictureForHeader = "/path/to/generic/support-avatar.png"; // Replace with actual generic avatar if desired
+          profilePictureForHeader = undefined; 
       } else {
           displayNameForHeader = otherUserActualProfileForHeader.username || otherUserActualProfileForHeader.email?.split('@')[0] || 'User';
           profilePictureForHeader = otherUserActualProfileForHeader.profilePictureUrl;
       }
-  } else if (otherUserIdForHeader && _selectedChatDetails) {
-      // Fallback if profile not fully loaded yet, use stored username
-      displayNameForHeader = _selectedChatDetails.participantUsernames[otherUserIdForHeader] || 'User';
-      profilePictureForHeader = _selectedChatDetails.participantProfilePictures?.[otherUserIdForHeader];
   }
   
   const isOtherUserBlockedByCurrentUser = otherUserIdForHeader && userProfile?.blockedUserIds?.includes(otherUserIdForHeader);
@@ -1201,12 +1211,13 @@ export default function ChatPage() {
 
 
   let inputDisabledReason = "";
-  if (!_selectedChatDetails) inputDisabledReason = "Loading chat...";
+  if (!selectedChatId) inputDisabledReason = "Select a chat to start.";
+  else if (isLoadingPartnerProfile) inputDisabledReason = "Loading chat partner...";
   else if (userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role !== 'admin') inputDisabledReason = "Direct user chats disabled.";
   else if (isCurrentUserInitiatorOfAdminRequest && messages.length > 0) inputDisabledReason = "Waiting for admin to reply...";
   else if (isSending) inputDisabledReason = "Sending...";
   else if (isOtherUserBlockedByCurrentUser) inputDisabledReason = "You blocked this user.";
-  else if (isCurrentUserBlockedByOther) inputDisabledReason = "This user blocked you.";
+  else if (isCurrentUserBlockedByOther) inputDisabledReason = "This user has blocked you.";
   else if (_selectedChatDetails?.chatStatus === 'closed_by_user' && userProfile?.role !== 'admin') inputDisabledReason = "You marked this issue as resolved.";
 
   const isInputEffectivelyDisabled = !!inputDisabledReason;
@@ -1288,7 +1299,7 @@ export default function ChatPage() {
                     >
                         <Avatar className="h-10 w-10 ml-2">
                             <AvatarImage src={partnerProfilePicToDisplay} alt={chatPartnerNameToDisplay} />
-                            <AvatarFallback>{chatPartnerNameToDisplay?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                            <AvatarFallback>{chatPartnerNameToDisplay === "Admin Support" ? "AS" : (chatPartnerNameToDisplay?.substring(0,1).toUpperCase() || 'U')}</AvatarFallback>
                         </Avatar>
                     </Link>
                     <div className="flex-grow overflow-hidden min-w-0">
@@ -1327,7 +1338,7 @@ export default function ChatPage() {
         "flex-grow glass-card flex flex-col h-full relative",
         !selectedChatId && 'hidden md:flex'
         )}>
-        {selectedChatId && _selectedChatDetails && otherUserIdForHeader && user && userProfile ? (
+        {selectedChatId && _selectedChatDetails && user && userProfile ? (
           <>
             <CardHeader className="border-b flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-2 sm:gap-0 flex-wrap">
               <div className="flex items-center gap-3 flex-grow min-w-0">
@@ -1335,21 +1346,38 @@ export default function ChatPage() {
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
                  <Link href={`/profile/${otherUserIdForHeader}`} passHref
-                    className={cn(userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role === 'admin' ? "pointer-events-none" : "")}
+                    className={cn(
+                        (userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support"
+                        ? "pointer-events-none" : ""
+                    )}
+                    onClick={(e) => {
+                        if ((userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support") {
+                            e.preventDefault();
+                        }
+                    }}
                  >
                   <Avatar className="h-10 w-10 cursor-pointer">
                       <AvatarImage src={profilePictureForHeader} alt={displayNameForHeader} />
-                      <AvatarFallback>{displayNameForHeader?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                      <AvatarFallback>{displayNameForHeader === "Admin Support" ? "AS" : (displayNameForHeader === "Loading..." ? <Loader2 className="h-4 w-4 animate-spin"/> : (displayNameForHeader?.substring(0,1).toUpperCase() || 'U'))}</AvatarFallback>
                   </Avatar>
                 </Link>
                 <div className="overflow-hidden">
                    <Link href={`/profile/${otherUserIdForHeader}`} passHref
-                    className={cn(
-                        "hover:underline",
-                        userProfile.role !== 'admin' && otherUserActualProfileForHeader?.role === 'admin' ? "pointer-events-none text-foreground" : ""
+                        className={cn(
+                            "hover:underline",
+                            (userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support"
+                            ? "pointer-events-none text-foreground" : ""
                         )}
+                        onClick={(e) => {
+                            if ((userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support") {
+                                e.preventDefault();
+                            }
+                        }}
                    >
-                    <CardTitle className="text-base truncate">{displayNameForHeader} {displayRoleForHeader === 'admin' && userProfile.role === 'admin' && <Badge variant="outline" className="ml-1 text-xs">Admin</Badge>}</CardTitle>
+                    <CardTitle className="text-base truncate">
+                        {displayNameForHeader}
+                        {displayRoleForHeader === 'admin' && userProfile.role === 'admin' && !isLoadingPartnerProfile && <Badge variant="outline" className="ml-1 text-xs">Admin</Badge>}
+                    </CardTitle>
                   </Link>
                   {currentGigForChat?.title && _selectedChatDetails.chatStatus === 'accepted' && userProfile.role === 'admin' && (
                       <Link href={`/gigs/${currentGigForChat.id}`} className="text-xs text-primary hover:underline truncate block">
