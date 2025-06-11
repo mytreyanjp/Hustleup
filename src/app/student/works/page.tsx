@@ -22,10 +22,16 @@ import { cn } from '@/lib/utils';
 import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
 import { Progress } from '@/components/ui/progress';
 
+interface Attachment {
+  url: string;
+  name: string;
+  type?: string;
+  size?: number;
+}
+
 interface StudentSubmission {
   text: string;
-  fileUrl?: string;
-  fileName?: string;
+  attachments?: Attachment[]; // Changed from single file to array
   submittedAt: Timestamp;
 }
 
@@ -157,8 +163,8 @@ export default function StudentWorksPage() {
   const [currentSubmittingGigId, setCurrentSubmittingGigId] = useState<string | null>(null);
   const [currentReportNumber, setCurrentReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // Changed to File[]
+  const [uploadProgress, setUploadProgress] = useState<Array<{ name: string; progress: number }>>([]);
   const [isSubmittingUnsubmit, setIsSubmittingUnsubmit] = useState<number | null>(null);
 
 
@@ -347,30 +353,30 @@ export default function StudentWorksPage() {
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { // Max 5MB
-        toast({ 
-            title: "File Too Large (Max 5MB)", 
-            description: "For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.", 
+    const files = event.target.files;
+    if (files) {
+      const newFilesArray = Array.from(files);
+      const validNewFiles = newFilesArray.filter(file => {
+        if (file.size > 5 * 1024 * 1024) { // Max 5MB
+          toast({
+            title: "File Too Large (Max 5MB)",
+            description: `"${file.name}" exceeds 5MB. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.`,
             variant: "destructive",
-            duration: 7000, 
-        });
-        setSelectedFile(null);
-        if(fileInputRef.current) fileInputRef.current.value = "";
-        return;
-      }
-      setSelectedFile(file);
-    } else {
-      setSelectedFile(null);
+            duration: 7000,
+          });
+          return false;
+        }
+        return true;
+      });
+      setSelectedFiles(prevFiles => [...prevFiles, ...validNewFiles]);
+    }
+     if (fileInputRef.current) { // Clear the input after processing so user can select more files if needed
+        fileInputRef.current.value = "";
     }
   };
 
-  const clearSelectedFile = () => {
-    setSelectedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+  const removeSelectedFile = (fileNameToRemove: string) => {
+    setSelectedFiles(prevFiles => prevFiles.filter(file => file.name !== fileNameToRemove));
   };
 
   const handleOpenSubmitReportDialog = (gigId: string, reportNumber: number) => {
@@ -379,9 +385,9 @@ export default function StudentWorksPage() {
     const gig = activeGigs.find(g => g.id === gigId);
     const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
     setReportText(report?.studentSubmission?.text || "");
-    setSelectedFile(null); // Reset file selection
-    setUploadProgress(null); // Reset upload progress
-    if (fileInputRef.current) { // Explicitly clear the file input
+    setSelectedFiles([]); 
+    setUploadProgress([]); 
+    if (fileInputRef.current) { 
       fileInputRef.current.value = ""; 
     }
   };
@@ -397,36 +403,44 @@ export default function StudentWorksPage() {
       return;
     }
     setIsSubmittingReport(true);
-    setUploadProgress(null);
+    setUploadProgress([]);
 
-    let fileUrl: string | undefined = undefined;
-    let fileName: string | undefined = undefined;
+    const uploadedAttachments: Attachment[] = [];
 
     try {
-      if (selectedFile && storage) {
-        setUploadProgress(0);
-        const uniqueFileName = `${Date.now()}_${selectedFile.name}`;
-        const reportStorageRef = storageRefFn(storage, `gig_reports/${currentSubmittingGigId}/${currentReportNumber}/${user.uid}/${uniqueFileName}`);
-        const uploadTask = uploadBytesResumable(reportStorageRef, selectedFile);
+      if (selectedFiles.length > 0 && storage) {
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const file = selectedFiles[i];
+          setUploadProgress(prev => [...prev, { name: file.name, progress: 0 }]);
+          
+          const uniqueFileName = `${Date.now()}_${file.name}`;
+          const reportStorageRef = storageRefFn(storage, `gig_reports/${currentSubmittingGigId}/${currentReportNumber}/${user.uid}/attachments/${uniqueFileName}`);
+          const uploadTask = uploadBytesResumable(reportStorageRef, file);
 
-        await new Promise<void>((resolve, reject) => {
-          uploadTask.on(
-            'state_changed',
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              setUploadProgress(progress);
-            },
-            (error) => {
-              console.error('Upload error:', error);
-              reject(error);
-            },
-            async () => {
-              fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              fileName = selectedFile.name;
-              resolve();
-            }
-          );
-        });
+          await new Promise<void>((resolve, reject) => {
+            uploadTask.on(
+              'state_changed',
+              (snapshot) => {
+                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                setUploadProgress(prev => prev.map(up => up.name === file.name ? { ...up, progress } : up));
+              },
+              (error) => {
+                console.error('Upload error for file:', file.name, error);
+                reject(error);
+              },
+              async () => {
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                uploadedAttachments.push({
+                  url: downloadURL,
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                });
+                resolve();
+              }
+            );
+          });
+        }
       }
 
       const gigDocRef = doc(db, 'gigs', currentSubmittingGigId);
@@ -440,8 +454,7 @@ export default function StudentWorksPage() {
       const studentSubmission: StudentSubmission = {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
-        ...(fileUrl && { fileUrl }),
-        ...(fileName && { fileName }),
+        attachments: uploadedAttachments.length > 0 ? uploadedAttachments : (progressReports[reportIndex]?.studentSubmission?.attachments || []), // Preserve old attachments if no new ones are added
       };
 
       if (reportIndex > -1) {
@@ -480,8 +493,8 @@ export default function StudentWorksPage() {
       );
 
       setCurrentSubmittingGigId(null);
-      setSelectedFile(null);
-      setUploadProgress(null);
+      setSelectedFiles([]);
+      setUploadProgress([]);
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -509,18 +522,19 @@ export default function StudentWorksPage() {
             throw new Error("Report not found or not submitted.");
         }
         
-        const oldFileUrl = progressReports[reportIndex].studentSubmission?.fileUrl;
-        if (oldFileUrl && storage) {
-            try {
-                const fileRefToDelete = storageRefFn(storage, oldFileUrl); 
-                await deleteObject(fileRefToDelete);
-                console.log("Old report file deleted from storage:", oldFileUrl);
-            } catch (storageError: any) {
-                if (storageError.code === 'storage/object-not-found') {
-                    console.warn("File to delete not found in storage:", oldFileUrl);
-                } else {
-                    console.warn("Could not delete old report file from storage during unsubmit:", storageError);
-                    toast({ title: "File Deletion Issue", description: "Could not delete the previous attachment from storage, but report was unsubmitted.", variant: "default" });
+        const attachmentsToDelete = progressReports[reportIndex].studentSubmission?.attachments;
+        if (attachmentsToDelete && attachmentsToDelete.length > 0 && storage) {
+            for (const attachment of attachmentsToDelete) {
+                try {
+                    const fileRefToDelete = storageRefFn(storage, attachment.url); 
+                    await deleteObject(fileRefToDelete);
+                    console.log("Report attachment deleted from storage:", attachment.name);
+                } catch (storageError: any) {
+                    if (storageError.code === 'storage/object-not-found') {
+                        console.warn("File to delete not found in storage:", attachment.name);
+                    } else {
+                        console.warn("Could not delete report attachment from storage during unsubmit:", storageError);
+                    }
                 }
             }
         }
@@ -822,12 +836,16 @@ export default function StudentWorksPage() {
                                 {report.studentSubmission ? (
                                   <div className="text-xs space-y-1">
                                     <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
-                                    {report.studentSubmission.fileUrl && (
-                                      <Button variant="link" size="xs" asChild className="p-0 h-auto text-xs">
-                                          <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
-                                              <FileText className="mr-1 h-3 w-3" /> View Attachment ({report.studentSubmission.fileName || 'file'})
-                                          </a>
-                                      </Button>
+                                    {report.studentSubmission.attachments && report.studentSubmission.attachments.length > 0 && (
+                                      <div className="space-y-0.5 mt-1">
+                                        {report.studentSubmission.attachments.map((att, idx) => (
+                                          <Button key={idx} variant="link" size="xs" asChild className="p-0 h-auto text-xs block">
+                                            <a href={att.url} target="_blank" rel="noopener noreferrer">
+                                              <FileText className="mr-1 h-3 w-3" /> View Attachment: {att.name}
+                                            </a>
+                                          </Button>
+                                        ))}
+                                      </div>
                                     )}
                                     <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
                                   </div>
@@ -886,8 +904,8 @@ export default function StudentWorksPage() {
               setCurrentSubmittingGigId(null); 
               setCurrentReportNumber(null); 
               setReportText(""); 
-              setSelectedFile(null); 
-              setUploadProgress(null); 
+              setSelectedFiles([]); 
+              setUploadProgress([]); 
               if(fileInputRef.current) fileInputRef.current.value = "";
             }
           }}
@@ -896,38 +914,49 @@ export default function StudentWorksPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Submit Report #{currentReportNumber} for Gig: {activeGigs.find(g => g.id === currentSubmittingGigId)?.title}</DialogTitle>
-              <DialogDescription>Provide details about your progress. Max file size 5MB. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.</DialogDescription>
+              <DialogDescription>Provide details about your progress. Max file size 5MB per file. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <Textarea placeholder="Describe your progress, challenges, and next steps..." value={reportText} onChange={(e) => setReportText(e.target.value)} rows={5} disabled={isSubmittingReport} />
               <div>
-                  <label htmlFor="reportFile" className="text-sm font-medium text-muted-foreground block mb-1">Attach File (Optional)</label>
+                  <label htmlFor="reportFile" className="text-sm font-medium text-muted-foreground block mb-1">Attach File(s) (Optional)</label>
                   <Input
                     id="reportFile"
                     type="file"
+                    multiple // Allow multiple file selection
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     className="text-sm file:mr-2 file:py-1.5 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                    disabled={isSubmittingReport || !!uploadProgress}
+                    disabled={isSubmittingReport || uploadProgress.some(up => up.progress < 100 && up.progress > 0)}
                   />
-                  {selectedFile && (
-                    <div className="mt-2 text-xs flex items-center justify-between bg-muted p-1.5 rounded">
-                      <span className="truncate max-w-[200px]">{selectedFile.name}</span>
-                      <Button variant="ghost" size="icon" onClick={clearSelectedFile} disabled={isSubmittingReport || !!uploadProgress} className="h-5 w-5">
-                        <XIcon className="h-3 w-3" />
-                      </Button>
+                   {selectedFiles.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Selected files:</p>
+                        {selectedFiles.map((file, index) => (
+                        <div key={index} className="text-xs flex items-center justify-between bg-muted p-1.5 rounded">
+                            <span className="truncate max-w-[200px] sm:max-w-xs" title={file.name}>{file.name}</span>
+                            <Button variant="ghost" size="icon" onClick={() => removeSelectedFile(file.name)} disabled={isSubmittingReport || uploadProgress.some(up => up.progress < 100 && up.progress > 0)} className="h-5 w-5 shrink-0">
+                            <XIcon className="h-3 w-3" />
+                            </Button>
+                        </div>
+                        ))}
                     </div>
                   )}
-                  {uploadProgress !== null && (
+                  {uploadProgress.length > 0 && uploadProgress.some(up => up.progress < 100) && (
                     <div className="mt-2 space-y-1">
-                        <Progress value={uploadProgress} className="w-full h-1.5" />
-                        <p className="text-xs text-muted-foreground text-center">{Math.round(uploadProgress)}% uploaded</p>
+                        {uploadProgress.filter(up => up.progress < 100).map((upFile, idx) => (
+                            <div key={idx}>
+                                <p className="text-xs text-muted-foreground truncate">Uploading: {upFile.name}</p>
+                                <Progress value={upFile.progress} className="w-full h-1.5" />
+                                <p className="text-xs text-muted-foreground text-right">{Math.round(upFile.progress)}%</p>
+                            </div>
+                        ))}
                     </div>
                   )}
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => {setCurrentSubmittingGigId(null); setCurrentReportNumber(null); setReportText(""); setSelectedFile(null); setUploadProgress(null); if(fileInputRef.current) fileInputRef.current.value = "";}} disabled={isSubmittingReport}>Cancel</Button>
+              <Button variant="outline" onClick={() => {setCurrentSubmittingGigId(null); setCurrentReportNumber(null); setReportText(""); setSelectedFiles([]); setUploadProgress([]); if(fileInputRef.current) fileInputRef.current.value = "";}} disabled={isSubmittingReport}>Cancel</Button>
               <Button onClick={handleSubmitReport} disabled={isSubmittingReport || !reportText.trim()}>
                 {isSubmittingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Submit Report
