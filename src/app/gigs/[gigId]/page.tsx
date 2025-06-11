@@ -3,20 +3,20 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, addDoc, collection, serverTimestamp } from 'firebase/firestore'; // Added addDoc, collection, serverTimestamp
 import { db, storage } from '@/config/firebase';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban } from 'lucide-react'; // Added Hourglass, Ban
+import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-// import { Progress } from '@/components/ui/progress'; // Media upload disabled
+import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
 
 // Define ProgressReport related interfaces directly here or import if moved to a shared types file
 interface StudentSubmission {
@@ -41,19 +41,54 @@ interface Gig {
   description: string;
   budget: number;
   currency: string;
-  deadline: Timestamp; 
+  deadline: Timestamp;
   requiredSkills: string[];
   clientId: string;
-  clientUsername?: string; 
+  clientUsername?: string;
   clientDisplayName?: string;
   clientAvatarUrl?: string;
-  createdAt: Timestamp; 
-  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
+  createdAt: Timestamp;
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout';
   applicants?: { studentId: string; studentUsername: string; message?: string; appliedAt: Timestamp }[];
   selectedStudentId?: string | null;
   numberOfReports?: number;
   progressReports?: ProgressReport[];
 }
+
+// Notification creation helper
+const createNotification = async (
+    recipientUserId: string,
+    message: string,
+    type: NotificationType,
+    relatedGigId?: string,
+    relatedGigTitle?: string,
+    link?: string,
+    actorUserId?: string,
+    actorUsername?: string
+) => {
+    if (!db) {
+        console.error("Firestore (db) not available for creating notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type,
+            relatedGigId: relatedGigId || null,
+            relatedGigTitle: relatedGigTitle || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            ...(actorUserId && { actorUserId }),
+            ...(actorUsername && { actorUsername }),
+            link: link || (relatedGigId ? `/gigs/${relatedGigId}` : '/notifications'),
+        });
+        console.log(`Notification of type ${type} created for ${recipientUserId}: ${message}`);
+    } catch (error) {
+        console.error("Error creating notification document:", error);
+    }
+};
+
 
 export default function GigDetailPage() {
   const params = useParams();
@@ -75,8 +110,6 @@ export default function GigDetailPage() {
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [currentSubmittingReportNumber, setCurrentSubmittingReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
-  // const [reportFile, setReportFile] = useState<File | null>(null); // Media upload disabled
-  // const [reportUploadProgress, setReportUploadProgress] = useState<number | null>(null); // Media upload disabled
 
 
   const fetchGigData = useCallback(async () => {
@@ -94,12 +127,11 @@ export default function GigDetailPage() {
 
       if (docSnap.exists()) {
         const fetchedGigData = docSnap.data();
-        const fetchedGig = { 
-          id: docSnap.id, 
+        const fetchedGig = {
+          id: docSnap.id,
           ...fetchedGigData,
           currency: fetchedGigData.currency || "INR",
-          // Ensure progressReports is initialized correctly
-          progressReports: fetchedGigData.numberOfReports && fetchedGigData.numberOfReports > 0 
+          progressReports: fetchedGigData.numberOfReports && fetchedGigData.numberOfReports > 0
                            ? Array.from({ length: fetchedGigData.numberOfReports }, (_, i) => {
                                const existingReport = (fetchedGigData.progressReports as ProgressReport[])?.find(pr => pr.reportNumber === i + 1);
                                return {
@@ -113,7 +145,7 @@ export default function GigDetailPage() {
                              })
                            : [],
         } as Gig;
-        
+
         setGig(fetchedGig);
 
         if (fetchedGig.clientId && db) {
@@ -123,7 +155,7 @@ export default function GigDetailPage() {
             if (clientDocSnap.exists()) {
               const clientData = { uid: clientDocSnap.id, ...clientDocSnap.data() } as UserProfile;
               setClientProfileDetails(clientData);
-              if (clientData.isBanned) { // If client who posted the gig is banned, don't show gig
+              if (clientData.isBanned) {
                   setError("This gig is currently unavailable.");
                   setGig(null);
               }
@@ -189,6 +221,18 @@ export default function GigDetailPage() {
         applicants: arrayUnion(newApplicant),
       });
 
+      // Create notification for the client
+      await createNotification(
+        gig.clientId,
+        `"${viewerUserProfile.username || 'A student'}" has applied to your gig "${gig.title}".`,
+        'new_applicant',
+        gig.id,
+        gig.title,
+        `/client/gigs/${gig.id}/manage`,
+        viewerUser.uid,
+        viewerUserProfile.username || 'A student'
+      );
+
       setHasApplied(true);
       setGig(prevGig => prevGig ? { ...prevGig, applicants: [...(prevGig.applicants || []), newApplicant] } : null);
       toast({
@@ -208,7 +252,7 @@ export default function GigDetailPage() {
       setIsApplying(false);
     }
   };
-  
+
   const handleToggleBookmark = async () => {
     if (!viewerUser || !viewerUserProfile || viewerRole !== 'student' || !gig) return;
     if (viewerUserProfile.isBanned) {
@@ -234,8 +278,8 @@ export default function GigDetailPage() {
         });
         toast({ title: "Gig Bookmarked!", description: `"${gig.title}" added to your bookmarks.` });
       }
-      setIsBookmarked(!isBookmarked); 
-      if(refreshUserProfile) await refreshUserProfile(); 
+      setIsBookmarked(!isBookmarked);
+      if(refreshUserProfile) await refreshUserProfile();
     } catch (err: any) {
       console.error("Error toggling bookmark:", err);
       toast({ title: "Bookmark Error", description: `Could not update bookmark: ${err.message}`, variant: "destructive" });
@@ -269,10 +313,10 @@ export default function GigDetailPage() {
       return timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
     } catch (e) { return 'Invalid date'; }
   };
-  
+
   const formatSpecificDate = (timestamp: Timestamp | undefined | null): string => {
      if (!timestamp) return 'Not set';
-     try { return format(timestamp.toDate(), "PPp"); } 
+     try { return format(timestamp.toDate(), "PPp"); }
      catch (e) { return 'Invalid date'; }
    };
 
@@ -289,11 +333,10 @@ export default function GigDetailPage() {
     setCurrentSubmittingReportNumber(reportNumber);
     const existingSubmission = gig?.progressReports?.find(r => r.reportNumber === reportNumber)?.studentSubmission;
     setReportText(existingSubmission?.text || "");
-    // setReportFile(null); // Media upload disabled
   };
 
   const handleSubmitReport = async () => {
-    if (!currentSubmittingReportNumber || !gig || !viewerUser || !db) { 
+    if (!currentSubmittingReportNumber || !gig || !viewerUser || !db) {
       toast({ title: "Error", description: "Cannot submit report. Missing context.", variant: "destructive" });
       return;
     }
@@ -306,14 +349,13 @@ export default function GigDetailPage() {
         return;
     }
     setIsSubmittingReport(true);
-    // setReportUploadProgress(0); // Media upload disabled
 
     try {
       const gigDocRef = doc(db, 'gigs', gig.id);
       const gigSnap = await getDoc(gigDocRef);
       if (!gigSnap.exists()) throw new Error("Gig not found for report submission.");
       const currentGigData = gigSnap.data() as Gig;
-      
+
       let progressReports: ProgressReport[] = currentGigData.progressReports || [];
       const reportIndex = progressReports.findIndex(r => r.reportNumber === currentSubmittingReportNumber);
 
@@ -321,20 +363,19 @@ export default function GigDetailPage() {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
       };
-      // File upload logic removed
 
       if (reportIndex > -1) {
         progressReports[reportIndex] = {
           ...progressReports[reportIndex],
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: null, 
-          reviewedAt: null,    
+          clientFeedback: null,
+          reviewedAt: null,
         };
-      } else { // Should not happen if progressReports are initialized correctly
+      } else {
         progressReports.push({
           reportNumber: currentSubmittingReportNumber,
-          deadline: null, 
+          deadline: null,
           studentSubmission,
           clientStatus: 'pending_review',
         });
@@ -346,9 +387,7 @@ export default function GigDetailPage() {
       toast({ title: `Report #${currentSubmittingReportNumber} Submitted`, description: "The client has been notified." });
       setCurrentSubmittingReportNumber(null);
       setReportText("");
-      // setReportFile(null); // Media upload disabled
-      // setReportUploadProgress(null); // Media upload disabled
-      fetchGigData(); // Re-fetch gig data to show updated report status
+      fetchGigData();
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -393,7 +432,7 @@ export default function GigDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6">
-       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2">
+       <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-2 self-start">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
        </Button>
 
@@ -402,11 +441,11 @@ export default function GigDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
             <CardTitle className="text-2xl md:text-3xl flex-grow">{gig.title}</CardTitle>
             <div className="flex items-center gap-2 shrink-0">
-                {viewerUser && viewerRole === 'admin' && ( // Share button for admin
-                    <Button 
-                        variant="outline" 
-                        size="icon" 
-                        onClick={handleShareToChat} 
+                {viewerUser && viewerRole === 'admin' && (
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={handleShareToChat}
                         disabled={authLoading || isLoadingGig}
                         title="Share Gig to Chat"
                         className="shrink-0"
@@ -415,10 +454,10 @@ export default function GigDetailPage() {
                     </Button>
                 )}
                 {viewerRole === 'student' && gig.status === 'open' && (
-                    <Button 
-                        variant="outline" 
-                        size="icon" 
-                        onClick={handleToggleBookmark} 
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={handleToggleBookmark}
                         disabled={isTogglingBookmark || authLoading || isLoadingGig || viewerUserProfile?.isBanned}
                         title={isBookmarked ? "Remove Bookmark" : "Bookmark Gig"}
                         className="shrink-0"
@@ -433,8 +472,8 @@ export default function GigDetailPage() {
                 Posted by: <Link href={`/profile/${gig.clientId}`} className="font-medium text-foreground hover:underline">{clientDisplayName}</Link>
              </span>
              <span>{formatDate(gig.createdAt)}</span>
-             <Badge 
-                variant={gig.status === 'open' ? 'default' : (gig.status === 'in-progress' || gig.status === 'awaiting_payout') ? 'secondary' : 'outline'} 
+             <Badge
+                variant={gig.status === 'open' ? 'default' : (gig.status === 'in-progress' || gig.status === 'awaiting_payout') ? 'secondary' : 'outline'}
                 className="capitalize"
               >
                 {gig.status === 'awaiting_payout' ? 'Payment Processing' : gig.status}
@@ -451,10 +490,10 @@ export default function GigDetailPage() {
               {clientProfileDetails.website && (
                 <div className="flex items-center gap-1.5">
                   <Globe className="h-3.5 w-3.5 shrink-0" />
-                  <a 
-                    href={clientProfileDetails.website.startsWith('http') ? clientProfileDetails.website : `https://${clientProfileDetails.website}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
+                  <a
+                    href={clientProfileDetails.website.startsWith('http') ? clientProfileDetails.website : `https://${clientProfileDetails.website}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="hover:underline text-primary"
                   >
                     {clientProfileDetails.website}
@@ -516,14 +555,14 @@ export default function GigDetailPage() {
                     return <p className="text-sm text-muted-foreground w-full text-center">This gig is currently {statusText} and not accepting new applications.</p>;
                 }
 
-                if (!viewerUser) { 
+                if (!viewerUser) {
                     return (
                     <Button asChild className="w-full sm:w-auto">
                         <Link href={`/auth/login?redirect=/gigs/${gigId}`}>Login or Sign Up to Apply</Link>
                     </Button>
                     );
                 }
-                
+
                 if (viewerUser && !viewerRole && !authLoading && viewerUserProfile === null) {
                     return <p className="text-sm text-muted-foreground w-full text-center">Verifying account type...</p>;
                 }
@@ -572,7 +611,7 @@ export default function GigDetailPage() {
                     return <p className="text-sm text-muted-foreground w-full text-center">You are viewing this as a client. Only students can apply.</p>;
                     }
                 }
-                
+
                 return <p className="text-sm text-muted-foreground w-full text-center">Application status unavailable.</p>;
             })()}
             </CardFooter>
@@ -618,7 +657,6 @@ export default function GigDetailPage() {
                     {report.studentSubmission ? (
                       <div className="text-xs space-y-1">
                         <p className="line-clamp-3"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
-                        {/* Display file if exists - media upload disabled */}
                         <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
                       </div>
                     ): (
@@ -652,7 +690,7 @@ export default function GigDetailPage() {
            </CardHeader>
            <CardContent>
              <ul className="space-y-3">
-               {gig.applicants.slice(0,3).map((applicant) => ( 
+               {gig.applicants.slice(0,3).map((applicant) => (
                  <li key={applicant.studentId} className="flex items-center justify-between p-3 border rounded-md">
                    <div className="flex items-center gap-3">
                      <UserCircle className="h-6 w-6 text-muted-foreground" />
@@ -681,28 +719,9 @@ export default function GigDetailPage() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <Textarea placeholder="Describe your progress, challenges, and next steps..." value={reportText} onChange={(e) => setReportText(e.target.value)} rows={5} disabled={isSubmittingReport} />
-            {/* Media upload disabled
-            <FormField
-              name="reportFile"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Attach File (Optional, Max 5MB)</FormLabel>
-                  <FormControl>
-                    <Input 
-                      type="file" 
-                      onChange={(e) => setReportFile(e.target.files ? e.target.files[0] : null)} 
-                      disabled={isSubmittingReport || reportUploadProgress !== null}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {reportUploadProgress !== null && <Progress value={reportUploadProgress} className="w-full h-2" />}
-            */}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {setCurrentSubmittingReportNumber(null); setReportText(""); /*setReportFile(null); setReportUploadProgress(null);*/}} disabled={isSubmittingReport}>Cancel</Button>
+            <Button variant="outline" onClick={() => {setCurrentSubmittingReportNumber(null); setReportText("");}} disabled={isSubmittingReport}>Cancel</Button>
             <Button onClick={handleSubmitReport} disabled={isSubmittingReport || !reportText.trim()}>
               {isSubmittingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               Submit Report
@@ -714,4 +733,3 @@ export default function GigDetailPage() {
     </div>
   );
 }
-

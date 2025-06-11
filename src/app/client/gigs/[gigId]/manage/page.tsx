@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion, increment } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion, increment } from 'firebase/firestore'; // Removed arrayUnion from here as it's covered by writeBatch
 import { db, storage } from '@/config/firebase';
 import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
@@ -22,6 +22,7 @@ import { StarRating } from '@/components/ui/star-rating';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
 
 
 interface ApplicantInfo {
@@ -58,7 +59,7 @@ interface Gig {
   clientId: string;
   clientUsername?: string;
   createdAt: Timestamp;
-  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout';
   applicants?: ApplicantInfo[];
   applicationRequests?: { studentId: string; studentUsername: string; requestedAt: Timestamp; status: 'pending' | 'approved_to_apply' | 'denied_to_apply' }[];
   selectedStudentId?: string | null;
@@ -79,6 +80,40 @@ interface Review {
   comment?: string;
   createdAt: Timestamp;
 }
+
+// Notification creation helper
+const createNotification = async (
+    recipientUserId: string,
+    message: string,
+    type: NotificationType,
+    relatedGigId?: string,
+    relatedGigTitle?: string,
+    link?: string,
+    actorUserId?: string,
+    actorUsername?: string
+) => {
+    if (!db) {
+        console.error("Firestore (db) not available for creating notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type,
+            relatedGigId: relatedGigId || null,
+            relatedGigTitle: relatedGigTitle || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            ...(actorUserId && { actorUserId }),
+            ...(actorUsername && { actorUsername }),
+            link: link || (relatedGigId ? `/gigs/${relatedGigId}` : '/notifications'),
+        });
+        console.log(`Notification of type ${type} created for ${recipientUserId}: ${message}`);
+    } catch (error) {
+        console.error("Error creating notification document:", error);
+    }
+};
 
 
 export default function ManageGigPage() {
@@ -111,8 +146,8 @@ export default function ManageGigPage() {
          const transactionData = {
              clientId: user.uid,
              clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Client',
-             studentId: payingStudent.studentId, // Intended recipient
-             studentUsername: payingStudent.studentUsername, // Intended recipient
+             studentId: payingStudent.studentId,
+             studentUsername: payingStudent.studentUsername,
              gigId: gig.id,
              gigTitle: gig.title,
              amount: gig.budget,
@@ -125,14 +160,13 @@ export default function ManageGigPage() {
          await addDoc(collection(db, "transactions"), transactionData);
 
           const gigDocRef = doc(db, 'gigs', gig.id);
-          await updateDoc(gigDocRef, { status: 'awaiting_payout' }); // New status: payment made, awaiting admin release
+          await updateDoc(gigDocRef, { status: 'awaiting_payout' });
          setGig(prev => prev ? { ...prev, status: 'awaiting_payout' } : null);
 
          toast({
              title: "Payment Successful!",
              description: `Payment of INR ${gig.budget.toFixed(2)} received. Funds will be released to ${payingStudent.studentUsername} after admin review.`,
          });
-         // Trigger fetching review status again as the gig is now completed
          fetchGigAndReviewStatus();
 
 
@@ -164,10 +198,10 @@ export default function ManageGigPage() {
      };
      setPayingStudent(student);
      openCheckout({
-       amount: gig.budget * 100, 
+       amount: gig.budget * 100,
        currency: "INR",
        name: "HustleUp Gig Payment",
-       description: `Payment for Gig: ${gig.title}. To HustleUp Platform.`, // Clarify payment is to platform first
+       description: `Payment for Gig: ${gig.title}. To HustleUp Platform.`,
        prefill: { name: userProfile?.username || user?.email?.split('@')[0], email: user?.email || '' },
        notes: { gigId: gig.id, studentId: student.studentId, clientId: user?.uid },
      });
@@ -185,7 +219,6 @@ export default function ManageGigPage() {
                     setError("You are not authorized to manage this gig."); setGig(null);
                 } else {
                     if (!fetchedGig.currency) fetchedGig.currency = "INR";
-                    // Ensure progressReports have all fields, even if null from DB
                     const numReports = fetchedGig.numberOfReports || 0;
                     const completeProgressReports: ProgressReport[] = [];
                     for (let i = 0; i < numReports; i++) {
@@ -202,7 +235,6 @@ export default function ManageGigPage() {
                     fetchedGig.progressReports = completeProgressReports;
                     setGig(fetchedGig);
 
-                    // Allow review if gig is 'awaiting_payout' or 'completed'
                     if ((fetchedGig.status === 'completed' || fetchedGig.status === 'awaiting_payout') && fetchedGig.selectedStudentId) {
                         const reviewsQuery = query( collection(db, 'reviews'), where('gigId', '==', gigId), where('clientId', '==', user.uid), where('studentId', '==', fetchedGig.selectedStudentId) );
                         const reviewsSnapshot = await getDocs(reviewsQuery);
@@ -249,18 +281,18 @@ export default function ManageGigPage() {
 
 
    const updateApplicantStatus = async (studentId: string, newStatus: 'accepted' | 'rejected') => {
-       if (!gig) return;
+       if (!gig || !user) return;
        const applicant = gig.applicants?.find(app => app.studentId === studentId);
        if (!applicant) { toast({ title: "Error", description: "Applicant not found.", variant: "destructive" }); return; }
        setUpdatingApplicantId(studentId);
        try {
            const gigDocRef = doc(db, 'gigs', gig.id);
            const updatedApplicants = gig.applicants?.map(app => app.studentId === studentId ? { ...app, status: newStatus } : app ) || [];
-           
+
            let gigUpdateData: any = { applicants: updatedApplicants };
-           if (newStatus === 'accepted') { 
-             gigUpdateData.status = 'in-progress'; 
-             gigUpdateData.selectedStudentId = studentId; 
+           if (newStatus === 'accepted') {
+             gigUpdateData.status = 'in-progress';
+             gigUpdateData.selectedStudentId = studentId;
              if (gig.numberOfReports && gig.numberOfReports > 0 && (!gig.progressReports || gig.progressReports.length !== gig.numberOfReports)) {
                  const currentProgressReports = gig.progressReports || [];
                  const newProgressReportsArray : Partial<ProgressReport>[] = [];
@@ -268,7 +300,7 @@ export default function ManageGigPage() {
                      const existingReport = currentProgressReports.find(r => r.reportNumber === i + 1);
                      newProgressReportsArray.push({
                          reportNumber: i + 1,
-                         deadline: existingReport?.deadline || null, 
+                         deadline: existingReport?.deadline || null,
                          studentSubmission: existingReport?.studentSubmission || null,
                          clientStatus: existingReport?.clientStatus || null,
                          clientFeedback: existingReport?.clientFeedback || null,
@@ -277,6 +309,17 @@ export default function ManageGigPage() {
                  }
                  gigUpdateData.progressReports = newProgressReportsArray;
              }
+             // Create notification for the student
+             await createNotification(
+                applicant.studentId,
+                `Congratulations! Your application for the gig "${gig.title}" has been accepted by ${gig.clientUsername || userProfile?.username || 'the client'}.`,
+                'application_status_update',
+                gig.id,
+                gig.title,
+                `/gigs/${gig.id}`,
+                user.uid,
+                userProfile?.username || 'The Client'
+             );
            }
            await updateDoc(gigDocRef, gigUpdateData);
 
@@ -337,24 +380,24 @@ export default function ManageGigPage() {
     };
 
   const handleReportReview = async (reportNumber: number, newStatus: 'approved' | 'rejected') => {
-    if (!gig || !db) return;
+    if (!gig || !db || !user) return;
     if (newStatus === 'rejected' && !clientFeedbackText.trim()){
         toast({title: "Feedback Required", description: "Please provide feedback when rejecting a report.", variant: "destructive"});
         return;
     }
-    setIsLoading(true); 
+    setIsLoading(true);
     try {
       const gigDocRef = doc(db, 'gigs', gig.id);
       const currentGigSnap = await getDoc(gigDocRef);
       if (!currentGigSnap.exists()) throw new Error("Gig not found");
       const currentGigData = currentGigSnap.data() as Gig;
-      
+
       const updatedProgressReports = (currentGigData.progressReports || []).map(report => {
         if (report.reportNumber === reportNumber) {
           return {
             ...report,
             clientStatus: newStatus,
-            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''), 
+            clientFeedback: clientFeedbackText.trim() || (newStatus === 'approved' ? 'Approved' : ''),
             reviewedAt: Timestamp.now(),
           };
         }
@@ -364,6 +407,31 @@ export default function ManageGigPage() {
       await updateDoc(gigDocRef, { progressReports: updatedProgressReports });
       setGig(prev => prev ? { ...prev, progressReports: updatedProgressReports } : null);
       toast({ title: `Report #${reportNumber} ${newStatus}`, description: "Feedback saved." });
+
+      if (newStatus === 'approved' && gig.selectedStudentId) {
+         await createNotification(
+            gig.selectedStudentId,
+            `Your Report #${reportNumber} for the gig "${gig.title}" has been approved by ${gig.clientUsername || userProfile?.username || 'the client'}.`,
+            'report_reviewed',
+            gig.id,
+            gig.title,
+            `/gigs/${gig.id}`,
+            user.uid,
+            userProfile?.username || 'The Client'
+         );
+      } else if (newStatus === 'rejected' && gig.selectedStudentId) {
+         await createNotification(
+            gig.selectedStudentId,
+            `Your Report #${reportNumber} for the gig "${gig.title}" has been rejected by ${gig.clientUsername || userProfile?.username || 'the client'}. Feedback: ${clientFeedbackText.trim()}`,
+            'report_reviewed', // Still 'report_reviewed', the message content differs
+            gig.id,
+            gig.title,
+            `/gigs/${gig.id}`,
+            user.uid,
+            userProfile?.username || 'The Client'
+         );
+      }
+
       setCurrentReviewingReportNumber(null);
       setClientFeedbackText("");
     } catch (err: any) {
@@ -379,10 +447,10 @@ export default function ManageGigPage() {
      if (!timestamp) return 'N/A';
      try { return formatDistanceToNow(timestamp.toDate(), { addSuffix: true }); } catch (e) { return 'Invalid date'; }
    };
-   
+
    const formatSpecificDate = (timestamp: Timestamp | undefined | null): string => {
      if (!timestamp) return 'Not set';
-     try { return format(timestamp.toDate(), "PPp"); } 
+     try { return format(timestamp.toDate(), "PPp"); }
      catch (e) { return 'Invalid date'; }
    };
 
@@ -392,8 +460,8 @@ export default function ManageGigPage() {
            case 'accepted': case 'open': case 'approved': case 'approved_to_apply': return 'default';
            case 'rejected': case 'closed': case 'denied_to_apply': return 'destructive';
            case 'pending': case 'in-progress': case 'pending_review': return 'secondary';
-           case 'completed': case 'awaiting_payout': return 'outline'; // Use outline for these too
-           default: return 'secondary'; 
+           case 'completed': case 'awaiting_payout': return 'outline';
+           default: return 'secondary';
        }
    };
 
@@ -402,9 +470,9 @@ export default function ManageGigPage() {
   if (!gig) return <div className="text-center py-10 text-muted-foreground">Gig details could not be loaded.</div>;
 
   const selectedStudent = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
-  const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0 
+  const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0
     ? (gig.progressReports?.filter(r => r.clientStatus === 'approved').length === gig.numberOfReports)
-    : true; 
+    : true;
 
 
   return (
@@ -424,7 +492,6 @@ export default function ManageGigPage() {
          </CardHeader>
        </Card>
 
-        {/* Application Requests Section */}
         {gig.status === 'open' && gig.applicationRequests && gig.applicationRequests.length > 0 && (
             <Card className="glass-card">
                 <CardHeader>
@@ -563,7 +630,6 @@ export default function ManageGigPage() {
                You will be notified once the payment is released to the student. You can now leave a review for the student.
              </p>
            </CardContent>
-           {/* Review section can still be shown here */}
            <CardFooter className="border-t pt-4">
                {!hasBeenReviewed ? (
                 <form onSubmit={(e) => { e.preventDefault(); handleSubmitReview(); }} className="space-y-4 w-full">
@@ -663,10 +729,8 @@ export default function ManageGigPage() {
             </CardContent>
          </Card>
         )}
-        
+
         {gig.status === 'closed' && ( <Alert variant="destructive"> <XCircle className="h-5 w-5" /> <AlertTitle>Gig Closed</AlertTitle> <AlertDescription>This gig is closed and no further actions can be taken.</AlertDescription> </Alert> )}
      </div>
    );
 }
-
-    

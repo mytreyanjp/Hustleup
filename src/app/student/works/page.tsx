@@ -4,22 +4,21 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp, onSnapshot, DocumentData } from 'firebase/firestore'; // Added onSnapshot
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp, onSnapshot, DocumentData, addDoc } from 'firebase/firestore'; // Added addDoc
 import { db, storage } from '@/config/firebase';
-// import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Media upload disabled
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass } from 'lucide-react'; // Added Hourglass
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-// import { Progress } from '@/components/ui/progress'; // Media upload disabled
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from '@/lib/utils';
+import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
 
 interface StudentSubmission {
   text: string;
@@ -28,7 +27,7 @@ interface StudentSubmission {
   submittedAt: Timestamp;
 }
 
-export interface ProgressReport { // Exported for use in other files
+export interface ProgressReport {
   reportNumber: number;
   deadline?: Timestamp | null;
   studentSubmission?: StudentSubmission | null;
@@ -44,59 +43,88 @@ interface WorkGig {
   clientId: string;
   clientUsername?: string;
   clientCompanyName?: string;
-  deadline: Timestamp; // Overall gig deadline
+  deadline: Timestamp;
   budget: number;
   currency: string;
   numberOfReports?: number;
   paymentRequestsCount?: number;
-  lastPaymentRequestedAt?: Timestamp | null; // Ensure it can be null
+  lastPaymentRequestedAt?: Timestamp | null;
   studentPaymentRequestPending?: boolean;
-  status: 'in-progress' | 'awaiting_payout' | 'completed'; // Added 'awaiting_payout', 'completed'
+  status: 'in-progress' | 'awaiting_payout' | 'completed';
   progressReports?: ProgressReport[];
-  // For internal processing
-  effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed'; // Added new statuses
+  effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
   nextUpcomingDeadline?: Timestamp | null;
-  paymentRequestAvailableAt?: Timestamp | null; // When the next payment request can be made
+  paymentRequestAvailableAt?: Timestamp | null;
 }
 
 type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
 
+// Notification creation helper
+const createNotification = async (
+    recipientUserId: string,
+    message: string,
+    type: NotificationType,
+    relatedGigId?: string,
+    relatedGigTitle?: string,
+    link?: string,
+    actorUserId?: string,
+    actorUsername?: string
+) => {
+    if (!db) {
+        console.error("Firestore (db) not available for creating notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type,
+            relatedGigId: relatedGigId || null,
+            relatedGigTitle: relatedGigTitle || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            ...(actorUserId && { actorUserId }),
+            ...(actorUsername && { actorUsername }),
+            link: link || (relatedGigId ? `/gigs/${relatedGigId}` : '/notifications'),
+        });
+        console.log(`Notification of type ${type} created for ${recipientUserId}: ${message}`);
+    } catch (error) {
+        console.error("Error creating notification document:", error);
+    }
+};
 
-// Helper function to determine the effective status of a gig for a student
 const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     if (gig.status === 'awaiting_payout') return 'awaiting-payout';
     if (gig.status === 'completed') return 'completed';
 
     if (!gig.progressReports || gig.progressReports.length === 0 || (gig.numberOfReports === 0)) {
-        return 'in-progress'; // No reports defined, or none submitted yet
+        return 'in-progress';
     }
     const hasRejected = gig.progressReports.some(r => r.clientStatus === 'rejected');
     if (hasRejected) return 'action-required';
 
     const hasPendingReview = gig.progressReports.some(r => r.studentSubmission && r.clientStatus === 'pending_review');
     if (hasPendingReview) return 'pending-review';
-    
+
     const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
     if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
-        // If it was awaiting_payout, it would have been caught above. So if all reports approved, it's effectively in-progress for final submission/client payment step.
-        return 'in-progress'; 
+        return 'in-progress';
     }
 
-    return 'in-progress'; // Actively working, or next report due
+    return 'in-progress';
 };
 
-// Helper function to get the next upcoming deadline (report or final gig)
 const getNextUpcomingDeadline = (gig: WorkGig): Timestamp | null => {
     if (gig.status === 'awaiting_payout' || gig.status === 'completed') return null;
 
-    let nextDeadline: Timestamp | null = gig.deadline; // Start with overall gig deadline
+    let nextDeadline: Timestamp | null = gig.deadline;
     const now = Timestamp.now();
 
     if (gig.progressReports && gig.progressReports.length > 0) {
         const futureReportDeadlines = gig.progressReports
             .filter(r => r.deadline && r.deadline.toMillis() >= now.toMillis() && r.clientStatus !== 'approved' && r.clientStatus !== 'rejected')
             .sort((a, b) => (a.deadline?.toMillis() || Infinity) - (b.deadline?.toMillis() || Infinity));
-        
+
         if (futureReportDeadlines.length > 0 && futureReportDeadlines[0].deadline) {
             if (!nextDeadline || futureReportDeadlines[0].deadline.toMillis() < nextDeadline.toMillis()) {
                 nextDeadline = futureReportDeadlines[0].deadline;
@@ -144,7 +172,7 @@ export default function StudentWorksPage() {
         const q = query(
           gigsRef,
           where("selectedStudentId", "==", user.uid),
-          where("status", "in", ["in-progress", "awaiting_payout", "completed"]), // Include new statuses
+          where("status", "in", ["in-progress", "awaiting_payout", "completed"]),
           orderBy("createdAt", "desc")
         );
 
@@ -180,7 +208,7 @@ export default function StudentWorksPage() {
                 });
               }
             }
-            
+
             let paymentRequestAvailableAtCalc: Timestamp | null = null;
             if (gigData.lastPaymentRequestedAt && gigData.lastPaymentRequestedAt.toDate) {
                 const lastRequestDate = gigData.lastPaymentRequestedAt.toDate();
@@ -204,18 +232,16 @@ export default function StudentWorksPage() {
             const resolvedGigs = await Promise.all(fetchedGigsPromises);
             const gigsWithEffectiveStatus = resolvedGigs.map(gig => ({
               ...gig,
-              effectiveStatus: getEffectiveGigStatus(gig), // Recalculate here
+              effectiveStatus: getEffectiveGigStatus(gig),
               nextUpcomingDeadline: getNextUpcomingDeadline(gig)
             }));
             setActiveGigs(gigsWithEffectiveStatus);
              setCollapsedGigs(prevCollapsed => {
                 const newCollapsed = new Set<string>();
                 gigsWithEffectiveStatus.forEach(gig => {
-                    // Collapse if in-progress, awaiting_payout, or completed AND not previously uncollapsed by user
                     if ((gig.effectiveStatus === 'in-progress' || gig.effectiveStatus === 'awaiting-payout' || gig.effectiveStatus === 'completed') && !prevCollapsed.has(gig.id)) {
                         newCollapsed.add(gig.id);
                     } else if (prevCollapsed.has(gig.id) && gig.effectiveStatus !== 'action-required' && gig.effectiveStatus !== 'pending-review') {
-                        // Keep collapsed if it was already and status doesn't demand attention
                          newCollapsed.add(gig.id);
                     }
                 });
@@ -233,9 +259,9 @@ export default function StudentWorksPage() {
           setIsLoading(false);
         });
 
-        return () => unsubscribe(); // Cleanup listener on unmount
+        return () => unsubscribe();
       } else {
-         setIsLoading(false); // Handle case where user or db is not available
+         setIsLoading(false);
       }
     }
   }, [user, authLoading, role, router]);
@@ -243,7 +269,7 @@ export default function StudentWorksPage() {
 
   const processedGigs = useMemo(() => {
     if (!activeGigs) return [];
-    let gigsToProcess = [...activeGigs]; 
+    let gigsToProcess = [...activeGigs];
 
     gigsToProcess = gigsToProcess.map(gig => ({
         ...gig,
@@ -285,7 +311,6 @@ export default function StudentWorksPage() {
       } else if (sortBy === 'deadlineDesc') {
         return deadlineB - deadlineA;
       }
-      // Default sort by gig creation date if statuses and deadlines are same or not used for sort
       return (b.deadline?.toMillis() || 0) - (a.deadline?.toMillis() || 0);
     });
 
@@ -313,7 +338,7 @@ export default function StudentWorksPage() {
 
 
   const handleSubmitReport = async () => {
-    if (!currentSubmittingGigId || !currentReportNumber || !user || !db) { 
+    if (!currentSubmittingGigId || !currentReportNumber || !user || !userProfile || !db) {
       toast({ title: "Error", description: "Cannot submit report. Missing context or Firebase not ready.", variant: "destructive" });
       return;
     }
@@ -341,13 +366,13 @@ export default function StudentWorksPage() {
           ...progressReports[reportIndex],
           studentSubmission,
           clientStatus: 'pending_review',
-          clientFeedback: null, 
-          reviewedAt: null,    
+          clientFeedback: null,
+          reviewedAt: null,
         };
       } else {
         progressReports.push({
           reportNumber: currentReportNumber as number,
-          deadline: null, 
+          deadline: null,
           studentSubmission,
           clientStatus: 'pending_review',
           clientFeedback: null,
@@ -359,8 +384,20 @@ export default function StudentWorksPage() {
       await updateDoc(gigDocRef, { progressReports });
 
       toast({ title: `Report #${currentReportNumber} Submitted`, description: "The client has been notified." });
+
+      // Create notification for the client
+      await createNotification(
+        currentGigData.clientId,
+        `"${userProfile.username || 'The student'}" has submitted Report #${currentReportNumber} for your gig "${currentGigData.title}".`,
+        'report_submitted',
+        currentSubmittingGigId,
+        currentGigData.title,
+        `/client/gigs/${currentSubmittingGigId}/manage`,
+        user.uid,
+        userProfile.username || 'The student'
+      );
+
       setCurrentSubmittingGigId(null);
-      // No need to manually call fetchActiveGigs, onSnapshot will update the state
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -368,7 +405,7 @@ export default function StudentWorksPage() {
       setIsSubmittingReport(false);
     }
   };
-  
+
   const handleRequestPayment = async () => {
     if (!paymentRequestGig || !user || !db) {
         toast({title: "Error", description: "Cannot request payment. Missing gig info or user session.", variant: "destructive"});
@@ -385,7 +422,6 @@ export default function StudentWorksPage() {
         toast({ title: "Payment Requested!", description: "The client has been notified of your payment request."});
         setShowPaymentRequestDialog(false);
         setPaymentRequestGig(null);
-        // No need to manually call fetchActiveGigs, onSnapshot will update
     } catch (error: any) {
         console.error("Error requesting payment:", error);
         toast({ title: "Error", description: `Could not request payment: ${error.message}`, variant: "destructive"});
@@ -421,7 +457,7 @@ export default function StudentWorksPage() {
       case 'awaiting-payout': return 'secondary';
       case 'completed': return 'default';
       case 'in-progress':
-      default: return 'outline'; // Default/in-progress can be outline
+      default: return 'outline';
     }
   };
 
@@ -539,13 +575,13 @@ export default function StudentWorksPage() {
               const effectiveStatusVariant = getEffectiveStatusBadgeVariant(gig.effectiveStatus);
               const allReportsApproved = gig.numberOfReports && gig.numberOfReports > 0 ? (gig.progressReports?.filter(r => r.clientStatus === 'approved').length === gig.numberOfReports) : true;
               const requestsUsed = gig.paymentRequestsCount || 0;
-              
+
               const now = new Date();
               const isCoolDownActive = gig.paymentRequestAvailableAt ? now < gig.paymentRequestAvailableAt.toDate() : false;
               const coolDownTimeRemaining = gig.paymentRequestAvailableAt ? formatDistanceToNow(gig.paymentRequestAvailableAt.toDate(), { addSuffix: true, includeSeconds: true }) : "";
 
               const canRequestPayment = gig.status === 'in-progress' && allReportsApproved && requestsUsed < 5 && !gig.studentPaymentRequestPending && !isCoolDownActive;
-              const paymentButtonTitle = 
+              const paymentButtonTitle =
                 gig.status === 'awaiting_payout' ? "Payment being processed by admin" :
                 gig.status === 'completed' ? "Gig completed and paid" :
                 !allReportsApproved ? "All reports must be approved first" :
@@ -556,7 +592,7 @@ export default function StudentWorksPage() {
 
               return (
               <Card key={gig.id} className="glass-card">
-                <CardHeader 
+                <CardHeader
                   className="flex flex-col sm:flex-row justify-between items-start p-4 sm:p-6 gap-2 cursor-pointer hover:bg-accent/20 transition-colors"
                   onClick={() => toggleGigCollapse(gig.id)}
                 >
@@ -578,7 +614,7 @@ export default function StudentWorksPage() {
                 <div
                   className={cn(
                     "transition-all duration-300 ease-in-out overflow-hidden",
-                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" 
+                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100"
                   )}
                 >
                   <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
@@ -638,7 +674,6 @@ export default function StudentWorksPage() {
                   </CardContent>
                   <CardFooter className="flex flex-col sm:flex-row items-start sm:items-stretch gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
                       <div className="flex-grow space-y-2 sm:space-y-0 sm:flex sm:gap-2">
-                           {/* Chat with client button removed */}
                           <Button variant="outline" size="sm" asChild className="w-full sm:w-auto"><Link href={`/gigs/${gig.id}`}>View Gig Details</Link></Button>
                       </div>
                        {gig.status !== 'completed' && (
@@ -651,7 +686,7 @@ export default function StudentWorksPage() {
                             className="w-full sm:w-auto mt-2 sm:mt-0"
                         >
                             {gig.status === 'awaiting_payout' ? <Hourglass className="mr-2 h-4 w-4" /> : <DollarSign className="mr-2 h-4 w-4" />}
-                            {gig.status === 'awaiting_payout' ? 'Payment Processing' : 
+                            {gig.status === 'awaiting_payout' ? 'Payment Processing' :
                              (gig.status === 'completed' ? 'Payment Complete' : `Request Payment (${requestsUsed}/5)`)}
                         </Button>
                        )}
@@ -707,5 +742,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-
-    
