@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
@@ -11,10 +11,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search as SearchIconLucide, Briefcase, Users, CalendarDays, DollarSign, UserCircle } from 'lucide-react';
+import { Loader2, Search as SearchIconLucide, Briefcase, Users, CalendarDays, DollarSign, UserCircle, Filter as FilterIcon, X as XIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
 import type { UserProfile } from '@/context/firebase-context';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
+import { PREDEFINED_SKILLS } from '@/lib/constants';
 
 interface GigSearchResult {
   id: string;
@@ -32,20 +37,41 @@ interface GigSearchResult {
 
 interface UserSearchResult extends UserProfile {}
 
+const budgetRanges = [
+  { label: "Any Payment", value: "any" },
+  { label: "< ₹5,000", value: "0-5000" },
+  { label: "₹5,000 - ₹20,000", value: "5000-20000" },
+  { label: "₹20,000 - ₹50,000", value: "20000-50000" },
+  { label: "> ₹50,000", value: "50000-" },
+];
+
+const userRoleOptions = [
+  { label: "All Roles", value: "all" },
+  { label: "Student", value: "student" },
+  { label: "Client", value: "client" },
+  // Admin role is typically not shown in public user searches
+];
+
 function SearchResultsPageContent() {
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('q');
   const { user: currentUser, loading: authLoading } = useFirebase();
 
-  const [gigs, setGigs] = useState<GigSearchResult[]>([]);
-  const [users, setUsers] = useState<UserSearchResult[]>([]);
+  const [allFetchedGigs, setAllFetchedGigs] = useState<GigSearchResult[]>([]);
+  const [allFetchedUsers, setAllFetchedUsers] = useState<UserSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Filter states
+  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
+  const [selectedSkillsFilterGigs, setSelectedSkillsFilterGigs] = useState<Skill[]>([]);
+  const [selectedBudgetFilterGigs, setSelectedBudgetFilterGigs] = useState<string>("any");
+  const [selectedRoleFilterUsers, setSelectedRoleFilterUsers] = useState<string>("all");
+
   useEffect(() => {
     if (!searchQuery || searchQuery.trim() === "") {
-      setGigs([]);
-      setUsers([]);
+      setAllFetchedGigs([]);
+      setAllFetchedUsers([]);
       setIsLoading(false);
       return;
     }
@@ -65,36 +91,36 @@ function SearchResultsPageContent() {
           ...doc.data(),
         })) as GigSearchResult[];
 
-        const filteredGigs = allOpenGigs.filter(gig => {
+        const searchedGigs = allOpenGigs.filter(gig => {
           const titleMatch = gig.title.toLowerCase().includes(lowerSearchTerm);
           const descriptionMatch = gig.description.toLowerCase().includes(lowerSearchTerm);
           const skillsMatch = gig.requiredSkills.some(skill => skill.toLowerCase().includes(lowerSearchTerm));
           return titleMatch || descriptionMatch || skillsMatch;
         });
-        setGigs(filteredGigs);
+        setAllFetchedGigs(searchedGigs);
 
         // Fetch Users
         const usersCollectionRef = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollectionRef);
         const allUsers = usersSnapshot.docs.map(doc => ({
-          uid: doc.id, 
+          uid: doc.id,
           ...doc.data(),
         })) as UserSearchResult[];
 
-
-        const filteredUsers = allUsers.filter(userDoc => {
+        const searchedUsers = allUsers.filter(userDoc => {
           const usernameMatch = userDoc.username?.toLowerCase().includes(lowerSearchTerm);
           const companyNameMatch = userDoc.companyName?.toLowerCase().includes(lowerSearchTerm);
           let skillsMatch = false;
           if (userDoc.role === 'student' && userDoc.skills) {
             skillsMatch = userDoc.skills.some((skill: string) => skill.toLowerCase().includes(lowerSearchTerm));
           }
-          
-          if (currentUser && userDoc.uid === currentUser.uid) return false;
-          
+          if (currentUser && userDoc.uid === currentUser.uid) return false; // Exclude self
+          if (userDoc.role === 'admin') return false; // Exclude admins from public search
+          if (userDoc.isBanned) return false; // Exclude banned users
+
           return usernameMatch || companyNameMatch || skillsMatch;
         });
-        setUsers(filteredUsers);
+        setAllFetchedUsers(searchedUsers);
 
       } catch (err: any) {
         console.error("Error fetching search results:", err);
@@ -107,6 +133,45 @@ function SearchResultsPageContent() {
     fetchResults();
   }, [searchQuery, currentUser]);
 
+  const filteredGigs = useMemo(() => {
+    let processedGigs = [...allFetchedGigs];
+
+    if (selectedSkillsFilterGigs.length > 0) {
+      const filterSkillsLower = selectedSkillsFilterGigs.map(s => s.toLowerCase());
+      processedGigs = processedGigs.filter(gig =>
+        gig.requiredSkills.some(reqSkill => filterSkillsLower.includes(reqSkill.toLowerCase()))
+      );
+    }
+
+    if (selectedBudgetFilterGigs !== "any") {
+      const [minStr, maxStr] = selectedBudgetFilterGigs.split('-');
+      const min = parseInt(minStr, 10);
+      const max = maxStr ? parseInt(maxStr, 10) : undefined;
+
+      processedGigs = processedGigs.filter(gig => {
+        if (max === undefined) return gig.budget >= min;
+        return gig.budget >= min && gig.budget <= max;
+      });
+    }
+    return processedGigs;
+  }, [allFetchedGigs, selectedSkillsFilterGigs, selectedBudgetFilterGigs]);
+
+  const filteredUsers = useMemo(() => {
+    let processedUsers = [...allFetchedUsers];
+
+    if (selectedRoleFilterUsers !== "all") {
+      processedUsers = processedUsers.filter(user => user.role === selectedRoleFilterUsers);
+    }
+    return processedUsers;
+  }, [allFetchedUsers, selectedRoleFilterUsers]);
+
+  const handleClearFilters = () => {
+    setSelectedSkillsFilterGigs([]);
+    setSelectedBudgetFilterGigs("any");
+    setSelectedRoleFilterUsers("all");
+    setIsFilterPopoverOpen(false);
+  };
+
   const formatDateDistance = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
@@ -115,19 +180,18 @@ function SearchResultsPageContent() {
   const formatDeadline = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     return timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-   };
+  };
 
   const getInitials = (displayName?: string | null, email?: string | null | undefined, username?: string | null) => {
-     const nameToUse = displayName || username;
-     if (nameToUse) return nameToUse.substring(0, 2).toUpperCase();
-     if (email) return email.substring(0, 2).toUpperCase();
-     return '??';
-   };
+    const nameToUse = displayName || username;
+    if (nameToUse) return nameToUse.substring(0, 2).toUpperCase();
+    if (email) return email.substring(0, 2).toUpperCase();
+    return '??';
+  };
 
-  if (authLoading) { 
+  if (authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-15rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   }
-
 
   if (isLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-15rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
@@ -148,18 +212,79 @@ function SearchResultsPageContent() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Search Results for "{searchQuery}"</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight">Search Results for "{searchQuery}"</h1>
+        <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="mt-4 sm:mt-0">
+              <FilterIcon className="mr-2 h-4 w-4" /> Filter Results
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[calc(100vw-2rem)] max-w-md p-4" align="end">
+            <div className="space-y-4">
+              <h4 className="font-medium leading-none text-lg">Filter Options</h4>
+              
+              <Separator />
+              <p className="text-sm font-medium text-muted-foreground">Filter Gigs</p>
+              <div>
+                <label htmlFor="gig-skill-filter" className="block text-xs font-medium text-muted-foreground mb-1">By Skills</label>
+                <MultiSelectSkills
+                  options={PREDEFINED_SKILLS}
+                  selected={selectedSkillsFilterGigs}
+                  onChange={setSelectedSkillsFilterGigs}
+                  placeholder="Select skills..."
+                  className="w-full"
+                  id="gig-skill-filter"
+                />
+              </div>
+              <div>
+                <label htmlFor="gig-budget-filter" className="block text-xs font-medium text-muted-foreground mb-1">By Payment (INR)</label>
+                <Select value={selectedBudgetFilterGigs} onValueChange={setSelectedBudgetFilterGigs}>
+                  <SelectTrigger id="gig-budget-filter" className="w-full text-xs h-9">
+                    <SelectValue placeholder="Select payment range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {budgetRanges.map(range => (
+                      <SelectItem key={range.value} value={range.value} className="text-xs">{range.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-      {/* Gigs Section */}
+              <Separator />
+              <p className="text-sm font-medium text-muted-foreground">Filter Users</p>
+              <div>
+                <label htmlFor="user-role-filter" className="block text-xs font-medium text-muted-foreground mb-1">By Role</label>
+                <Select value={selectedRoleFilterUsers} onValueChange={setSelectedRoleFilterUsers}>
+                  <SelectTrigger id="user-role-filter" className="w-full text-xs h-9">
+                    <SelectValue placeholder="Select user role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {userRoleOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value} className="text-xs">{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <Separator />
+              <Button onClick={handleClearFilters} variant="ghost" className="w-full justify-start text-sm text-destructive hover:text-destructive hover:bg-destructive/10">
+                <XIcon className="mr-2 h-4 w-4" /> Clear All Filters
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+
       <section>
         <h2 className="text-2xl font-semibold tracking-tight mb-4 flex items-center gap-2">
-          <Briefcase className="h-6 w-6 text-primary" /> Matching Gigs ({gigs.length})
+          <Briefcase className="h-6 w-6 text-primary" /> Matching Gigs ({filteredGigs.length})
         </h2>
-        {gigs.length === 0 ? (
-          <p className="text-muted-foreground">No gigs found matching your search criteria.</p>
+        {filteredGigs.length === 0 ? (
+          <p className="text-muted-foreground">No gigs found matching your search and filter criteria.</p>
         ) : (
           <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {gigs.map((gig) => (
+            {filteredGigs.map((gig) => (
               <Card key={gig.id} className="glass-card flex flex-col">
                 <CardHeader className="p-4 sm:p-6">
                   <CardTitle className="text-lg line-clamp-2">{gig.title}</CardTitle>
@@ -204,16 +329,15 @@ function SearchResultsPageContent() {
 
       <div className="my-8 border-t"></div>
 
-      {/* Users Section */}
       <section>
         <h2 className="text-2xl font-semibold tracking-tight mb-4 flex items-center gap-2">
-          <Users className="h-6 w-6 text-primary" /> Matching Users ({users.length})
+          <Users className="h-6 w-6 text-primary" /> Matching Users ({filteredUsers.length})
         </h2>
-        {users.length === 0 ? (
-          <p className="text-muted-foreground">No users found matching your search criteria.</p>
+        {filteredUsers.length === 0 ? (
+          <p className="text-muted-foreground">No users found matching your search and filter criteria.</p>
         ) : (
           <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {users.map((userResult) => (
+            {filteredUsers.map((userResult) => (
               <Card key={userResult.uid} className="glass-card">
                 <CardHeader className="items-center text-center p-4 sm:p-6">
                   <Avatar className="h-20 w-20 sm:h-20 mb-2">
@@ -253,7 +377,6 @@ function SearchResultsPageContent() {
   );
 }
 
-
 export default function SearchPage() {
   return (
     <Suspense fallback={<div className="flex justify-center items-center min-h-[calc(100vh-15rem)]"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
@@ -261,4 +384,3 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-
