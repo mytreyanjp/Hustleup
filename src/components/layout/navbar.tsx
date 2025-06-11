@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users, Wallet } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -249,7 +249,7 @@ export default function Navbar() {
               <span className="font-bold inline-block">HustleUp by PromoFlix</span>
             </Link>
             {!isMobile && ( 
-            <nav className="items-center space-x-1 sm:space-x-1 hidden md:flex"> {/* Reduced space-x */}
+            <nav className="items-center space-x-1 sm:space-x-1 hidden md:flex">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link 
@@ -290,6 +290,7 @@ export default function Navbar() {
                 </>
               )}
               {isClient && role === 'student' && (
+                <>
                  <Tooltip>
                     <TooltipTrigger asChild>
                         <Link href="/student/works" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
@@ -299,6 +300,16 @@ export default function Navbar() {
                     </TooltipTrigger>
                     <TooltipContent><p>Your Works</p></TooltipContent>
                  </Tooltip>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Link href="/student/wallet" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                            <Wallet className="h-5 w-5" />
+                            <span className="sr-only">Wallet</span>
+                        </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Wallet</p></TooltipContent>
+                 </Tooltip>
+                </>
               )}
               {isClient && (role === 'student' || role === 'client' || role === 'admin') && (
                  <Tooltip>
@@ -393,6 +404,7 @@ export default function Navbar() {
                             <DropdownMenuItem asChild><Link href="/student/bookmarks"><Bookmark className="mr-2 h-4 w-4" /><span>My Bookmarks</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/student/works"><Briefcase className="mr-2 h-4 w-4" /><span>Your Works</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/student/reviews"><StarIcon className="mr-2 h-4 w-4" /><span>My Reviews</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/student/wallet"><Wallet className="mr-2 h-4 w-4" /><span>My Wallet</span></Link></DropdownMenuItem>
                           </>
                         )}
                         {role === 'client' && (
@@ -407,6 +419,7 @@ export default function Navbar() {
                                 <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link href="/admin/users"><Users className="mr-2 h-4 w-4" /><span>Browse Users</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link href="/admin/manage-gigs"><Briefcase className="mr-2 h-4 w-4" /><span>Manage Gigs</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link href="/chat">
                                   <MessageSquare className="mr-2 h-4 w-4" /> Chat
                                   {totalUnreadChats > 0 && (
@@ -519,6 +532,7 @@ export default function Navbar() {
                           <DropdownMenuItem asChild><Link href="/student/bookmarks"><Bookmark className="mr-2 h-4 w-4" /><span>My Bookmarks</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/student/works"><Briefcase className="mr-2 h-4 w-4" /><span>Your Works</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/student/reviews"><StarIcon className="mr-2 h-4 w-4" /><span>My Reviews</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/student/wallet"><Wallet className="mr-2 h-4 w-4" /><span>My Wallet</span></Link></DropdownMenuItem>
                         </>
                       )}
                       {role === 'client' && (

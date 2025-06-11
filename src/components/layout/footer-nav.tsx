@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Users, Briefcase, MessageSquare, User as UserIcon, PlusCircle, ShieldCheck } from 'lucide-react';
+import { Compass, Users, Briefcase, MessageSquare, User as UserIcon, PlusCircle, ShieldCheck, Wallet } from 'lucide-react';
 import { useFirebase } from '@/context/firebase-context';
 import { cn } from '@/lib/utils';
 
@@ -58,13 +58,14 @@ export default function FooterNav() {
   let generatedNavItems: Omit<NavItemProps, 'isActive'>[] = [];
 
   if (role === 'admin') {
-    generatedNavItems.push({ href: "/admin/manage-gigs", icon: Briefcase, label: "Manage Gigs" }); // Changed from Compass & /gigs/browse
+    generatedNavItems.push({ href: "/admin/manage-gigs", icon: Briefcase, label: "Manage Gigs" });
     generatedNavItems.push({ href: "/admin/users", icon: Users, label: "Users" });
     generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
     generatedNavItems.push({ href: getDashboardUrl(), icon: ShieldCheck, label: "Admin Panel"});
   } else if (role === 'student') {
     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
     generatedNavItems.push({ href: "/student/works", icon: Briefcase, label: "Works" });
+    generatedNavItems.push({ href: "/student/wallet", icon: Wallet, label: "Wallet" });
     generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
     generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: "Profile" });
   } else if (role === 'client') {
