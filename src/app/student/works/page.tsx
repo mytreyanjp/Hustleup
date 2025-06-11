@@ -42,8 +42,8 @@ export interface ProgressReport {
 interface WorkGig {
   id: string;
   title: string;
-  description: string; // Added for expanded view
-  requiredSkills: string[]; // Added for expanded view
+  description: string; 
+  requiredSkills: string[]; 
   clientId: string;
   clientUsername?: string;
   clientCompanyName?: string;
@@ -231,8 +231,8 @@ export default function StudentWorksPage() {
 
             return {
               id: gigDoc.id, title: gigData.title || "Untitled Gig", 
-              description: gigData.description || "", // Ensure description is present
-              requiredSkills: gigData.requiredSkills || [], // Ensure skills are present
+              description: gigData.description || "", 
+              requiredSkills: gigData.requiredSkills || [], 
               clientId: gigData.clientId, clientUsername, clientCompanyName,
               deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
               numberOfReports: numReports, status: gigData.status,
@@ -255,7 +255,7 @@ export default function StudentWorksPage() {
              setCollapsedGigs(prevCollapsed => {
                 const newCollapsed = new Set<string>();
                 gigsWithEffectiveStatus.forEach(gig => {
-                    if ((gig.effectiveStatus === 'in-progress' || gig.effectiveStatus === 'awaiting_payout' || gig.effectiveStatus === 'completed') && !prevCollapsed.has(gig.id)) {
+                    if ((gig.effectiveStatus === 'in-progress' || gig.effectiveStatus === 'awaiting-payout' || gig.effectiveStatus === 'completed') && !prevCollapsed.has(gig.id)) {
                         newCollapsed.add(gig.id);
                     } else if (prevCollapsed.has(gig.id) && gig.effectiveStatus !== 'action-required' && gig.effectiveStatus !== 'pending-review') {
                          newCollapsed.add(gig.id);
@@ -350,7 +350,12 @@ export default function StudentWorksPage() {
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) { // Max 5MB
-        toast({ title: "File Too Large", description: "Maximum file size is 5MB.", variant: "destructive" });
+        toast({ 
+            title: "File Too Large (Max 5MB)", 
+            description: "For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.", 
+            variant: "destructive",
+            duration: 7000, 
+        });
         setSelectedFile(null);
         if(fileInputRef.current) fileInputRef.current.value = "";
         return;
@@ -374,9 +379,9 @@ export default function StudentWorksPage() {
     const gig = activeGigs.find(g => g.id === gigId);
     const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
     setReportText(report?.studentSubmission?.text || "");
-    setSelectedFile(null);
-    setUploadProgress(null);
-    if (fileInputRef.current) {
+    setSelectedFile(null); // Reset file selection
+    setUploadProgress(null); // Reset upload progress
+    if (fileInputRef.current) { // Explicitly clear the file input
       fileInputRef.current.value = ""; 
     }
   };
@@ -507,16 +512,14 @@ export default function StudentWorksPage() {
         const oldFileUrl = progressReports[reportIndex].studentSubmission?.fileUrl;
         if (oldFileUrl && storage) {
             try {
-                const fileRefToDelete = storageRefFn(storage, oldFileUrl); // Use the full URL directly
+                const fileRefToDelete = storageRefFn(storage, oldFileUrl); 
                 await deleteObject(fileRefToDelete);
                 console.log("Old report file deleted from storage:", oldFileUrl);
             } catch (storageError: any) {
-                // Check if error is 'object-not-found' and proceed if so
                 if (storageError.code === 'storage/object-not-found') {
-                    console.warn("File to delete not found in storage (may have already been deleted or path mismatch):", oldFileUrl);
+                    console.warn("File to delete not found in storage:", oldFileUrl);
                 } else {
                     console.warn("Could not delete old report file from storage during unsubmit:", storageError);
-                    // Potentially show a non-blocking warning to the user
                     toast({ title: "File Deletion Issue", description: "Could not delete the previous attachment from storage, but report was unsubmitted.", variant: "default" });
                 }
             }
@@ -524,17 +527,16 @@ export default function StudentWorksPage() {
 
 
         progressReports[reportIndex] = {
-            ...progressReports[reportIndex],
-            studentSubmission: null, 
-            clientStatus: null,
-            clientFeedback: null,
-            reviewedAt: null,
+          ...progressReports[reportIndex],
+          studentSubmission: null, 
+          clientStatus: null,
+          clientFeedback: null,
+          reviewedAt: null,
         };
 
         await updateDoc(gigDocRef, { progressReports });
         toast({ title: "Report Unsubmitted", description: `Report #${reportNumberToUnsubmit} has been unsubmitted.` });
-
-        // Optimistically update local state or re-fetch
+        
         setActiveGigs(prevGigs => 
             prevGigs.map(g => 
                 g.id === gigId 
@@ -760,7 +762,7 @@ export default function StudentWorksPage() {
                 <div
                   className={cn(
                     "transition-all duration-300 ease-in-out overflow-hidden",
-                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" // Increased max-h for more content
+                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" 
                   )}
                 >
                   <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
@@ -877,11 +879,24 @@ export default function StudentWorksPage() {
           </div>
         )}
 
-        <Dialog open={!!currentSubmittingGigId} onOpenChange={(isOpen) => { if (!isOpen) { setCurrentSubmittingGigId(null); setCurrentReportNumber(null); setReportText(""); setSelectedFile(null); setUploadProgress(null); if(fileInputRef.current) fileInputRef.current.value = "";}}}>
+        <Dialog 
+          open={!!currentSubmittingGigId && !!currentReportNumber} 
+          onOpenChange={(isOpen) => { 
+            if (!isOpen) { 
+              setCurrentSubmittingGigId(null); 
+              setCurrentReportNumber(null); 
+              setReportText(""); 
+              setSelectedFile(null); 
+              setUploadProgress(null); 
+              if(fileInputRef.current) fileInputRef.current.value = "";
+            }
+          }}
+          key={`${currentSubmittingGigId}-${currentReportNumber}`}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Submit Report #{currentReportNumber} for Gig: {activeGigs.find(g => g.id === currentSubmittingGigId)?.title}</DialogTitle>
-              <DialogDescription>Provide details about your progress. Max file size 5MB.</DialogDescription>
+              <DialogDescription>Provide details about your progress. Max file size 5MB. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <Textarea placeholder="Describe your progress, challenges, and next steps..." value={reportText} onChange={(e) => setReportText(e.target.value)} rows={5} disabled={isSubmittingReport} />
@@ -889,7 +904,6 @@ export default function StudentWorksPage() {
                   <label htmlFor="reportFile" className="text-sm font-medium text-muted-foreground block mb-1">Attach File (Optional)</label>
                   <Input
                     id="reportFile"
-                    key={currentSubmittingGigId && currentReportNumber ? `${currentSubmittingGigId}-${currentReportNumber}-file` : 'file-input'} // Key to force re-render
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileChange}
