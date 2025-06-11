@@ -48,8 +48,8 @@ export interface ProgressReport {
 interface WorkGig {
   id: string;
   title: string;
-  description: string; 
-  requiredSkills: string[]; 
+  description: string;
+  requiredSkills: string[];
   clientId: string;
   clientUsername?: string;
   clientCompanyName?: string;
@@ -355,23 +355,23 @@ export default function StudentWorksPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      const newFilesArray = Array.from(files);
-      const validNewFiles = newFilesArray.filter(file => {
-        if (file.size > 5 * 1024 * 1024) { // Max 5MB
-          toast({
-            title: "File Too Large (Max 5MB)",
-            description: `"${file.name}" exceeds 5MB. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.`,
-            variant: "destructive",
-            duration: 7000,
-          });
-          return false;
-        }
-        return true;
-      });
-      setSelectedFiles(prevFiles => [...prevFiles, ...validNewFiles]);
+        const newFilesArray = Array.from(files);
+        const validNewFiles = newFilesArray.filter(file => {
+            if (file.size > 5 * 1024 * 1024) { // Max 5MB
+                toast({
+                    title: "File Too Large (Max 5MB)",
+                    description: `"${file.name}" exceeds 5MB. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.`,
+                    variant: "destructive",
+                    duration: 7000,
+                });
+                return false;
+            }
+            return true;
+        });
+        setSelectedFiles(prevFiles => [...prevFiles, ...validNewFiles]);
     }
-     if (fileInputRef.current) { 
-        fileInputRef.current.value = ""; 
+    if (fileInputRef.current) {
+        fileInputRef.current.value = ""; // Important to allow re-selecting the same file if user removes and adds again
     }
   };
 
@@ -398,8 +398,8 @@ export default function StudentWorksPage() {
       toast({ title: "Error", description: "Cannot submit report. Missing context or Firebase not ready.", variant: "destructive" });
       return;
     }
-    if (!reportText.trim()) {
-      toast({ title: "Description Required", description: "Please provide a description for your report.", variant: "destructive" });
+    if (!reportText.trim() && selectedFiles.length === 0) {
+      toast({ title: "Cannot Submit Empty Report", description: "Please provide a description or attach at least one file.", variant: "destructive" });
       return;
     }
     setIsSubmittingReport(true);
@@ -426,6 +426,21 @@ export default function StudentWorksPage() {
               },
               (error) => {
                 console.error('Upload error for file:', file.name, error);
+                let detailedErrorMessage = `File upload failed for ${file.name}. Error: ${error.message}`;
+                 if (error.code === 'storage/unauthorized') {
+                   detailedErrorMessage = `Upload failed for ${file.name}: You do not have permission to upload to this location. This is likely a Firebase Storage security rule issue. Please ensure students are allowed to write to their report paths.`;
+                 } else if (error.code === 'storage/object-not-found') {
+                   detailedErrorMessage = `Upload failed for ${file.name}: The target storage location was not found. This is an unexpected backend issue.`;
+                 } else if (error.code === 'storage/canceled') {
+                   detailedErrorMessage = `File upload was canceled for ${file.name}.`;
+                 }
+                toast({
+                    id: `upload-error-${file.name}-${Date.now()}`,
+                    title: "File Upload Error",
+                    description: detailedErrorMessage,
+                    variant: "destructive",
+                    duration: 10000
+                });
                 reject(error);
               },
               async () => {
@@ -511,21 +526,16 @@ export default function StudentWorksPage() {
       setUploadProgress([]);
       setReportText("");
     } catch (err: any) {
-      console.error("Error submitting report:", err);
-      let description = `Could not submit report: ${err.message}`;
-      if (err.code === 'storage/unauthorized') {
-        description = "File upload failed: You do not have permission to upload to this location. This is likely a Firebase Storage security rule issue. Please ensure students are allowed to write to their report paths.";
-      } else if (err.code === 'storage/object-not-found') {
-        description = "File upload failed: The target storage location was not found. This is an unexpected backend issue.";
-      } else if (err.code === 'storage/canceled') {
-        description = "File upload was canceled.";
+      // General error toast if not already handled by specific upload error
+      if (!(err && err.code && (err.code.startsWith('storage/')))) {
+          console.error("Error submitting report:", err);
+          toast({ 
+            title: "Submission Error", 
+            description: `Could not submit report: ${err.message}`,
+            variant: "destructive",
+            duration: 7000, 
+          });
       }
-      toast({ 
-        title: "Submission Error", 
-        description: description,
-        variant: "destructive",
-        duration: 10000, 
-      });
     } finally {
       setIsSubmittingReport(false);
     }
@@ -554,9 +564,6 @@ export default function StudentWorksPage() {
         if (attachmentsToDelete && attachmentsToDelete.length > 0 && storage) {
             for (const attachment of attachmentsToDelete) {
                 try {
-                    // Construct ref from URL (Firebase storage URLs have a specific format)
-                    // Example: "https://firebasestorage.googleapis.com/v0/b/your-bucket/o/path%2Fto%2Ffile.jpg?alt=media&token=token"
-                    // We need the path part: "path/to/file.jpg"
                     const urlPath = new URL(attachment.url).pathname;
                     const filePathEncoded = urlPath.split('/o/')[1].split('?')[0];
                     const filePath = decodeURIComponent(filePathEncoded);
@@ -793,9 +800,7 @@ export default function StudentWorksPage() {
                   onClick={() => toggleGigCollapse(gig.id)}
                 >
                   <div className="flex-grow">
-                    <Link href={`/gigs/${gig.id}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
-                        <CardTitle className="text-lg sm:text-xl">{gig.title}</CardTitle>
-                    </Link>
+                      <CardTitle className="text-lg sm:text-xl">{gig.title}</CardTitle>
                     <CardDescription className="text-xs sm:text-sm"> Client: <Link href={`/profile/${gig.clientId}`} className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>{gig.clientCompanyName || gig.clientUsername}</Link></CardDescription>
                     <div className="mt-1">
                        <Badge variant={effectiveStatusVariant} size="sm" className="capitalize text-xs">{effectiveStatusLabel}</Badge>
@@ -810,11 +815,11 @@ export default function StudentWorksPage() {
                 <div
                   className={cn(
                     "transition-all duration-300 ease-in-out overflow-hidden",
-                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[1500px] opacity-100" 
+                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[2500px] opacity-100" // Increased max-h
                   )}
                 >
                   <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
-                    <p className="text-sm text-muted-foreground line-clamp-3">{gig.description}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-none">{gig.description}</p>
                      {gig.requiredSkills && gig.requiredSkills.length > 0 && (
                         <div className="pt-1">
                             <h4 className="text-xs font-semibold text-muted-foreground mb-1">Skills Needed:</h4>
@@ -991,7 +996,7 @@ export default function StudentWorksPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => {setCurrentSubmittingGigId(null); setCurrentReportNumber(null); setReportText(""); setSelectedFiles([]); setUploadProgress([]); if(fileInputRef.current) fileInputRef.current.value = "";}} disabled={isSubmittingReport}>Cancel</Button>
-              <Button onClick={handleSubmitReport} disabled={isSubmittingReport || !reportText.trim()}>
+              <Button onClick={handleSubmitReport} disabled={isSubmittingReport || (!reportText.trim() && selectedFiles.length === 0)}>
                 {isSubmittingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Submit Report
               </Button>
@@ -1023,4 +1028,3 @@ export default function StudentWorksPage() {
   );
 }
 
-    
