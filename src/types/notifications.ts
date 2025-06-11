@@ -17,7 +17,8 @@ export type NotificationType =
   | 'payment_released'           // When admin releases payment to student
   | 'report_submitted'           // For client, when student submits a progress report
   | 'report_reviewed'            // For student, when client reviews their report
-  | 'report_attachment_deleted'; // For student/client, when admin deletes an attachment from a report
+  | 'report_attachment_deleted'  // For student/client, when admin deletes an attachment from a report
+  | 'payment_requested_by_student'; // For client, when student requests payment for a gig
 
 export interface Notification {
   id: string; // Firestore document ID
@@ -34,3 +35,4 @@ export interface Notification {
   adminActorId?: string; // UID of the admin who performed an action (if applicable)
   adminActorUsername?: string; // Username of the admin actor (if applicable)
 }
+

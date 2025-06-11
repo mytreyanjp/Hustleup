@@ -610,7 +610,7 @@ export default function StudentWorksPage() {
   };
 
   const handleRequestPayment = async () => {
-    if (!paymentRequestGig || !user || !db) {
+    if (!paymentRequestGig || !user || !userProfile || !db) {
         toast({title: "Error", description: "Cannot request payment. Missing gig info or user session.", variant: "destructive"});
         return;
     }
@@ -622,9 +622,34 @@ export default function StudentWorksPage() {
             lastPaymentRequestedAt: serverTimestamp(),
             studentPaymentRequestPending: true,
         });
+
+        await createNotification(
+            paymentRequestGig.clientId,
+            `"${userProfile.username || 'The student'}" has requested payment for the gig "${paymentRequestGig.title}".`,
+            'payment_requested_by_student',
+            paymentRequestGig.id,
+            paymentRequestGig.title,
+            `/client/gigs/${paymentRequestGig.id}/manage`,
+            user.uid,
+            userProfile.username || 'The student'
+        );
+
         toast({ title: "Payment Requested!", description: "The client has been notified of your payment request."});
         setShowPaymentRequestDialog(false);
         setPaymentRequestGig(null);
+        // Re-fetch or update local state for the specific gig might be needed if UI relies on paymentRequestsCount immediately
+        const updatedGigs = activeGigs.map(gig =>
+            gig.id === paymentRequestGig.id
+                ? { ...gig, 
+                    paymentRequestsCount: (gig.paymentRequestsCount || 0) + 1, 
+                    lastPaymentRequestedAt: Timestamp.now(), // Approximate for UI
+                    studentPaymentRequestPending: true,
+                    paymentRequestAvailableAt: Timestamp.fromDate(addHours(new Date(), 2)) // Approximate for UI
+                  }
+                : gig
+        );
+        setActiveGigs(updatedGigs);
+
     } catch (error: any) {
         console.error("Error requesting payment:", error);
         toast({ title: "Error", description: `Could not request payment: ${error.message}`, variant: "destructive"});
