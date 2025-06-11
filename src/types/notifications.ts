@@ -16,7 +16,8 @@ export type NotificationType =
   | 'role_updated'               // When user's role is changed by admin
   | 'payment_released'           // When admin releases payment to student
   | 'report_submitted'           // For client, when student submits a progress report
-  | 'report_reviewed';           // For student, when client reviews their report
+  | 'report_reviewed'            // For student, when client reviews their report
+  | 'report_attachment_deleted'; // For student/client, when admin deletes an attachment from a report
 
 export interface Notification {
   id: string; // Firestore document ID
