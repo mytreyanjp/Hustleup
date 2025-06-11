@@ -443,11 +443,14 @@ export default function ChatPage() {
         });
       }
       
-      // Filter chats for non-admins: only show chats with admins
+      // Filter chats for non-admins: only show chats with admins AND not 'closed_by_user'
       if (userProfile?.role !== 'admin') {
         fetchedChats = fetchedChats.filter(chat => {
+            if (chat.chatStatus === 'closed_by_user') { // Hide chats user themselves closed
+                return false;
+            }
             const otherParticipantId = chat.participants.find(pId => pId !== user.uid);
-            if (!otherParticipantId) return false; // Should not happen
+            if (!otherParticipantId) return false;
             const otherParticipantProfile = otherParticipantProfiles[otherParticipantId]; 
             // If profile is already fetched and it's not an admin, filter out
             if (otherParticipantProfile && otherParticipantProfile.role !== 'admin') return false;
@@ -480,7 +483,7 @@ export default function ChatPage() {
     });
 
     return () => unsubscribe();
-  }, [user, userProfile, toast, db, otherParticipantProfiles]); 
+  }, [user, userProfile, toast, db]); // Removed otherParticipantProfiles from deps
 
   useEffect(() => {
     if (!selectedChatId || !user || !userProfile || !db) {
@@ -809,7 +812,15 @@ export default function ChatPage() {
         });
 
         await batch.commit();
-        toast({ title: "Issue Resolved", description: "This chat has been marked as resolved and is now read-only for you." });
+        toast({ title: "Issue Resolved", description: "This chat has been marked as resolved." });
+        
+        // Locally remove the chat from the list
+        setChats(prevChats => prevChats.filter(chat => chat.id !== selectedChatId));
+        // Deselect the chat
+        setSelectedChatId(null);
+        setMessages([]); // Clear messages for the deselected chat
+        setCurrentGigForChat(null); // Clear gig context
+
     } catch (error: any) {
         console.error("Error resolving issue:", error);
         toast({ title: "Error", description: `Could not mark issue as resolved: ${error.message}`, variant: "destructive" });
@@ -1347,11 +1358,11 @@ export default function ChatPage() {
                 </Button>
                  <Link href={`/profile/${otherUserIdForHeader}`} passHref
                     className={cn(
-                        (userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support"
+                        (displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support")
                         ? "pointer-events-none" : ""
                     )}
                     onClick={(e) => {
-                        if ((userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support") {
+                        if (displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support") {
                             e.preventDefault();
                         }
                     }}
@@ -1365,11 +1376,11 @@ export default function ChatPage() {
                    <Link href={`/profile/${otherUserIdForHeader}`} passHref
                         className={cn(
                             "hover:underline",
-                            (userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support"
+                            (displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support")
                             ? "pointer-events-none text-foreground" : ""
                         )}
                         onClick={(e) => {
-                            if ((userProfile.role !== 'admin' && displayRoleForHeader === 'admin') || displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support") {
+                            if (displayNameForHeader === "Loading..." || displayNameForHeader === "Admin Support") {
                                 e.preventDefault();
                             }
                         }}
@@ -1435,7 +1446,7 @@ export default function ChatPage() {
                             <AlertDialogHeader>
                                 <AlertDialogTitle>Mark Issue as Resolved?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                    This will mark the chat as resolved for you and disable further messages from your end. The admin may still contact you if needed. Are you sure?
+                                    This will mark the chat as resolved and remove it from your active list. The admin may still contact you if needed. Are you sure?
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
