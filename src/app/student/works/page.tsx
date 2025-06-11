@@ -6,6 +6,7 @@ import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp, onSnapshot, DocumentData, addDoc } from 'firebase/firestore'; // Added addDoc
 import { db, storage } from '@/config/firebase';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from '@/lib/utils';
 import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
+import { Progress } from '@/components/ui/progress';
 
 interface StudentSubmission {
   text: string;
@@ -153,6 +155,8 @@ export default function StudentWorksPage() {
   const [currentSubmittingGigId, setCurrentSubmittingGigId] = useState<string | null>(null);
   const [currentReportNumber, setCurrentReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isSubmittingUnsubmit, setIsSubmittingUnsubmit] = useState<number | null>(null);
 
 
@@ -163,6 +167,7 @@ export default function StudentWorksPage() {
   const [showPaymentRequestDialog, setShowPaymentRequestDialog] = useState(false);
   const [paymentRequestGig, setPaymentRequestGig] = useState<WorkGig | null>(null);
   const [isRequestingPayment, setIsRequestingPayment] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -336,12 +341,36 @@ export default function StudentWorksPage() {
     });
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // Max 5MB
+        toast({ title: "File Too Large", description: "Maximum file size is 5MB.", variant: "destructive" });
+        setSelectedFile(null);
+        if(fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      setSelectedFile(file);
+    } else {
+      setSelectedFile(null);
+    }
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleOpenSubmitReportDialog = (gigId: string, reportNumber: number) => {
     setCurrentSubmittingGigId(gigId);
     setCurrentReportNumber(reportNumber);
     const gig = activeGigs.find(g => g.id === gigId);
     const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
     setReportText(report?.studentSubmission?.text || "");
+    setSelectedFile(null); // Reset file selection
+    setUploadProgress(null);
   };
 
 
@@ -355,7 +384,38 @@ export default function StudentWorksPage() {
       return;
     }
     setIsSubmittingReport(true);
+    setUploadProgress(null);
+
+    let fileUrl: string | undefined = undefined;
+    let fileName: string | undefined = undefined;
+
     try {
+      if (selectedFile && storage) {
+        setUploadProgress(0);
+        const uniqueFileName = `${Date.now()}_${selectedFile.name}`;
+        const reportStorageRef = storageRefFn(storage, `gig_reports/${currentSubmittingGigId}/${currentReportNumber}/${user.uid}/${uniqueFileName}`);
+        const uploadTask = uploadBytesResumable(reportStorageRef, selectedFile);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            },
+            (error) => {
+              console.error('Upload error:', error);
+              reject(error);
+            },
+            async () => {
+              fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              fileName = selectedFile.name;
+              resolve();
+            }
+          );
+        });
+      }
+
       const gigDocRef = doc(db, 'gigs', currentSubmittingGigId);
       const gigSnap = await getDoc(gigDocRef);
       if (!gigSnap.exists()) throw new Error("Gig not found");
@@ -367,6 +427,8 @@ export default function StudentWorksPage() {
       const studentSubmission: StudentSubmission = {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
+        ...(fileUrl && { fileUrl }),
+        ...(fileName && { fileName }),
       };
 
       if (reportIndex > -1) {
@@ -405,6 +467,8 @@ export default function StudentWorksPage() {
       );
 
       setCurrentSubmittingGigId(null);
+      setSelectedFile(null);
+      setUploadProgress(null);
     } catch (err: any) {
       console.error("Error submitting report:", err);
       toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
@@ -431,6 +495,21 @@ export default function StudentWorksPage() {
         if (reportIndex === -1 || !progressReports[reportIndex].studentSubmission) {
             throw new Error("Report not found or not submitted.");
         }
+        
+        // If there was a file, attempt to delete it from storage
+        // Note: Error during file deletion will not stop the unsubmission process.
+        const oldFileUrl = progressReports[reportIndex].studentSubmission?.fileUrl;
+        if (oldFileUrl && storage) {
+            try {
+                const fileRef = storageRefFn(storage, oldFileUrl);
+                await deleteObject(fileRef);
+                console.log("Old report file deleted from storage:", oldFileUrl);
+            } catch (storageError: any) {
+                console.warn("Could not delete old report file from storage during unsubmit:", storageError);
+                // Don't block unsubmission if file deletion fails, but log it.
+            }
+        }
+
 
         // Clear submission details for the report
         progressReports[reportIndex] = {
@@ -444,11 +523,10 @@ export default function StudentWorksPage() {
         await updateDoc(gigDocRef, { progressReports });
         toast({ title: "Report Unsubmitted", description: `Report #${reportNumberToUnsubmit} has been unsubmitted.` });
 
-        // Optionally update local state if not relying solely on onSnapshot
         setActiveGigs(prevGigs => 
             prevGigs.map(g => 
                 g.id === gigId 
-                ? { ...g, progressReports: progressReports.map(pr => ({...pr})) } // Deep copy to trigger re-render
+                ? { ...g, progressReports: progressReports.map(pr => ({...pr})) } 
                 : g
             )
         );
@@ -719,6 +797,13 @@ export default function StudentWorksPage() {
                                 {report.studentSubmission ? (
                                   <div className="text-xs space-y-1">
                                     <p className="line-clamp-2"><strong>Your submission:</strong> {report.studentSubmission.text}</p>
+                                    {report.studentSubmission.fileUrl && (
+                                      <Button variant="link" size="xs" asChild className="p-0 h-auto text-xs">
+                                          <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
+                                              <FileText className="mr-1 h-3 w-3" /> View Attachment ({report.studentSubmission.fileName || 'file'})
+                                          </a>
+                                      </Button>
+                                    )}
                                     <p className="text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
                                   </div>
                                 ): (
@@ -771,12 +856,34 @@ export default function StudentWorksPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Submit Report #{currentReportNumber} for Gig: {activeGigs.find(g => g.id === currentSubmittingGigId)?.title}</DialogTitle>
-              <DialogDescription>Provide details about your progress.</DialogDescription>
+              <DialogDescription>Provide details about your progress. Max file size 5MB.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <Textarea placeholder="Describe your progress, challenges, and next steps..." value={reportText} onChange={(e) => setReportText(e.target.value)} rows={5} disabled={isSubmittingReport} />
               <div>
-                  <p className="text-xs text-muted-foreground mt-1">File attachments are currently disabled.</p>
+                  <label htmlFor="reportFile" className="text-sm font-medium text-muted-foreground block mb-1">Attach File (Optional)</label>
+                  <Input
+                    id="reportFile"
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="text-sm file:mr-2 file:py-1.5 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                    disabled={isSubmittingReport || !!uploadProgress}
+                  />
+                  {selectedFile && (
+                    <div className="mt-2 text-xs flex items-center justify-between bg-muted p-1.5 rounded">
+                      <span className="truncate max-w-[200px]">{selectedFile.name}</span>
+                      <Button variant="ghost" size="icon" onClick={clearSelectedFile} disabled={isSubmittingReport || !!uploadProgress} className="h-5 w-5">
+                        <XIcon className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {uploadProgress !== null && (
+                    <div className="mt-2 space-y-1">
+                        <Progress value={uploadProgress} className="w-full h-1.5" />
+                        <p className="text-xs text-muted-foreground text-center">{Math.round(uploadProgress)}% uploaded</p>
+                    </div>
+                  )}
               </div>
             </div>
             <DialogFooter>
@@ -812,4 +919,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-

@@ -200,7 +200,7 @@ export default function ManageGigPage() {
      openCheckout({
        amount: gig.budget * 100,
        currency: "INR",
-       name: "HustleUp Gig Payment",
+       name: "HustleUp by PromoFlix Gig Payment",
        description: `Payment for Gig: ${gig.title}. To HustleUp Platform.`,
        prefill: { name: userProfile?.username || user?.email?.split('@')[0], email: user?.email || '' },
        notes: { gigId: gig.id, studentId: student.studentId, clientId: user?.uid },
@@ -559,7 +559,7 @@ export default function ManageGigPage() {
                                         <div className="space-y-2">
                                             <p className="text-sm"><span className="font-medium">Student Submission:</span> {report.studentSubmission.text}</p>
                                             {report.studentSubmission.fileUrl && (
-                                                <Button variant="link" size="sm" asChild className="p-0 h-auto">
+                                                <Button variant="link" size="xs" asChild className="p-0 h-auto text-xs">
                                                     <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
                                                         <FileText className="mr-1 h-4 w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
                                                     </a>
@@ -621,7 +621,7 @@ export default function ManageGigPage() {
                <CircleDollarSign className="h-6 w-6" /> Payment Processing for: {selectedStudent.studentUsername}
              </CardTitle>
              <CardDescription>
-               Your payment of INR {gig.budget.toFixed(2)} has been successfully processed by HustleUp.
+               Your payment of INR {gig.budget.toFixed(2)} has been successfully processed by HustleUp by PromoFlix.
                It is now pending review by our admin team before being released to {selectedStudent.studentUsername}.
              </CardDescription>
            </CardHeader>
