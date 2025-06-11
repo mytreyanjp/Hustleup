@@ -10,10 +10,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText } from 'lucide-react'; // Added MessageSquare, FileText
+import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText, DollarSign } from 'lucide-react'; // Added DollarSign
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
-import type { ProgressReport } from '@/app/student/works/page'; // Assuming ProgressReport type is available
+import type { ProgressReport } from '@/app/student/works/page'; 
 
 interface ClientGig {
   id: string;
@@ -27,9 +27,9 @@ interface ClientGig {
   clientDisplayName?: string;
   clientAvatarUrl?: string;
   numberOfReports?: number;
-  progressReports?: ProgressReport[]; // Added to calculate pending reports
-  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[]; // To count pending applicants
-  studentPaymentRequestPending?: boolean; // Added
+  progressReports?: ProgressReport[]; 
+  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[]; 
+  studentPaymentRequestPending?: boolean; 
 
   // Derived notification counts
   pendingApplicantCount: number;
@@ -336,5 +336,4 @@ export default function ClientGigsPage() {
     </div>
   );
 }
-
     
