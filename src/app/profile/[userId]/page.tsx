@@ -841,14 +841,20 @@ export default function PublicProfilePage() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-2 md:gap-4">
                         {posts.map(post => (
                             <div key={post.id} className="aspect-square relative group overflow-hidden rounded-md">
-                                <Image
-                                    src={post.imageUrl || null}
-                                    alt={post.caption || `Post by ${profile.username || 'user'}`}
-                                    layout="fill"
-                                    objectFit="cover"
-                                    className="group-hover:scale-105 transition-transform duration-300"
-                                    data-ai-hint="student content"
-                                />
+                                {post.imageUrl && post.imageUrl.trim() !== '' ? (
+                                    <Image
+                                        src={post.imageUrl}
+                                        alt={post.caption || `Post by ${profile?.username || 'user'}`}
+                                        layout="fill"
+                                        objectFit="cover"
+                                        className="group-hover:scale-105 transition-transform duration-300"
+                                        data-ai-hint="student content"
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full w-full bg-muted rounded-md">
+                                        <ImageIconLucide className="h-10 w-10 text-muted-foreground" />
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -1069,4 +1075,5 @@ export default function PublicProfilePage() {
     </div>
   );
 }
+
 
