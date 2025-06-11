@@ -70,8 +70,8 @@ export default function FooterNav() {
     generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: "Profile" });
   } else if (role === 'client') {
     generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore" });
-    generatedNavItems.push({ href: "/hustlers/browse", icon: Users, label: "Hustlers" });
     generatedNavItems.push({ href: "/client/gigs/new", icon: PlusCircle, label: "New Gig" });
+    generatedNavItems.push({ href: "/client/payments", icon: Wallet, label: "Wallet" });
     generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
     generatedNavItems.push({ href: getDashboardUrl(), icon: UserIcon, label: "Dashboard" });
   } else {

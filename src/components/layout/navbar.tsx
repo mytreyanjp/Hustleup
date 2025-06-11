@@ -271,21 +271,21 @@ export default function Navbar() {
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Link href="/hustlers/browse" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
-                        <HustlersIcon className="h-5 w-5" />
-                         <span className="sr-only">Hustlers</span>
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent><p>Hustlers</p></TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
                       <Link href="/client/gigs" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
                         <Briefcase className="h-5 w-5" />
                         <span className="sr-only">My Gigs</span>
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent><p>My Gigs</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link href="/client/payments" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                        <Wallet className="h-5 w-5" />
+                        <span className="sr-only">Wallet</span>
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Wallet</p></TooltipContent>
                   </Tooltip>
                 </>
               )}
@@ -412,6 +412,8 @@ export default function Navbar() {
                             <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/hustlers/browse"><HustlersIcon className="mr-2 h-4 w-4" /><span>Browse Hustlers</span></Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href="/client/payments"><Wallet className="mr-2 h-4 w-4" /><span>Payment History</span></Link></DropdownMenuItem>
                           </>
                         )}
                         {role === 'admin' && (
@@ -540,6 +542,8 @@ export default function Navbar() {
                           <DropdownMenuItem asChild><Link href="/client/dashboard"><LayoutDashboard className="mr-2 h-4 w-4" /><span>Dashboard</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/profile/edit"><Edit3 className="mr-2 h-4 w-4" /><span>Edit Profile</span></Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href="/client/gigs"><Briefcase className="mr-2 h-4 w-4" /><span>My Gigs</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/hustlers/browse"><HustlersIcon className="mr-2 h-4 w-4" /><span>Browse Hustlers</span></Link></DropdownMenuItem>
+                          <DropdownMenuItem asChild><Link href="/client/payments"><Wallet className="mr-2 h-4 w-4" /><span>Payment History</span></Link></DropdownMenuItem>
                         </>
                       )}
                       {role === 'admin' && (
