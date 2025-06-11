@@ -33,10 +33,18 @@ interface ApplicantInfo {
     status?: 'pending' | 'accepted' | 'rejected';
 }
 
+interface Attachment {
+  url: string;
+  name: string;
+  type?: string;
+  size?: number;
+}
+
 interface StudentSubmission {
   text: string;
-  fileUrl?: string;
-  fileName?: string;
+  fileUrl?: string; // For backward compatibility
+  fileName?: string; // For backward compatibility
+  attachments?: Attachment[]; // New field for multiple attachments
   submittedAt: Timestamp;
 }
 
@@ -281,7 +289,7 @@ export default function ManageGigPage() {
 
 
    const updateApplicantStatus = async (studentId: string, newStatus: 'accepted' | 'rejected') => {
-       if (!gig || !user) return;
+       if (!gig || !user || !userProfile) return; // Added userProfile check
        const applicant = gig.applicants?.find(app => app.studentId === studentId);
        if (!applicant) { toast({ title: "Error", description: "Applicant not found.", variant: "destructive" }); return; }
        setUpdatingApplicantId(studentId);
@@ -312,13 +320,13 @@ export default function ManageGigPage() {
              // Create notification for the student
              await createNotification(
                 applicant.studentId,
-                `Congratulations! Your application for the gig "${gig.title}" has been accepted by ${gig.clientUsername || userProfile?.username || 'the client'}.`,
+                `Congratulations! Your application for the gig "${gig.title}" has been accepted by ${userProfile?.companyName || userProfile?.username || 'the client'}.`,
                 'application_status_update',
                 gig.id,
                 gig.title,
                 `/gigs/${gig.id}`,
                 user.uid,
-                userProfile?.username || 'The Client'
+                userProfile?.companyName || userProfile?.username || 'The Client'
              );
            }
            await updateDoc(gigDocRef, gigUpdateData);
@@ -363,7 +371,7 @@ export default function ManageGigPage() {
         const selectedStudentInfo = gig.applicants?.find(app => app.studentId === gig.selectedStudentId);
         if (!selectedStudentInfo) { toast({ title: "Error", description: "Selected student details not found.", variant: "destructive"}); setIsSubmittingReview(false); return; }
         try {
-            const reviewData: Omit<Review, 'id' | 'createdAt'> & { createdAt: any } = { gigId: gig.id, gigTitle: gig.title, clientId: user.uid, clientUsername: userProfile.username || user.email?.split('@')[0] || 'Client', studentId: gig.selectedStudentId, studentUsername: selectedStudentInfo.studentUsername, rating: rating, comment: reviewComment.trim() || '', createdAt: serverTimestamp(), };
+            const reviewData: Omit<Review, 'id' | 'createdAt'> & { createdAt: any } = { gigId: gig.id, gigTitle: gig.title, clientId: user.uid, clientUsername: userProfile.companyName || userProfile.username || user.email?.split('@')[0] || 'Client', studentId: gig.selectedStudentId, studentUsername: selectedStudentInfo.studentUsername, rating: rating, comment: reviewComment.trim() || '', createdAt: serverTimestamp(), };
             await addDoc(collection(db, "reviews"), reviewData);
             const studentDocRef = doc(db, 'users', gig.selectedStudentId);
             const studentSnap = await getDoc(studentDocRef);
@@ -380,7 +388,7 @@ export default function ManageGigPage() {
     };
 
   const handleReportReview = async (reportNumber: number, newStatus: 'approved' | 'rejected') => {
-    if (!gig || !db || !user) return;
+    if (!gig || !db || !user || !userProfile) return; // Added userProfile check
     if (newStatus === 'rejected' && !clientFeedbackText.trim()){
         toast({title: "Feedback Required", description: "Please provide feedback when rejecting a report.", variant: "destructive"});
         return;
@@ -411,24 +419,24 @@ export default function ManageGigPage() {
       if (newStatus === 'approved' && gig.selectedStudentId) {
          await createNotification(
             gig.selectedStudentId,
-            `Your Report #${reportNumber} for the gig "${gig.title}" has been approved by ${gig.clientUsername || userProfile?.username || 'the client'}.`,
+            `Your Report #${reportNumber} for the gig "${gig.title}" has been approved by ${userProfile?.companyName || userProfile?.username || 'the client'}.`,
             'report_reviewed',
             gig.id,
             gig.title,
             `/gigs/${gig.id}`,
             user.uid,
-            userProfile?.username || 'The Client'
+            userProfile?.companyName || userProfile?.username || 'The Client'
          );
       } else if (newStatus === 'rejected' && gig.selectedStudentId) {
          await createNotification(
             gig.selectedStudentId,
-            `Your Report #${reportNumber} for the gig "${gig.title}" has been rejected by ${gig.clientUsername || userProfile?.username || 'the client'}. Feedback: ${clientFeedbackText.trim()}`,
+            `Your Report #${reportNumber} for the gig "${gig.title}" has been rejected by ${userProfile?.companyName || userProfile?.username || 'the client'}. Feedback: ${clientFeedbackText.trim()}`,
             'report_reviewed', // Still 'report_reviewed', the message content differs
             gig.id,
             gig.title,
             `/gigs/${gig.id}`,
             user.uid,
-            userProfile?.username || 'The Client'
+            userProfile?.companyName || userProfile?.username || 'The Client'
          );
       }
 
@@ -558,13 +566,28 @@ export default function ManageGigPage() {
                                     ) : (
                                         <div className="space-y-2">
                                             <p className="text-sm"><span className="font-medium">Student Submission:</span> {report.studentSubmission.text}</p>
-                                            {report.studentSubmission.fileUrl && (
+                                            
+                                            {report.studentSubmission.attachments && report.studentSubmission.attachments.length > 0 && (
+                                              <div className="space-y-1 mt-1">
+                                                <p className="text-xs font-medium text-muted-foreground">Attachment(s):</p>
+                                                {report.studentSubmission.attachments.map((att, idx) => (
+                                                  <Button key={idx} variant="link" size="xs" asChild className="p-0 h-auto text-xs block">
+                                                    <a href={att.url} target="_blank" rel="noopener noreferrer">
+                                                      <FileText className="mr-1 h-3 w-3" /> {att.name}
+                                                    </a>
+                                                  </Button>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {/* Fallback for old single file structure */}
+                                            {!report.studentSubmission.attachments && report.studentSubmission.fileUrl && (
                                                 <Button variant="link" size="xs" asChild className="p-0 h-auto text-xs">
                                                     <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
                                                         <FileText className="mr-1 h-4 w-4" /> View Attachment ({report.studentSubmission.fileName || 'file'})
                                                     </a>
                                                 </Button>
                                             )}
+
                                             <p className="text-xs text-muted-foreground">Submitted: {format(report.studentSubmission.submittedAt.toDate(), "PPp")}</p>
 
                                             {report.clientStatus === 'pending_review' && (
@@ -734,3 +757,5 @@ export default function ManageGigPage() {
      </div>
    );
 }
+
+    
