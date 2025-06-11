@@ -435,7 +435,7 @@ export default function StudentWorksPage() {
         // Clear submission details for the report
         progressReports[reportIndex] = {
             ...progressReports[reportIndex],
-            studentSubmission: undefined, // Or null, depending on your data model preference
+            studentSubmission: null, 
             clientStatus: null,
             clientFeedback: null,
             reviewedAt: null,
