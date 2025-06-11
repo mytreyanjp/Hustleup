@@ -95,19 +95,23 @@ export default function NewGigPage() {
   });
 
   useEffect(() => {
-    const currentDeadlinesCount = reportDeadlineFields.length;
-    const targetCount = Number(numberOfReportsValue || 0); 
+    const currentLength = reportDeadlineFields.length;
+    const targetLength = Number(numberOfReportsValue || 0);
 
-    if (targetCount > currentDeadlinesCount) {
-      for (let i = currentDeadlinesCount; i < targetCount; i++) {
-        appendReportDeadline(null);
+    if (targetLength > currentLength) {
+      const numToAdd = targetLength - currentLength;
+      const newFields = Array(numToAdd).fill(null); // Create an array of nulls
+      appendReportDeadline(newFields);             // Pass the array to append
+    } else if (targetLength < currentLength) {
+      const indicesToRemove: number[] = [];
+      for (let i = currentLength - 1; i >= targetLength; i--) {
+        indicesToRemove.push(i);
       }
-    } else if (targetCount < currentDeadlinesCount) {
-      for (let i = currentDeadlinesCount - 1; i >= targetCount; i--) {
-        removeReportDeadline(i);
+      if (indicesToRemove.length > 0) {
+        removeReportDeadline(indicesToRemove); // remove can take an array of indices
       }
     }
-  }, [numberOfReportsValue, reportDeadlineFields.length, appendReportDeadline, removeReportDeadline]);
+  }, [numberOfReportsValue, appendReportDeadline, removeReportDeadline, reportDeadlineFields.length]);
 
 
   useEffect(() => {
