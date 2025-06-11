@@ -224,7 +224,7 @@ export default function SettingsPage() {
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
               <div>
                  <p className="font-medium">Delete Account</p>
-                 <p className="text-sm text-muted-foreground">Permanently remove your account and all associated data from HustleUp.</p>
+                 <p className="text-sm text-muted-foreground">Permanently remove your account and all associated data from HustleUp by PromoFlix.</p>
               </div>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -260,3 +260,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

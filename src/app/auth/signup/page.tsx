@@ -185,7 +185,7 @@ export default function SignupPage() {
 
       toast({
         title: 'Account Created Successfully!',
-        description: `Welcome to HustleUp as a ${data.role}. Redirecting...`,
+        description: `Welcome to HustleUp by PromoFlix as a ${data.role}. Redirecting...`,
       });
       
       router.push(data.role === 'student' ? '/student/profile' : '/client/dashboard');
@@ -322,7 +322,7 @@ export default function SignupPage() {
      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)] py-8">
        <Card className="w-full max-w-lg glass-card">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create your HustleUp Account</CardTitle>
+          <CardTitle className="text-2xl">Create your HustleUp by PromoFlix Account</CardTitle>
           <CardDescription>Join as a Student or Client to get started.</CardDescription>
         </CardHeader>
         <CardContent>

@@ -43,6 +43,8 @@ interface AdminChatRequest {
     status: 'pending' | 'in_progress' | 'resolved' | 'closed';
     handledByAdminUid?: string; // UID of the admin who handled/is handling
     initialMessage?: string; // Stored from the request dialog
+    resolutionNotes?: string;
+    resolvedAt?: Timestamp;
 }
 
 export default function SupportPage() {
@@ -502,10 +504,11 @@ export default function SupportPage() {
              </div>
            )}
           <p className="text-sm text-muted-foreground pt-2">
-            We aim to respond to all queries within 24-48 business hours. Please provide as much detail as possible so we can assist you effectively.
+            We aim to respond to all queries on HustleUp by PromoFlix within 24-48 business hours. Please provide as much detail as possible so we can assist you effectively.
           </p>
         </CardContent>
       </Card>
     </div>
   );
 }
+

@@ -42,7 +42,7 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4 py-8">
       <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-        Welcome to Hustle Up
+        Welcome to HustleUp by PromoFlix
       </h1>
       <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl">
         The platform where ambitious students connect with clients needing freelance talent. Post gigs, find talent, get paid.
@@ -70,3 +70,4 @@ export default function Home() {
     </div>
   );
 }
+

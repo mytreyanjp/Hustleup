@@ -173,7 +173,7 @@ export default function CompleteProfilePage() {
       <Card className="w-full max-w-lg glass-card">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Complete Your Profile</CardTitle>
-          <CardDescription>Just a few more details to get you started on HustleUp.</CardDescription>
+          <CardDescription>Just a few more details to get you started on HustleUp by PromoFlix.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
