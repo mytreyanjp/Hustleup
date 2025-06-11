@@ -4,16 +4,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useFirebase } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText, DollarSign } from 'lucide-react'; // Added DollarSign
+import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
-import type { ProgressReport } from '@/app/student/works/page'; 
+import type { ProgressReport } from '@/app/student/works/page';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useToast } from '@/hooks/use-toast';
+import type { NotificationType } from '@/types/notifications';
+
 
 interface ClientGig {
   id: string;
@@ -27,22 +30,59 @@ interface ClientGig {
   clientDisplayName?: string;
   clientAvatarUrl?: string;
   numberOfReports?: number;
-  progressReports?: ProgressReport[]; 
-  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[]; 
-  studentPaymentRequestPending?: boolean; 
-
-  // Derived notification counts
+  progressReports?: ProgressReport[];
+  applicants?: { studentId: string; studentUsername: string; status?: 'pending' | 'accepted' | 'rejected' }[];
+  studentPaymentRequestPending?: boolean;
   pendingApplicantCount: number;
   pendingReportsCount: number;
   isPaymentRequestedByStudent: boolean;
 }
 
+// Notification creation helper
+const createNotification = async (
+    recipientUserId: string,
+    message: string,
+    type: NotificationType,
+    relatedGigId?: string,
+    relatedGigTitle?: string,
+    link?: string,
+    actorUserId?: string,
+    actorUsername?: string
+) => {
+    if (!db) {
+        console.error("Firestore (db) not available for creating notification.");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'notifications'), {
+            recipientUserId,
+            message,
+            type,
+            relatedGigId: relatedGigId || null,
+            relatedGigTitle: relatedGigTitle || null,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            ...(actorUserId && { actorUserId }),
+            ...(actorUsername && { actorUsername }),
+            link: link || (relatedGigId ? `/gigs/${relatedGigId}` : '/notifications'),
+        });
+        console.log(`Notification of type ${type} created for ${recipientUserId}: ${message}`);
+    } catch (error) {
+        console.error("Error creating notification document:", error);
+    }
+};
+
+
 export default function ClientGigsPage() {
   const { user, userProfile, loading, role } = useFirebase();
   const router = useRouter();
+  const { toast } = useToast();
   const [allGigs, setAllGigs] = useState<ClientGig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gigToDelete, setGigToDelete] = useState<ClientGig | null>(null);
+  const [isProcessingDelete, setIsProcessingDelete] = useState(false);
+
 
   useEffect(() => {
     if (!loading && (!user || role !== 'client')) {
@@ -97,8 +137,6 @@ export default function ClientGigsPage() {
           progressReports: data.progressReports || [],
           applicants: data.applicants || [],
           studentPaymentRequestPending: data.studentPaymentRequestPending || false,
-          
-          // Derived counts
           pendingApplicantCount: pendingApplicants,
           pendingReportsCount: pendingReports,
           isPaymentRequestedByStudent: paymentRequested,
@@ -153,9 +191,38 @@ export default function ClientGigsPage() {
        }
    };
 
-   const handleDeleteGig = async (gigId: string) => {
-       console.log(`Delete gig requested: ${gigId}`);
-       alert("Delete functionality not yet fully implemented. For now, consider editing the gig to 'closed'.");
+   const handleConfirmDelete = async () => {
+    if (!gigToDelete || !user || !userProfile) return;
+    setIsProcessingDelete(true);
+    try {
+        const gigDocRef = doc(db, 'gigs', gigToDelete.id);
+        await deleteDoc(gigDocRef);
+
+        // Notify applicants
+        if (gigToDelete.applicants && gigToDelete.applicants.length > 0) {
+            for (const applicant of gigToDelete.applicants) {
+                await createNotification(
+                    applicant.studentId,
+                    `The gig "${gigToDelete.title}" you applied to has been deleted by the client.`,
+                    'gig_status_update', // Or a more specific type like 'gig_deleted_by_client'
+                    gigToDelete.id,
+                    gigToDelete.title,
+                    undefined, // No specific link for a deleted gig
+                    user.uid,
+                    userProfile.username || 'The Client'
+                );
+            }
+        }
+
+        setAllGigs(prevGigs => prevGigs.filter(g => g.id !== gigToDelete.id));
+        toast({ title: "Gig Deleted", description: `"${gigToDelete.title}" has been successfully deleted.` });
+    } catch (err: any) {
+        console.error("Error deleting gig:", err);
+        toast({ title: "Deletion Failed", description: `Could not delete gig: ${err.message}`, variant: "destructive" });
+    } finally {
+        setIsProcessingDelete(false);
+        setGigToDelete(null);
+    }
    };
 
   if (isLoading || loading) {
@@ -256,7 +323,7 @@ export default function ClientGigsPage() {
                 <Edit className="mr-1 h-4 w-4" /> Edit Gig
               </Link>
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => handleDeleteGig(gig.id)} disabled>
+             <Button variant="destructive" size="sm" onClick={() => setGigToDelete(gig)} disabled={isProcessingDelete}>
               <Trash2 className="mr-1 h-4 w-4" /> Delete
             </Button>
           </>
@@ -332,6 +399,26 @@ export default function ClientGigsPage() {
           {renderGigSection("Completed Gigs", categorizedGigs.completed, <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-green-500" />)}
           {renderGigSection("Closed Gigs", categorizedGigs.closed, <XCircle className="h-5 w-5 sm:h-6 sm:w-6 text-destructive" />)}
         </div>
+      )}
+      {gigToDelete && (
+        <AlertDialog open={!!gigToDelete} onOpenChange={(open) => !open && setGigToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure you want to delete this gig?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. Deleting "{gigToDelete.title}" will remove it permanently.
+                        {gigToDelete.applicants && gigToDelete.applicants.length > 0 && ` Any applicants will be notified.`}
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setGigToDelete(null)} disabled={isProcessingDelete}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmDelete} disabled={isProcessingDelete} className="bg-destructive hover:bg-destructive/90">
+                        {isProcessingDelete ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Yes, Delete Gig
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );
