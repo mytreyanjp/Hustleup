@@ -10,22 +10,31 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass } from 'lucide-react'; // Added Hourglass
+import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText } from 'lucide-react'; // Added MessageSquare, FileText
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
+import type { ProgressReport } from '@/app/student/works/page'; // Assuming ProgressReport type is available
 
 interface ClientGig {
   id: string;
   title: string;
-  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout'; // Added 'awaiting_payout'
+  status: 'open' | 'in-progress' | 'completed' | 'closed' | 'awaiting_payout';
   createdAt: Timestamp;
   deadline: Timestamp;
   budget: number;
   currency: string;
-  applicantCount: number;
   selectedStudentId?: string;
-  clientDisplayName?: string; 
-  clientAvatarUrl?: string;   
+  clientDisplayName?: string;
+  clientAvatarUrl?: string;
+  numberOfReports?: number;
+  progressReports?: ProgressReport[]; // Added to calculate pending reports
+  applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[]; // To count pending applicants
+  studentPaymentRequestPending?: boolean; // Added
+
+  // Derived notification counts
+  pendingApplicantCount: number;
+  pendingReportsCount: number;
+  isPaymentRequestedByStudent: boolean;
 }
 
 export default function ClientGigsPage() {
@@ -59,6 +68,20 @@ export default function ClientGigsPage() {
 
       const fetchedGigs = querySnapshot.docs.map(doc => {
         const data = doc.data();
+        let pendingApplicants = 0;
+        if (data.status === 'open' && data.applicants) {
+          pendingApplicants = (data.applicants as any[]).filter(app => !app.status || app.status === 'pending').length;
+        }
+
+        let pendingReports = 0;
+        if (data.status === 'in-progress' && data.progressReports) {
+          pendingReports = (data.progressReports as ProgressReport[]).filter(
+            report => report.studentSubmission && report.clientStatus === 'pending_review'
+          ).length;
+        }
+        
+        const paymentRequested = data.status === 'in-progress' && data.studentPaymentRequestPending === true;
+
         return {
           id: doc.id,
           title: data.title || "Untitled Gig",
@@ -67,10 +90,18 @@ export default function ClientGigsPage() {
           deadline: data.deadline,
           budget: data.budget || 0,
           currency: data.currency || "INR",
-          applicantCount: data.applicants?.length || 0,
           selectedStudentId: data.selectedStudentId || null,
           clientDisplayName: data.clientDisplayName || userProfile?.companyName || userProfile?.username || 'Me',
           clientAvatarUrl: data.clientAvatarUrl || userProfile?.profilePictureUrl || '',
+          numberOfReports: data.numberOfReports || 0,
+          progressReports: data.progressReports || [],
+          applicants: data.applicants || [],
+          studentPaymentRequestPending: data.studentPaymentRequestPending || false,
+          
+          // Derived counts
+          pendingApplicantCount: pendingApplicants,
+          pendingReportsCount: pendingReports,
+          isPaymentRequestedByStudent: paymentRequested,
         } as ClientGig;
       });
 
@@ -87,7 +118,7 @@ export default function ClientGigsPage() {
     return {
       open: allGigs.filter(gig => gig.status === 'open'),
       inProgress: allGigs.filter(gig => gig.status === 'in-progress'),
-      awaitingPayout: allGigs.filter(gig => gig.status === 'awaiting_payout'), // New category
+      awaitingPayout: allGigs.filter(gig => gig.status === 'awaiting_payout'),
       completed: allGigs.filter(gig => gig.status === 'completed'),
       closed: allGigs.filter(gig => gig.status === 'closed'),
     };
@@ -115,7 +146,7 @@ export default function ClientGigsPage() {
        switch (status) {
            case 'open': return 'default';
            case 'in-progress': return 'secondary';
-           case 'awaiting_payout': return 'secondary'; // Use secondary for awaiting payout
+           case 'awaiting_payout': return 'secondary'; 
            case 'completed': return 'outline';
            case 'closed': return 'destructive';
            default: return 'secondary';
@@ -143,8 +174,36 @@ export default function ClientGigsPage() {
     );
   }
 
-  const GigCard = ({ gig }: { gig: ClientGig }) => (
-    <Card key={gig.id} className="glass-card flex flex-col">
+  const GigCard = ({ gig }: { gig: ClientGig }) => {
+    let notificationCount = 0;
+    let notificationTooltip = "";
+
+    if (gig.status === 'open' && gig.pendingApplicantCount > 0) {
+      notificationCount = gig.pendingApplicantCount;
+      notificationTooltip = `${gig.pendingApplicantCount} new applicant(s)`;
+    } else if (gig.status === 'in-progress') {
+      if (gig.pendingReportsCount > 0 && gig.isPaymentRequestedByStudent) {
+        notificationCount = gig.pendingReportsCount + 1;
+        notificationTooltip = `${gig.pendingReportsCount} report(s) to review & payment requested`;
+      } else if (gig.pendingReportsCount > 0) {
+        notificationCount = gig.pendingReportsCount;
+        notificationTooltip = `${gig.pendingReportsCount} report(s) to review`;
+      } else if (gig.isPaymentRequestedByStudent) {
+        notificationCount = 1;
+        notificationTooltip = `Payment requested by student`;
+      }
+    }
+
+    return (
+    <Card key={gig.id} className="glass-card flex flex-col relative">
+      {notificationCount > 0 && (
+        <div 
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center shadow-lg border-2 border-background"
+            title={notificationTooltip}
+        >
+            {notificationCount > 9 ? '9+' : notificationCount}
+        </div>
+      )}
       <CardHeader className="p-4 sm:p-6">
         <div className="flex justify-between items-start gap-2">
            <Link href={`/gigs/${gig.id}`} className="hover:underline flex-grow">
@@ -166,8 +225,23 @@ export default function ClientGigsPage() {
             Payment: {gig.currency} {gig.budget.toFixed(2)}
          </div>
          <div className="flex items-center text-xs sm:text-sm text-muted-foreground mt-2">
-            <Users className="mr-1 h-4 w-4" /> {gig.applicantCount} Applicant(s)
+            <Users className="mr-1 h-4 w-4" /> {(gig.applicants || []).length} Applicant(s)
+            {gig.status === 'open' && gig.pendingApplicantCount > 0 && <span className="ml-1 text-destructive text-xs">({gig.pendingApplicantCount} pending)</span>}
          </div>
+          {gig.status === 'in-progress' && (
+            <>
+              {gig.pendingReportsCount > 0 && (
+                <div className="flex items-center text-xs sm:text-sm text-amber-600 dark:text-amber-400 mt-1">
+                  <FileText className="mr-1 h-4 w-4" /> {gig.pendingReportsCount} Report(s) to Review
+                </div>
+              )}
+              {gig.isPaymentRequestedByStudent && (
+                 <div className="flex items-center text-xs sm:text-sm text-green-600 dark:text-green-400 mt-1">
+                    <DollarSign className="mr-1 h-4 w-4" /> Student Requested Payment
+                 </div>
+              )}
+            </>
+          )}
       </CardContent>
       <CardFooter className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
         {gig.status === 'open' && (
@@ -204,22 +278,22 @@ export default function ClientGigsPage() {
         )}
       </CardFooter>
     </Card>
-  );
+  )};
 
-  const renderGigSection = (title: string, gigs: ClientGig[], icon: React.ReactNode) => {
-    if (gigs.length === 0 && title !== "Open Gigs") return null; // Ensure "Open Gigs" section always shows, even if empty initially
+  const renderGigSection = (title: string, gigsToRender: ClientGig[], icon: React.ReactNode) => {
+    if (gigsToRender.length === 0 && title !== "Open Gigs") return null; 
 
     return (
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           {icon}
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">{title} ({gigs.length})</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">{title} ({gigsToRender.length})</h2>
         </div>
-        {gigs.length === 0 ? (
+        {gigsToRender.length === 0 ? (
           <p className="text-muted-foreground ml-8 text-sm">No gigs in this category.</p>
         ) : (
           <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
-            {gigs.map((gig) => <GigCard gig={gig} key={gig.id} />)}
+            {gigsToRender.map((gig) => <GigCard gig={gig} key={gig.id} />)}
           </div>
         )}
       </section>
