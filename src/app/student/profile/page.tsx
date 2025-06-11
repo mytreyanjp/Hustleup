@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc, orderBy } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { PostViewDialog } from '@/components/posts/post-view-dialog';
+import type { StudentPost } from '@/types/posts';
 
 
 interface Gig {
@@ -89,11 +91,14 @@ export default function StudentProfilePage() {
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [reviewsCount, setReviewsCount] = useState<number | null>(null);
 
-
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [modalUserList, setModalUserList] = useState<UserProfile[]>([]);
   const [isLoadingModalList, setIsLoadingModalList] = useState(false);
+
+  const [posts, setPosts] = useState<StudentPost[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(true);
+  const [selectedPostForDialog, setSelectedPostForDialog] = useState<StudentPost | null>(null);
 
 
   const form = useForm<ProfileFormValues>({
@@ -157,16 +162,41 @@ export default function StudentProfilePage() {
     }
   }, [form, user]);
 
+  const fetchStudentPosts = useCallback(async () => {
+    if (!user || !db) return;
+    setIsLoadingPosts(true);
+    try {
+      const postsQuery = query(
+        collection(db, 'student_posts'),
+        where('studentId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
+      const postsSnapshot = await getDocs(postsQuery);
+      const fetchedPosts = postsSnapshot.docs.map(postDoc => ({
+        id: postDoc.id,
+        ...postDoc.data()
+      })) as StudentPost[];
+      setPosts(fetchedPosts);
+    } catch (error) {
+      console.error("Error fetching student posts:", error);
+      toast({ title: "Error", description: "Could not load your posts.", variant: "destructive" });
+    } finally {
+      setIsLoadingPosts(false);
+    }
+  }, [user, toast]);
+
+
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'student') {
         router.push('/auth/login?redirect=/student/profile');
       } else {
         populateFormAndPreview(userProfile);
+        fetchStudentPosts();
         setIsFormReady(true);
       }
     }
-  }, [user, userProfile, authLoading, role, router, populateFormAndPreview]);
+  }, [user, userProfile, authLoading, role, router, populateFormAndPreview, fetchStudentPosts]);
 
   useEffect(() => {
     if (user && userProfile && role === 'student' && db && !userProfile.isBanned) { // Don't fetch stats if banned
@@ -693,10 +723,59 @@ export default function StudentProfilePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 pt-0">
-          {/* Placeholder for recent posts preview - will need to fetch student's own posts here */}
-          <p className="text-sm text-muted-foreground">Your posts will appear here.</p>
+          {isLoadingPosts ? (
+             <div className="flex justify-center items-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : posts.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 sm:gap-2">
+                {posts.slice(0, 4).map(post => ( // Show up to 4 recent posts
+                   <button
+                      key={post.id}
+                      className="aspect-square relative group overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                      onClick={() => setSelectedPostForDialog(post)}
+                      aria-label={`View post: ${post.caption || 'Image post'}`}
+                    >
+                        {post.imageUrl && post.imageUrl.trim() !== '' ? (
+                            <NextImage
+                                src={post.imageUrl}
+                                alt={post.caption || `Post by ${userProfile?.username || 'user'}`}
+                                layout="fill"
+                                objectFit="cover"
+                                className="group-hover:scale-105 transition-transform duration-300"
+                                data-ai-hint="student content"
+                            />
+                        ) : (
+                            <div className="flex items-center justify-center h-full w-full bg-muted rounded-md">
+                                <ImageIconLucide className="h-10 w-10 text-muted-foreground" />
+                            </div>
+                        )}
+                    </button>
+                ))}
+                {posts.length > 4 && (
+                    <Button variant="outline" asChild className="aspect-square flex items-center justify-center">
+                        <Link href={`/profile/${user?.uid}`}>View All ({posts.length})</Link>
+                    </Button>
+                )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">You haven't made any posts yet.</p>
+          )}
         </CardContent>
       </Card>
+
+      {selectedPostForDialog && (
+        <PostViewDialog
+          post={selectedPostForDialog}
+          isOpen={!!selectedPostForDialog}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setSelectedPostForDialog(null);
+          }}
+          viewerUser={user}
+          viewerUserProfile={userProfile}
+          onCommentAdded={fetchStudentPosts} 
+        />
+      )}
 
       {/* Followers Modal */}
        <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
