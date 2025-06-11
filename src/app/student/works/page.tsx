@@ -370,8 +370,8 @@ export default function StudentWorksPage() {
       });
       setSelectedFiles(prevFiles => [...prevFiles, ...validNewFiles]);
     }
-     if (fileInputRef.current) { // Clear the input after processing so user can select more files if needed
-        fileInputRef.current.value = "";
+     if (fileInputRef.current) { 
+        fileInputRef.current.value = ""; 
     }
   };
 
@@ -385,7 +385,7 @@ export default function StudentWorksPage() {
     const gig = activeGigs.find(g => g.id === gigId);
     const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
     setReportText(report?.studentSubmission?.text || "");
-    setSelectedFiles([]); 
+    setSelectedFiles(report?.studentSubmission?.attachments ? [] : []); // Keep existing if editing, but UI won't show them for re-upload yet
     setUploadProgress([]); 
     if (fileInputRef.current) { 
       fileInputRef.current.value = ""; 
@@ -451,10 +451,23 @@ export default function StudentWorksPage() {
       let progressReports: ProgressReport[] = currentGigData.progressReports || [];
 
       const reportIndex = progressReports.findIndex(r => r.reportNumber === currentReportNumber);
+      
+      // Handle existing attachments if user is only editing text
+      let finalAttachments: Attachment[] = uploadedAttachments;
+      if (reportIndex > -1 && progressReports[reportIndex]?.studentSubmission?.attachments && uploadedAttachments.length === 0) {
+          finalAttachments = progressReports[reportIndex].studentSubmission!.attachments!;
+      } else if (reportIndex > -1 && progressReports[reportIndex]?.studentSubmission?.attachments && uploadedAttachments.length > 0) {
+          // If new files are uploaded, decide if old ones should be kept or replaced.
+          // For now, let's assume new uploads replace old ones for simplicity unless specifically requested.
+          // To combine: finalAttachments = [...progressReports[reportIndex].studentSubmission.attachments, ...uploadedAttachments];
+          // To replace (current behavior): finalAttachments = uploadedAttachments;
+      }
+
+
       const studentSubmission: StudentSubmission = {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
-        attachments: uploadedAttachments.length > 0 ? uploadedAttachments : (progressReports[reportIndex]?.studentSubmission?.attachments || []), // Preserve old attachments if no new ones are added
+        attachments: finalAttachments.length > 0 ? finalAttachments : [],
       };
 
       if (reportIndex > -1) {
@@ -493,11 +506,26 @@ export default function StudentWorksPage() {
       );
 
       setCurrentSubmittingGigId(null);
+      setCurrentReportNumber(null);
       setSelectedFiles([]);
       setUploadProgress([]);
+      setReportText("");
     } catch (err: any) {
       console.error("Error submitting report:", err);
-      toast({ title: "Submission Error", description: `Could not submit report: ${err.message}`, variant: "destructive" });
+      let description = `Could not submit report: ${err.message}`;
+      if (err.code === 'storage/unauthorized') {
+        description = "File upload failed: You do not have permission to upload to this location. This is likely a Firebase Storage security rule issue. Please ensure students are allowed to write to their report paths.";
+      } else if (err.code === 'storage/object-not-found') {
+        description = "File upload failed: The target storage location was not found. This is an unexpected backend issue.";
+      } else if (err.code === 'storage/canceled') {
+        description = "File upload was canceled.";
+      }
+      toast({ 
+        title: "Submission Error", 
+        description: description,
+        variant: "destructive",
+        duration: 10000, 
+      });
     } finally {
       setIsSubmittingReport(false);
     }
@@ -526,7 +554,13 @@ export default function StudentWorksPage() {
         if (attachmentsToDelete && attachmentsToDelete.length > 0 && storage) {
             for (const attachment of attachmentsToDelete) {
                 try {
-                    const fileRefToDelete = storageRefFn(storage, attachment.url); 
+                    // Construct ref from URL (Firebase storage URLs have a specific format)
+                    // Example: "https://firebasestorage.googleapis.com/v0/b/your-bucket/o/path%2Fto%2Ffile.jpg?alt=media&token=token"
+                    // We need the path part: "path/to/file.jpg"
+                    const urlPath = new URL(attachment.url).pathname;
+                    const filePathEncoded = urlPath.split('/o/')[1].split('?')[0];
+                    const filePath = decodeURIComponent(filePathEncoded);
+                    const fileRefToDelete = storageRefFn(storage, filePath); 
                     await deleteObject(fileRefToDelete);
                     console.log("Report attachment deleted from storage:", attachment.name);
                 } catch (storageError: any) {
