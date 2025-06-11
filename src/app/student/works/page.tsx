@@ -909,7 +909,7 @@ export default function StudentWorksPage() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="flex flex-col sm:flex-row items-start sm:items-stretch gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
+                  <CardFooter className="flex flex-col sm:flex-row items-center gap-2 border-t p-4 pt-4 sm:p-6 sm:pt-4">
                        {gig.status !== 'completed' && (
                         <Button
                             size="sm"
@@ -917,18 +917,18 @@ export default function StudentWorksPage() {
                             onClick={() => { if(canRequestPayment) {setPaymentRequestGig(gig); setShowPaymentRequestDialog(true);}}}
                             disabled={!canRequestPayment || userProfile?.isBanned}
                             title={paymentButtonTitle}
-                            className="w-full sm:w-auto mt-2 sm:mt-0"
+                            className="w-full sm:w-auto"
                         >
                             {gig.status === 'awaiting_payout' ? <Hourglass className="mr-2 h-4 w-4" /> : <DollarSign className="mr-2 h-4 w-4" />}
                             {gig.status === 'awaiting_payout' ? 'Payment Processing' :
                              (gig.status === 'completed' ? 'Payment Complete' : `Request Payment (${requestsUsed}/5)`)}
                         </Button>
                        )}
-                       <Button variant="outline" size="sm" asChild className="w-full sm:w-auto flex-grow justify-center">
-                           <Link href={`/chat?userId=${gig.clientId}&gigId=${gig.id}`}>
-                               <MessageSquare className="mr-2 h-4 w-4" /> Chat with Client
-                           </Link>
-                       </Button>
+                        <Button variant="outline" size="sm" asChild className="w-full sm:w-auto flex-grow justify-center">
+                            <Link href={`/gigs/${gig.id}`}>
+                                <Briefcase className="mr-2 h-4 w-4" /> View Gig Details
+                            </Link>
+                        </Button>
                   </CardFooter>
                 </div>
               </Card>
