@@ -252,13 +252,18 @@ export default function Navbar() {
             <nav className="items-center space-x-1 sm:space-x-1 hidden md:flex"> {/* Reduced space-x */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Link href="/gigs/browse" className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
-                    <Compass className="h-5 w-5" />
-                    <span className="sr-only">{isClient && role === 'student' ? 'Explore' : 'Gigs'}</span>
+                  <Link 
+                    href={isClient && role === 'admin' ? "/admin/manage-gigs" : "/gigs/browse"} 
+                    className="text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md"
+                  >
+                    {isClient && role === 'admin' ? <Briefcase className="h-5 w-5" /> : <Compass className="h-5 w-5" />}
+                    <span className="sr-only">
+                      {isClient && role === 'admin' ? 'Manage Gigs' : (isClient && role === 'student' ? 'Explore' : 'Gigs')}
+                    </span>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{isClient && role === 'student' ? 'Explore' : 'Gigs'}</p>
+                  <p>{isClient && role === 'admin' ? 'Manage Gigs' : (isClient && role === 'student' ? 'Explore' : 'Gigs')}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -528,6 +533,7 @@ export default function Navbar() {
                             <DropdownMenuItem asChild><Link href="/admin/dashboard"><ShieldCheck className="mr-2 h-4 w-4" /><span>Admin Dashboard</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/admin/users"><Users className="mr-2 h-4 w-4" /><span>Browse Users</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/admin/manage-admins"><HustlersIcon className="mr-2 h-4 w-4" /><span>Manage Admins</span></Link></DropdownMenuItem>
+                             <DropdownMenuItem asChild><Link href="/admin/manage-gigs"><Briefcase className="mr-2 h-4 w-4" /><span>Manage Gigs</span></Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href="/chat">
                               <MessageSquare className="mr-2 h-4 w-4" /> Chat
                               {totalUnreadChats > 0 && (
@@ -588,4 +594,3 @@ export default function Navbar() {
     </TooltipProvider>
   );
 }
-

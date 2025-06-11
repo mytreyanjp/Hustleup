@@ -58,8 +58,8 @@ export default function FooterNav() {
   let generatedNavItems: Omit<NavItemProps, 'isActive'>[] = [];
 
   if (role === 'admin') {
-    generatedNavItems.push({ href: "/gigs/browse", icon: Compass, label: "Explore Gigs" });
-    generatedNavItems.push({ href: "/admin/users", icon: Users, label: "Users" }); // Changed from manage-admins
+    generatedNavItems.push({ href: "/admin/manage-gigs", icon: Briefcase, label: "Manage Gigs" }); // Changed from Compass & /gigs/browse
+    generatedNavItems.push({ href: "/admin/users", icon: Users, label: "Users" });
     generatedNavItems.push({ href: "/chat", icon: MessageSquare, label: "Chat", unreadCount: totalUnreadChats });
     generatedNavItems.push({ href: getDashboardUrl(), icon: ShieldCheck, label: "Admin Panel"});
   } else if (role === 'student') {
