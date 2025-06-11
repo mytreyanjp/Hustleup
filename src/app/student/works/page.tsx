@@ -369,8 +369,11 @@ export default function StudentWorksPage() {
     const gig = activeGigs.find(g => g.id === gigId);
     const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
     setReportText(report?.studentSubmission?.text || "");
-    setSelectedFile(null); // Reset file selection
+    setSelectedFile(null);
     setUploadProgress(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Explicitly reset the file input element
+    }
   };
 
 
@@ -496,8 +499,6 @@ export default function StudentWorksPage() {
             throw new Error("Report not found or not submitted.");
         }
         
-        // If there was a file, attempt to delete it from storage
-        // Note: Error during file deletion will not stop the unsubmission process.
         const oldFileUrl = progressReports[reportIndex].studentSubmission?.fileUrl;
         if (oldFileUrl && storage) {
             try {
@@ -506,12 +507,10 @@ export default function StudentWorksPage() {
                 console.log("Old report file deleted from storage:", oldFileUrl);
             } catch (storageError: any) {
                 console.warn("Could not delete old report file from storage during unsubmit:", storageError);
-                // Don't block unsubmission if file deletion fails, but log it.
             }
         }
 
 
-        // Clear submission details for the report
         progressReports[reportIndex] = {
             ...progressReports[reportIndex],
             studentSubmission: null, 
@@ -919,3 +918,5 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+
+    
