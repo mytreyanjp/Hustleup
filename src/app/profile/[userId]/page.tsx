@@ -34,17 +34,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PostViewDialog } from '@/components/posts/post-view-dialog'; // New import
+import type { StudentPost } from '@/types/posts'; // New import
 
-
-interface StudentPost {
-  id: string;
-  imageUrl: string;
-  caption?: string;
-  createdAt: Timestamp;
-  studentId: string; // Ensure studentId is part of the post
-}
-
-interface ClientGigForProfile { // Renamed to avoid conflict
+interface ClientGigForProfile {
   id: string;
   title: string;
   budget: number;
@@ -135,17 +128,16 @@ export default function PublicProfilePage() {
   const [showBanConfirmDialog, setShowBanConfirmDialog] = useState(false);
   const [isBanningProcessing, setIsBanningProcessing] = useState(false);
 
+  const [selectedPostForDialog, setSelectedPostForDialog] = useState<StudentPost | null>(null);
+
 
   const fetchProfileData = useCallback(async () => {
     if (!userId) {
       setError("User ID is missing.");
-      setIsLoading(false); // Ensure loading is stopped if userId is missing early
+      setIsLoading(false); 
       return;
     }
-    // No setIsLoading(true) here, it's set in the useEffect or before calling this
-    // setError(null); // Reset error at the beginning of a fetch attempt
-    // setClientOpenGigs([]); // Reset dependent data
-
+    
     try {
       const userDocRef = doc(db, 'users', userId);
       const docSnap = await getDoc(userDocRef);
@@ -206,10 +198,9 @@ export default function PublicProfilePage() {
     } catch (err: any) {
       console.error("Error fetching profile or related data:", err);
       setError("Failed to load profile details. Please try again later. This could be due to a missing Firestore index.");
-      setProfile(null); // Ensure profile is null on error
+      setProfile(null); 
     }
-    // No setIsLoading(false) here; it should be handled by the calling useEffect
-  }, [userId, toast, viewerUserProfile]); // Added viewerUserProfile as a dependency
+  }, [userId, viewerUserProfile]); 
 
   useEffect(() => {
     if (!userId) {
@@ -217,21 +208,18 @@ export default function PublicProfilePage() {
       setIsLoading(false);
       return;
     }
-    setIsLoading(true); // Set loading true at the start of the effect
-    setError(null);     // Reset error
-    setClientOpenGigs([]); // Reset client gigs
-    fetchProfileData().finally(() => setIsLoading(false)); // Call fetch and set loading false in finally
-  }, [userId, fetchProfileData]); // fetchProfileData is now stable due to useCallback
+    setIsLoading(true); 
+    setError(null);     
+    setClientOpenGigs([]); 
+    fetchProfileData().finally(() => setIsLoading(false)); 
+  }, [userId, fetchProfileData]); 
 
 
   useEffect(() => {
-    // This effect only runs when profile or viewerUserProfile changes,
-    // to update following/blocked status if viewer logs in/out or profile data loads.
     if (profile && viewerUserProfile) {
       setIsFollowingThisUser(viewerUserProfile.following?.includes(profile.uid) || false);
       setIsBlockedByViewer(viewerUserProfile.blockedUserIds?.includes(profile.uid) || false);
     } else {
-      // If there's no viewer profile (e.g., logged out) or no target profile, reset these states
       setIsFollowingThisUser(false);
       setIsBlockedByViewer(false);
     }
@@ -405,8 +393,6 @@ export default function PublicProfilePage() {
           studentPostsSnap.forEach(postDoc => batch.delete(postDoc.ref));
         }
       } else { // User is being UNBANNED
-        // Potentially re-open client gigs if they weren't manually closed for other reasons (complex, out of scope for now)
-        // Student posts are not automatically restored.
       }
 
       await batch.commit();
@@ -840,11 +826,16 @@ export default function PublicProfilePage() {
                 ) : posts.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-2 md:gap-4">
                         {posts.map(post => (
-                            <div key={post.id} className="aspect-square relative group overflow-hidden rounded-md">
+                           <button
+                              key={post.id}
+                              className="aspect-square relative group overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                              onClick={() => setSelectedPostForDialog(post)}
+                              aria-label={`View post: ${post.caption || 'Image post'}`}
+                            >
                                 {post.imageUrl && post.imageUrl.trim() !== '' ? (
                                     <Image
                                         src={post.imageUrl}
-                                        alt={post.caption || `Post by ${profile?.username || 'user'}`}
+                                        alt={post.caption || `Post by ${profile.username || 'user'}`}
                                         layout="fill"
                                         objectFit="cover"
                                         className="group-hover:scale-105 transition-transform duration-300"
@@ -855,7 +846,7 @@ export default function PublicProfilePage() {
                                         <ImageIconLucide className="h-10 w-10 text-muted-foreground" />
                                     </div>
                                 )}
-                            </div>
+                            </button>
                         ))}
                     </div>
                 ) : (
@@ -925,6 +916,19 @@ export default function PublicProfilePage() {
             </>
         )}
       </Card>
+
+      {selectedPostForDialog && (
+        <PostViewDialog
+          post={selectedPostForDialog}
+          isOpen={!!selectedPostForDialog}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setSelectedPostForDialog(null);
+          }}
+          viewerUser={viewerUser}
+          viewerUserProfile={viewerUserProfile}
+          onCommentAdded={() => fetchProfileData()} // Optionally refresh post data if comment count is directly on post
+        />
+      )}
 
       <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
         <AlertDialogContent>
@@ -1075,5 +1079,3 @@ export default function PublicProfilePage() {
     </div>
   );
 }
-
-

@@ -133,8 +133,9 @@ export default function NewPostPage() {
         imageUrl: imageUrl,
         caption: data.caption || '',
         createdAt: serverTimestamp(),
-        likes: [],
-        commentCount: 0,
+        likes: [],      // Initialize likes
+        likeCount: 0,   // Initialize likeCount
+        commentCount: 0 // Initialize commentCount
       });
 
       toast({
@@ -272,6 +273,3 @@ export default function NewPostPage() {
     </div>
   );
 }
-
-
-    
