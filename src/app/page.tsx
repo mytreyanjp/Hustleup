@@ -25,12 +25,15 @@ export default function Home() {
       } else if (role === 'admin') {
         router.replace('/admin/dashboard');
       }
-      // If role is null but user exists, they might need to complete profile
-      // or there's an issue. For now, no redirect if role is null.
+      // If user exists but role is null (e.g., new OAuth user needing to complete profile),
+      // they will see the "Redirecting..." message from the return logic below.
+      // Other parts of the app (like FirebaseProvider or specific page navigations)
+      // might then handle the redirect to /auth/complete-profile.
     }
   }, [user, role, authLoading, router]);
 
   if (authLoading) {
+    // Initial authentication check is in progress
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -39,6 +42,19 @@ export default function Home() {
     );
   }
 
+  if (user) {
+    // User is logged in.
+    // The useEffect above is attempting to redirect them.
+    // While redirecting, or if their role/profile is still being finalized, show a loading message.
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="mt-4 text-muted-foreground">Redirecting to your dashboard...</p>
+      </div>
+    );
+  }
+
+  // If !authLoading and !user, then the user is not signed in. Show the main homepage content.
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4 py-8">
       <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
@@ -70,4 +86,3 @@ export default function Home() {
     </div>
   );
 }
-
