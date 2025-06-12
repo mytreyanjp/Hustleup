@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users, Wallet, Info } from 'lucide-react'; // Added Info icon
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users, Wallet, Info } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -287,6 +287,20 @@ export default function Navbar() {
                     </TooltipTrigger>
                     <TooltipContent><p>Wallet</p></TooltipContent>
                   </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Link href="/chat" className="relative text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                          <MessageSquare className="h-5 w-5" />
+                          <span className="sr-only">Chat</span>
+                          {totalUnreadChats > 0 && (
+                            <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-destructive-foreground transform translate-x-1/3 -translate-y-1/3">
+                              {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                            </span>
+                          )}
+                        </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Chat</p></TooltipContent>
+                 </Tooltip>
                 </>
               )}
               {isClient && role === 'student' && (
@@ -309,9 +323,23 @@ export default function Navbar() {
                     </TooltipTrigger>
                     <TooltipContent><p>Wallet</p></TooltipContent>
                  </Tooltip>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Link href="/chat" className="relative text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
+                          <MessageSquare className="h-5 w-5" />
+                          <span className="sr-only">Chat</span>
+                          {totalUnreadChats > 0 && (
+                            <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-destructive-foreground transform translate-x-1/3 -translate-y-1/3">
+                              {totalUnreadChats > 9 ? '9+' : totalUnreadChats}
+                            </span>
+                          )}
+                        </Link>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Chat</p></TooltipContent>
+                 </Tooltip>
                 </>
               )}
-              {isClient && (role === 'student' || role === 'client' || role === 'admin') && (
+              {isClient && role === 'admin' && (
                  <Tooltip>
                     <TooltipTrigger asChild>
                         <Link href="/chat" className="relative text-muted-foreground transition-colors hover:text-primary flex items-center p-2 rounded-md">
