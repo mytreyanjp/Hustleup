@@ -112,12 +112,16 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             setRole(null);
           }
           // Check if current device has an active subscription
-          const currentSubscription = await navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription());
-          if (currentSubscription) {
-            const currentEndpoint = currentSubscription.toJSON().endpoint;
-            setIsNotificationsEnabledOnDevice(profileData.pushSubscriptions?.some(sub => sub.endpoint === currentEndpoint) || false);
+          if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+            const currentSubscription = await navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription());
+            if (currentSubscription) {
+              const currentEndpoint = currentSubscription.toJSON().endpoint;
+              setIsNotificationsEnabledOnDevice(profileData.pushSubscriptions?.some(sub => sub.endpoint === currentEndpoint) || false);
+            } else {
+              setIsNotificationsEnabledOnDevice(false);
+            }
           } else {
-            setIsNotificationsEnabledOnDevice(false);
+             setIsNotificationsEnabledOnDevice(false);
           }
 
         } else {
@@ -207,8 +211,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const requestNotificationPermission = async (): Promise<boolean> => {
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.warn('Browser does not support push notifications.');
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('Browser does not support push notifications or APIs not available.');
       return false;
     }
     if (!user || !db) {
@@ -229,24 +233,21 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       
       if (existingSubscription) {
         console.log('User already subscribed:', existingSubscription.endpoint);
-        // Ensure this existing subscription is stored in Firestore
         const subJSON = existingSubscription.toJSON() as PushSubscriptionJSON;
         if (userProfile && !userProfile.pushSubscriptions?.some(s => s.endpoint === subJSON.endpoint)) {
           const userDocRef = doc(db, 'users', user.uid);
           await updateDoc(userDocRef, {
             pushSubscriptions: arrayUnion(subJSON)
           });
-          await refreshUserProfile(); // Refresh profile to include new sub
+          await refreshUserProfile();
         }
         setIsNotificationsEnabledOnDevice(true);
         return true;
       }
       
-      // IMPORTANT: Replace with your actual VAPID public key
       const vapidPublicKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
       if (!vapidPublicKey) {
         console.error('VAPID public key is not defined. Cannot subscribe for push notifications.');
-        // Inform the user appropriately, maybe via a toast.
         alert("Push notification setup is incomplete on the server (missing VAPID key). Please contact support.");
         return false;
       }
@@ -263,7 +264,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       });
       
       setIsNotificationsEnabledOnDevice(true);
-      await refreshUserProfile(); // Refresh profile to include new sub
+      await refreshUserProfile();
       console.log('User subscribed for push notifications:', subscriptionJSON.endpoint);
       return true;
     } catch (error) {
@@ -274,7 +275,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const disableNotificationsOnDevice = async (): Promise<void> => {
-    if (!('serviceWorker' in navigator) || !user || !db) return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !user || !db) return;
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
@@ -288,7 +289,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           pushSubscriptions: arrayRemove(subJSON)
         });
         setIsNotificationsEnabledOnDevice(false);
-        await refreshUserProfile(); // Refresh profile to remove sub
+        await refreshUserProfile();
       }
     } catch (error) {
       console.error('Error unsubscribing from push notifications:', error);
@@ -297,12 +298,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
 
   useEffect(() => {
-    // General notifications count
     if (!user || !db) { setGeneralUnreadNotificationsCount(0); return; }
     const notificationsQuery = query( collection(db, 'notifications'), where('recipientUserId', '==', user.uid), where('isRead', '==', false) );
     const unsubGeneral = onSnapshot(notificationsQuery, (snapshot) => { setGeneralUnreadNotificationsCount(snapshot.size); },
       (error) => { console.error("Error fetching general unread notifications count:", error); setGeneralUnreadNotificationsCount(0); });
-    // Chat unread count
+    
     if (!user || !db) { setTotalUnreadChats(0); return; }
     const chatsQuery = query( collection(db, 'chats'), where('participants', 'array-contains', user.uid) );
     const unsubChats = onSnapshot(chatsQuery, (querySnapshot: QuerySnapshot<DocumentData>) => {
@@ -315,7 +315,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       });
       setTotalUnreadChats(unreadCount);
     }, (error) => { console.error("Error fetching chat list for unread count:", error); setTotalUnreadChats(0); });
-    // Client specific notification count
+    
     let unsubClient: (() => void) | null = null;
     if (user && role === 'client' && db) {
       const clientGigsQuery = query(collection(db, "gigs"), where("clientId", "==", user.uid), where("status", "==", "open"));
@@ -357,3 +357,4 @@ export const useFirebase = () => {
   }
   return context;
 };
+
