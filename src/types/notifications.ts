@@ -36,3 +36,12 @@ export interface Notification {
   adminActorUsername?: string; // Username of the admin actor (if applicable)
 }
 
+// Standard PushSubscriptionJSON structure from the Push API
+export interface PushSubscriptionJSON {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}

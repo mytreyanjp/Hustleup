@@ -3,11 +3,11 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { auth, db, firebaseInitializationDetails } from '@/config/firebase';
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat';
-import type { Notification } from '@/types/notifications'; // Import Notification type
+import type { Notification, PushSubscriptionJSON } from '@/types/notifications';
 
 type UserRole = 'student' | 'client' | 'admin' | null;
 
@@ -24,20 +24,19 @@ export interface UserProfile extends DocumentData {
   averageRating?: number; // Student average rating
   totalRatings?: number; // Student total ratings
   
-  // Client-specific fields
   companyName?: string;
   website?: string;
   companyDescription?: string;
-  personalEmail?: string; // For sharing in chat
-  personalPhone?: string; // For sharing in chat
+  personalEmail?: string; 
+  personalPhone?: string; 
 
-  // Follower/Following system
-  following?: string[]; // Array of UIDs this user is following
-  followersCount?: number; // Number of users following this user
+  following?: string[]; 
+  followersCount?: number; 
   
-  blockedUserIds?: string[]; // Array of UIDs this user has blocked
-  readReceiptsEnabled?: boolean; // For chat read receipts
-  isBanned?: boolean; // For admin banning
+  blockedUserIds?: string[]; 
+  readReceiptsEnabled?: boolean; 
+  isBanned?: boolean; 
+  pushSubscriptions?: PushSubscriptionJSON[]; // For storing browser push subscriptions
 }
 
 interface FirebaseContextType {
@@ -48,9 +47,12 @@ interface FirebaseContextType {
   refreshUserProfile: () => Promise<void>;
   totalUnreadChats: number;
   clientUnreadNotificationCount: number;
-  generalUnreadNotificationsCount: number; // New state for general notifications
+  generalUnreadNotificationsCount: number; 
   firebaseActuallyInitialized: boolean;
   initializationError: string | null;
+  isNotificationsEnabledOnDevice: boolean;
+  requestNotificationPermission: () => Promise<boolean>;
+  disableNotificationsOnDevice: () => Promise<void>;
 }
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
@@ -59,7 +61,7 @@ interface GigForNotificationCount {
   id: string;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
   applicants?: { studentId: string; status?: 'pending' | 'accepted' | 'rejected' }[];
-  studentPaymentRequestPending?: boolean; // Added for payment request notifications
+  studentPaymentRequestPending?: boolean; 
 }
 
 export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
@@ -71,11 +73,12 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [initializationErrorState, setInitializationErrorState] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
   const [clientUnreadNotificationCount, setClientUnreadNotificationCount] = useState(0);
-  const [generalUnreadNotificationsCount, setGeneralUnreadNotificationsCount] = useState(0); // New state
+  const [generalUnreadNotificationsCount, setGeneralUnreadNotificationsCount] = useState(0);
+  const [isNotificationsEnabledOnDevice, setIsNotificationsEnabledOnDevice] = useState(false);
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
     if (!db) {
-      console.warn("Firestore (db) not initialized, skipping profile fetch. This is expected if Firebase setup failed.");
+      console.warn("Firestore (db) not initialized, skipping profile fetch.");
       setUserProfile(null);
       setRole(null);
       return;
@@ -84,7 +87,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     if (currentUser) {
       const userDocRef = doc(db, 'users', currentUser.uid);
       try {
-        console.log("Fetching profile for UID:", currentUser.uid);
         const docSnap = await getDoc(userDocRef);
         if (docSnap.exists()) {
           const profileData = {
@@ -101,58 +103,49 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
             blockedUserIds: docSnap.data().blockedUserIds || [],
             readReceiptsEnabled: docSnap.data().readReceiptsEnabled === undefined ? true : docSnap.data().readReceiptsEnabled,
             isBanned: docSnap.data().isBanned || false, 
+            pushSubscriptions: docSnap.data().pushSubscriptions || [],
           } as UserProfile;
           setUserProfile(profileData);
           if (profileData.role === 'student' || profileData.role === 'client' || profileData.role === 'admin') {
             setRole(profileData.role);
           } else {
             setRole(null);
-            console.warn(`User profile for UID ${currentUser.uid} found, but 'role' field is missing, invalid, or not 'student'/'client'/'admin'. Actual role value: '${profileData.role}'. Setting role to null.`);
           }
-          console.log("User profile loaded:", profileData);
+          // Check if current device has an active subscription
+          const currentSubscription = await navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription());
+          if (currentSubscription) {
+            const currentEndpoint = currentSubscription.toJSON().endpoint;
+            setIsNotificationsEnabledOnDevice(profileData.pushSubscriptions?.some(sub => sub.endpoint === currentEndpoint) || false);
+          } else {
+            setIsNotificationsEnabledOnDevice(false);
+          }
+
         } else {
-          console.warn("No user profile found in Firestore for UID:", currentUser.uid);
           const basicProfile: UserProfile = {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            role: null, 
-            bookmarkedGigIds: [],
-            averageRating: 0,
-            totalRatings: 0,
-            following: [],
-            followersCount: 0,
-            personalEmail: '',
-            personalPhone: '',
-            blockedUserIds: [],
-            readReceiptsEnabled: true,
-            isBanned: false, 
+            uid: currentUser.uid, email: currentUser.email, role: null, 
+            bookmarkedGigIds: [], averageRating: 0, totalRatings: 0,
+            following: [], followersCount: 0, personalEmail: '', personalPhone: '',
+            blockedUserIds: [], readReceiptsEnabled: true, isBanned: false, pushSubscriptions: [],
           };
           setUserProfile(basicProfile);
           setRole(null);
+          setIsNotificationsEnabledOnDevice(false);
         }
       } catch (error) {
         console.error("Error fetching user profile:", error);
         setUserProfile({
-          uid: currentUser.uid,
-          email: currentUser.email,
-          role: null,
-          bookmarkedGigIds: [],
-          averageRating: 0,
-          totalRatings: 0,
-          following: [],
-          followersCount: 0,
-          personalEmail: '',
-          personalPhone: '',
-          blockedUserIds: [],
-          readReceiptsEnabled: true,
-          isBanned: false, 
+          uid: currentUser.uid, email: currentUser.email, role: null,
+          bookmarkedGigIds: [], averageRating: 0, totalRatings: 0,
+          following: [], followersCount: 0, personalEmail: '', personalPhone: '',
+          blockedUserIds: [], readReceiptsEnabled: true, isBanned: false, pushSubscriptions: [],
         });
         setRole(null);
+        setIsNotificationsEnabledOnDevice(false);
       }
     } else {
       setUserProfile(null);
       setRole(null);
-      console.log("No current user, profile cleared.");
+      setIsNotificationsEnabledOnDevice(false);
     }
   }, []);
 
@@ -171,18 +164,13 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
       let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
        if (firebaseInitializationDetails.areEnvVarsMissing) {
-        console.error("Firebase Context: Firebase initialization failed due to missing environment variables.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Please ensure your '.env.local' file in the project root is correctly set up with all NEXT_PUBLIC_FIREBASE_ prefixed variables and then RESTART your Next.js development server. Details: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Details: ${firebaseInitializationDetails.errorMessage}`;
       } else if (firebaseInitializationDetails.didCoreServicesFail) {
-        console.error("Firebase Context: Firebase core services failed to initialize.", firebaseInitializationDetails.errorMessage);
-        specificErrorMessage = `Firebase core services (App/Auth/Firestore/Storage) failed to initialize. This can happen if environment variables are present but contain invalid values (e.g., incorrect API key format), or if there's a network issue preventing connection to Firebase services. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        specificErrorMessage = `Firebase core services failed to initialize. Original error: ${firebaseInitializationDetails.errorMessage}`;
       }
       setInitializationErrorState(specificErrorMessage);
       setFirebaseActuallyInitializedState(false);
-      setLoading(false);
-      setUser(null);
-      setUserProfile(null);
-      setRole(null);
+      setLoading(false); setUser(null); setUserProfile(null); setRole(null);
       return;
     }
 
@@ -191,136 +179,168 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
     if (auth) {
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-        console.log("Auth state changed. Current user:", currentUser?.uid || 'None');
         setUser(currentUser);
         await fetchUserProfile(currentUser);
         setLoading(false);
       }, (error) => {
-        console.error("Auth state error:", error);
         setInitializationErrorState(`Firebase Auth error: ${error.message}`);
-        setUser(null);
-        setUserProfile(null);
-        setRole(null);
-        setLoading(false);
+        setUser(null); setUserProfile(null); setRole(null); setLoading(false);
       });
     } else {
       const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
-      console.error(authErrorMessage);
       setInitializationErrorState(authErrorMessage);
       setFirebaseActuallyInitializedState(false); 
       setLoading(false);
     }
-
-    return () => {
-      if (unsubscribeAuth) {
-        console.log("Unsubscribing from auth state changes.");
-        unsubscribeAuth();
-      }
-    };
+    return () => { if (unsubscribeAuth) unsubscribeAuth(); };
   }, [fetchUserProfile]); 
 
-  useEffect(() => {
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const requestNotificationPermission = async (): Promise<boolean> => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('Browser does not support push notifications.');
+      return false;
+    }
     if (!user || !db) {
-      setTotalUnreadChats(0);
-      return;
+      console.warn('User not logged in or DB not available for push subscription.');
+      return false;
     }
 
-    const q = query(
-      collection(db, 'chats'),
-      where('participants', 'array-contains', user.uid)
-    );
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        console.info('Notification permission not granted.');
+        setIsNotificationsEnabledOnDevice(false);
+        return false;
+      }
 
-    const unsubscribeChats = onSnapshot(q, (querySnapshot: QuerySnapshot<DocumentData>) => {
+      const registration = await navigator.serviceWorker.ready;
+      const existingSubscription = await registration.pushManager.getSubscription();
+      
+      if (existingSubscription) {
+        console.log('User already subscribed:', existingSubscription.endpoint);
+        // Ensure this existing subscription is stored in Firestore
+        const subJSON = existingSubscription.toJSON() as PushSubscriptionJSON;
+        if (userProfile && !userProfile.pushSubscriptions?.some(s => s.endpoint === subJSON.endpoint)) {
+          const userDocRef = doc(db, 'users', user.uid);
+          await updateDoc(userDocRef, {
+            pushSubscriptions: arrayUnion(subJSON)
+          });
+          await refreshUserProfile(); // Refresh profile to include new sub
+        }
+        setIsNotificationsEnabledOnDevice(true);
+        return true;
+      }
+      
+      // IMPORTANT: Replace with your actual VAPID public key
+      const vapidPublicKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+      if (!vapidPublicKey) {
+        console.error('VAPID public key is not defined. Cannot subscribe for push notifications.');
+        // Inform the user appropriately, maybe via a toast.
+        alert("Push notification setup is incomplete on the server (missing VAPID key). Please contact support.");
+        return false;
+      }
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      });
+
+      const subscriptionJSON = subscription.toJSON() as PushSubscriptionJSON;
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        pushSubscriptions: arrayUnion(subscriptionJSON)
+      });
+      
+      setIsNotificationsEnabledOnDevice(true);
+      await refreshUserProfile(); // Refresh profile to include new sub
+      console.log('User subscribed for push notifications:', subscriptionJSON.endpoint);
+      return true;
+    } catch (error) {
+      console.error('Error subscribing to push notifications:', error);
+      setIsNotificationsEnabledOnDevice(false);
+      return false;
+    }
+  };
+
+  const disableNotificationsOnDevice = async (): Promise<void> => {
+    if (!('serviceWorker' in navigator) || !user || !db) return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        const subJSON = subscription.toJSON() as PushSubscriptionJSON;
+        await subscription.unsubscribe();
+        console.log('User unsubscribed from this device.');
+        
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, {
+          pushSubscriptions: arrayRemove(subJSON)
+        });
+        setIsNotificationsEnabledOnDevice(false);
+        await refreshUserProfile(); // Refresh profile to remove sub
+      }
+    } catch (error) {
+      console.error('Error unsubscribing from push notifications:', error);
+    }
+  };
+
+
+  useEffect(() => {
+    // General notifications count
+    if (!user || !db) { setGeneralUnreadNotificationsCount(0); return; }
+    const notificationsQuery = query( collection(db, 'notifications'), where('recipientUserId', '==', user.uid), where('isRead', '==', false) );
+    const unsubGeneral = onSnapshot(notificationsQuery, (snapshot) => { setGeneralUnreadNotificationsCount(snapshot.size); },
+      (error) => { console.error("Error fetching general unread notifications count:", error); setGeneralUnreadNotificationsCount(0); });
+    // Chat unread count
+    if (!user || !db) { setTotalUnreadChats(0); return; }
+    const chatsQuery = query( collection(db, 'chats'), where('participants', 'array-contains', user.uid) );
+    const unsubChats = onSnapshot(chatsQuery, (querySnapshot: QuerySnapshot<DocumentData>) => {
       let unreadCount = 0;
       querySnapshot.forEach((docSnap) => {
         const chat = docSnap.data() as ChatMetadata;
-        if (
-          chat.lastMessageSenderId &&
-          chat.lastMessageSenderId !== user.uid &&
-          (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user.uid))
-        ) {
+        if ( chat.lastMessageSenderId && chat.lastMessageSenderId !== user.uid && (!chat.lastMessageReadBy || !chat.lastMessageReadBy.includes(user.uid)) ) {
           unreadCount++;
         }
       });
-      console.log(`Total unread chats for ${user.uid}: ${unreadCount}`);
       setTotalUnreadChats(unreadCount);
-    }, (error) => {
-      console.error("Error fetching chat list for unread count:", error);
-      setTotalUnreadChats(0);
-    });
-
-    return () => {
-      if (typeof unsubscribeChats === 'function') {
-        console.log("Unsubscribing from chat list for unread count.");
-        unsubscribeChats();
-      }
-    };
-  }, [user]);
-
-  useEffect(() => {
+    }, (error) => { console.error("Error fetching chat list for unread count:", error); setTotalUnreadChats(0); });
+    // Client specific notification count
+    let unsubClient: (() => void) | null = null;
     if (user && role === 'client' && db) {
-      const gigsRef = collection(db, "gigs");
-      const q = query(gigsRef, where("clientId", "==", user.uid), where("status", "==", "open"));
-      
-      const unsubscribeClientNotifications = onSnapshot(q, (querySnapshot) => {
+      const clientGigsQuery = query(collection(db, "gigs"), where("clientId", "==", user.uid), where("status", "==", "open"));
+      unsubClient = onSnapshot(clientGigsQuery, (querySnapshot) => {
         let pendingCount = 0;
-        querySnapshot.forEach((doc) => {
-          const gig = doc.data() as GigForNotificationCount;
-          if (gig.applicants) {
-            gig.applicants.forEach(applicant => {
-              if (!applicant.status || applicant.status === 'pending') {
-                pendingCount++;
-              }
-            });
-          }
-          if (gig.studentPaymentRequestPending) { 
-            pendingCount++;
-          }
+        querySnapshot.forEach((docSnap) => {
+          const gig = docSnap.data() as GigForNotificationCount;
+          if (gig.applicants) gig.applicants.forEach(app => { if (!app.status || app.status === 'pending') pendingCount++; });
+          if (gig.studentPaymentRequestPending) pendingCount++;
         });
         setClientUnreadNotificationCount(pendingCount);
-      }, (error) => {
-        console.error("Error fetching client gig notifications:", error);
-        setClientUnreadNotificationCount(0);
-      });
-
-      return () => unsubscribeClientNotifications();
+      }, (error) => { console.error("Error fetching client gig notifications:", error); setClientUnreadNotificationCount(0); });
     } else {
       setClientUnreadNotificationCount(0); 
     }
+    return () => { unsubGeneral(); unsubChats(); if (unsubClient) unsubClient(); };
   }, [user, role]);
-
-  // Listener for general notifications
-  useEffect(() => {
-    if (!user || !db) {
-      setGeneralUnreadNotificationsCount(0);
-      return;
-    }
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
-      where('recipientUserId', '==', user.uid),
-      where('isRead', '==', false)
-    );
-    const unsubscribeGeneralNotifications = onSnapshot(notificationsQuery, (snapshot) => {
-      setGeneralUnreadNotificationsCount(snapshot.size);
-    }, (error) => {
-      console.error("Error fetching general unread notifications count:", error);
-      setGeneralUnreadNotificationsCount(0);
-    });
-    return () => unsubscribeGeneralNotifications();
-  }, [user]);
 
 
   const value = { 
-    user, 
-    userProfile, 
-    loading, 
-    role, 
-    refreshUserProfile, 
-    totalUnreadChats, 
-    clientUnreadNotificationCount, 
-    generalUnreadNotificationsCount, // Added to context value
+    user, userProfile, loading, role, refreshUserProfile, 
+    totalUnreadChats, clientUnreadNotificationCount, generalUnreadNotificationsCount, 
     firebaseActuallyInitialized: firebaseActuallyInitializedState, 
-    initializationError: initializationErrorState 
+    initializationError: initializationErrorState,
+    isNotificationsEnabledOnDevice, requestNotificationPermission, disableNotificationsOnDevice,
   };
 
   return (

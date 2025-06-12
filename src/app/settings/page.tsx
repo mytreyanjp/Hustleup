@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Loader2, ArrowLeft, MessageSquare } from 'lucide-react';
+import { Loader2, ArrowLeft, MessageSquare, Bell, BellOff } from 'lucide-react'; // Added Bell, BellOff
 import { sendPasswordResetEmail, deleteUser as deleteFirebaseAuthUser } from 'firebase/auth';
 import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
@@ -26,13 +26,22 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
-  const { user, userProfile, loading, refreshUserProfile } = useFirebase();
+  const { 
+    user, 
+    userProfile, 
+    loading, 
+    refreshUserProfile, 
+    isNotificationsEnabledOnDevice, 
+    requestNotificationPermission, 
+    disableNotificationsOnDevice 
+  } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [readReceipts, setReadReceipts] = useState(true);
   const [isUpdatingReceipts, setIsUpdatingReceipts] = useState(false);
+  const [isProcessingNotifications, setIsProcessingNotifications] = useState(false);
 
 
   useEffect(() => {
@@ -54,36 +63,20 @@ export default function SettingsPage() {
 
   const handleChangePassword = async () => {
     if (!user || !user.email) {
-      toast({
-        title: 'Error',
-        description: 'No user email found to send reset link.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No user email found to send reset link.', variant: 'destructive' });
       return;
     }
     if (!auth) {
         toast({ title: "Authentication Error", description: "Firebase Auth is not available.", variant: "destructive"});
         return;
     }
-
     setIsChangingPassword(true);
     try {
       await sendPasswordResetEmail(auth, user.email);
-      toast({
-        title: 'Password Reset Email Sent',
-        description: 'Please check your inbox (and spam folder) for instructions to reset your password.',
-      });
+      toast({ title: 'Password Reset Email Sent', description: 'Please check your inbox (and spam folder) for instructions to reset your password.' });
     } catch (error: any) {
       console.error('Error sending password reset email:', error);
-      let errorMessage = 'Failed to send password reset email.';
-      if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many requests. Please try again later.';
-      }
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: `Failed to send password reset email: ${error.message}`, variant: 'destructive' });
     } finally {
       setIsChangingPassword(false);
     }
@@ -95,21 +88,35 @@ export default function SettingsPage() {
         return;
     }
     setIsUpdatingReceipts(true);
-    setReadReceipts(checked); // Optimistic update for UI responsiveness
+    setReadReceipts(checked); 
     try {
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, { readReceiptsEnabled: checked });
         toast({ title: "Setting Updated", description: `Read receipts ${checked ? 'enabled' : 'disabled'}.`});
         if (refreshUserProfile) await refreshUserProfile();
     } catch (error: any) {
-        console.error("Error updating read receipts setting:", error);
-        setReadReceipts(!checked); // Revert UI on error
+        setReadReceipts(!checked); 
         toast({ title: "Update Failed", description: "Could not save read receipts preference.", variant: "destructive" });
     } finally {
         setIsUpdatingReceipts(false);
     }
   };
 
+  const handleToggleBrowserNotifications = async () => {
+    setIsProcessingNotifications(true);
+    if (isNotificationsEnabledOnDevice) {
+      await disableNotificationsOnDevice();
+      toast({ title: "Browser Notifications Disabled", description: "You will no longer receive push notifications on this device."});
+    } else {
+      const success = await requestNotificationPermission();
+      if (success) {
+        toast({ title: "Browser Notifications Enabled!", description: "You will now receive push notifications on this device."});
+      } else {
+        toast({ title: "Permission Denied", description: "Could not enable browser notifications. Please check your browser settings.", variant: "destructive"});
+      }
+    }
+    setIsProcessingNotifications(false);
+  };
 
   const handleDeleteAccount = async () => {
     if (!user || !auth || !db) {
@@ -118,43 +125,22 @@ export default function SettingsPage() {
     }
     setIsDeletingAccount(true);
     try {
-      // 1. Delete Firestore user document (optional, but good practice)
       const userDocRef = doc(db, 'users', user.uid);
       await deleteDoc(userDocRef);
-      console.log("User document deleted from Firestore.");
-
-      // 2. Delete Firebase Auth user
-      if (auth.currentUser) { // Ensure currentUser is available
+      if (auth.currentUser) { 
         await deleteFirebaseAuthUser(auth.currentUser); 
       } else {
         throw new Error("Current user not available in Firebase Auth for deletion.");
       }
-      
-
-      toast({
-        title: 'Account Deleted Successfully',
-        description: 'Your account and associated data have been removed. You will be redirected.',
-      });
-      router.push('/'); // Redirect to homepage after successful deletion
-
+      toast({ title: 'Account Deleted Successfully', description: 'Your account and associated data have been removed. Redirecting...' });
+      router.push('/'); 
     } catch (error: any) {
       console.error('Error deleting account:', error);
-      let errorMessage = 'Failed to delete your account.';
-      if (error.code === 'auth/requires-recent-login') {
-        errorMessage = 'This operation is sensitive and requires recent authentication. Please log out and log back in, then try again.';
-      } else if (error.code === 'auth/network-request-failed') {
-         errorMessage = 'Network error. Please check your connection and try again.';
-      }
-      toast({
-        title: 'Account Deletion Failed',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast({ title: 'Account Deletion Failed', description: `Failed to delete your account: ${error.message}`, variant: 'destructive' });
     } finally {
       setIsDeletingAccount(false);
     }
   };
-
 
   return (
     <div className="max-w-2xl mx-auto py-8">
@@ -187,9 +173,32 @@ export default function SettingsPage() {
                className="mt-2 sm:mt-0"
              />
            </div>
+
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4">
+             <div>
+               <Label htmlFor="browser-notifications-button" className="font-medium flex items-center gap-2">
+                {isNotificationsEnabledOnDevice ? <Bell className="h-4 w-4 text-green-500" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
+                Browser Push Notifications
+               </Label>
+               <p className="text-sm text-muted-foreground">
+                 {isNotificationsEnabledOnDevice 
+                   ? "Notifications are enabled for this device. You'll receive updates even when the app is in the background." 
+                   : "Enable notifications to get real-time updates on new messages, gig status, etc., on this device."}
+               </p>
+             </div>
+             <Button
+                id="browser-notifications-button"
+                variant="outline"
+                onClick={handleToggleBrowserNotifications}
+                className="mt-2 sm:mt-0"
+                disabled={isProcessingNotifications}
+              >
+                {isProcessingNotifications && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isNotificationsEnabledOnDevice ? "Disable on this Device" : "Enable on this Device"}
+              </Button>
+           </div>
         </CardContent>
       </Card>
-
 
        <Card className="glass-card mt-6">
         <CardHeader>
@@ -257,7 +266,17 @@ export default function SettingsPage() {
            </div>
         </CardContent>
       </Card>
+      
+      <Card className="mt-6 glass-card">
+        <CardHeader>
+          <CardTitle>Browser Notification Details</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs text-muted-foreground space-y-1">
+            <p><strong>Important:</strong> This feature relies on browser capabilities and a properly configured Service Worker with Firebase Cloud Messaging (FCM).</p>
+            <p>Ensure <code>NEXT_PUBLIC_FIREBASE_VAPID_KEY</code> is set in your <code>.env.local</code> file with your FCM VAPID key (Web push certificate public key from Firebase Project Settings &gt; Cloud Messaging &gt; Web configuration).</p>
+            <p>A <code>public/firebase-messaging-sw.js</code> file is required to handle background notifications. The actual sending of push notifications happens server-side (e.g., via Firebase Functions) when new in-app notifications are created for you.</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
