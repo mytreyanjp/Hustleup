@@ -17,7 +17,7 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { useFirebase } from '@/context/firebase-context';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/config/firebase';
-import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users, Wallet } from 'lucide-react';
+import { LogOut, Settings, LayoutDashboard, Briefcase, GraduationCap, MessageSquare, Search as SearchIcon, Users as HustlersIcon, Compass, Loader2, HelpCircle, Bookmark, FileText as ApplicationsIcon, ArrowLeft, User as UserIcon, Edit3, Sun, Moon, Laptop, Star as StarIcon, ChevronDown, ChevronUp, Bell, ShieldCheck, Users, Wallet, Info } from 'lucide-react'; // Added Info icon
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -443,6 +443,7 @@ export default function Navbar() {
                         </Link></DropdownMenuItem>
                         <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
                         <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
+                        <DropdownMenuItem asChild><Link href="/about"><Info className="mr-2 h-4 w-4" /><span>PromoFlix</span></Link></DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={(e) => { e.preventDefault(); setThemeOptionsVisible(!themeOptionsVisible); }}
@@ -573,6 +574,7 @@ export default function Navbar() {
                         </Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href="/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href="/support"><HelpCircle className="mr-2 h-4 w-4" /><span>Support</span></Link></DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href="/about"><Info className="mr-2 h-4 w-4" /><span>PromoFlix</span></Link></DropdownMenuItem>
                       <DropdownMenuSeparator />
                        <DropdownMenuItem
                           onClick={(e) => { e.preventDefault(); setThemeOptionsVisible(!themeOptionsVisible); }}
