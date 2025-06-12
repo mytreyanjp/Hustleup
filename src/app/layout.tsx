@@ -10,15 +10,15 @@ import { Toaster } from "@/components/ui/toaster"
 import { FirebaseProvider, useFirebase } from '@/context/firebase-context'; 
 import Navbar from '@/components/layout/navbar';
 import FooterNav from '@/components/layout/footer-nav';
-import { Loader2, Ban, MessageSquare, LogOut as LogOutIcon } from 'lucide-react'; // Added LogOutIcon
+import { Loader2, Ban, MessageSquare, LogOut as LogOutIcon } from 'lucide-react'; 
 import React, { useRef, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { signOut } from 'firebase/auth'; // Import signOut
-import { auth } from '@/config/firebase'; // Import auth instance
-import { useToast } from '@/hooks/use-toast'; // Import useToast for sign-out messages (optional)
+import { signOut } from 'firebase/auth'; 
+import { auth } from '@/config/firebase'; 
+import { useToast } from '@/hooks/use-toast'; 
 
 
 const inter = Inter({
@@ -30,7 +30,7 @@ const inter = Inter({
 function AppBody({ children }: { children: React.ReactNode }) {
   const { user, userProfile, loading: firebaseContextLoading, firebaseActuallyInitialized, initializationError, role } = useFirebase(); 
   const [isClientHydrated, setIsClientHydrated] = React.useState(false);
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast(); 
 
   const router = useRouter(); 
   const pathname = usePathname(); 
@@ -62,9 +62,11 @@ function AppBody({ children }: { children: React.ReactNode }) {
     paths.push("/gigs/browse"); 
     if (role === 'student') {
       paths.push("/student/works");
+      paths.push("/student/wallet");
     } else if (role === 'client') {
-      paths.push("/hustlers/browse");
+      // paths.push("/hustlers/browse"); // Removed based on previous request
       paths.push("/client/gigs/new");
+      paths.push("/client/payments"); // Was wallet, maps to payments
     }
     paths.push("/chat");
     
@@ -161,17 +163,17 @@ function AppBody({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (!isClientHydrated || firebaseContextLoading) {
+  if (!isClientHydrated || (firebaseContextLoading && !initializationError)) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[999]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     );
   }
-
+  
   if (!firebaseActuallyInitialized && initializationError) {
-     const isEnvVarError = initializationError.includes("NEXT_PUBLIC_FIREBASE_");
-     const isCoreServiceError = initializationError.includes("Core Firebase services") && !isEnvVarError;
+     const isEnvVarError = initializationError.includes("NEXT_PUBLIC_FIREBASE_") || initializationError.includes("environment variables");
+     const isCoreServiceError = (initializationError.includes("Core Firebase services") || initializationError.includes("Auth service is unexpectedly null") || initializationError.includes("Firestore (db) service is unexpectedly null") ) && !isEnvVarError;
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-[999] p-4">
         <div className="text-center text-destructive-foreground bg-destructive p-6 rounded-lg shadow-lg max-w-lg">
@@ -199,6 +201,7 @@ function AppBody({ children }: { children: React.ReactNode }) {
                </ol>
              </div>
            )}
+           <Button onClick={() => window.location.reload()} className="mt-4 bg-destructive-foreground text-destructive hover:bg-destructive-foreground/90">Try Reloading Page</Button>
         </div>
       </div>
     );
@@ -289,3 +292,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+    

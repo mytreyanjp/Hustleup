@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, DocumentData, collection, query, where, onSnapshot, QuerySnapshot, Timestamp, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { auth, db, firebaseInitializationDetails } from '@/config/firebase';
+import { auth, db, firebaseInitializationDetails, firebaseConfig } from '@/config/firebase'; // Added firebaseConfig for SW
 import { Loader2 } from 'lucide-react';
 import type { ChatMetadata } from '@/types/chat';
 import type { Notification, PushSubscriptionJSON } from '@/types/notifications';
@@ -17,12 +17,12 @@ export interface UserProfile extends DocumentData {
   role: UserRole;
   username?: string;
   profilePictureUrl?: string;
-  bio?: string; // Student bio
-  skills?: string[]; // Student skills
-  portfolioLinks?: string[]; // Student portfolio links
-  bookmarkedGigIds?: string[]; // Student bookmarked gigs
-  averageRating?: number; // Student average rating
-  totalRatings?: number; // Student total ratings
+  bio?: string; 
+  skills?: string[]; 
+  portfolioLinks?: string[]; 
+  bookmarkedGigIds?: string[]; 
+  averageRating?: number; 
+  totalRatings?: number; 
   
   companyName?: string;
   website?: string;
@@ -36,7 +36,7 @@ export interface UserProfile extends DocumentData {
   blockedUserIds?: string[]; 
   readReceiptsEnabled?: boolean; 
   isBanned?: boolean; 
-  pushSubscriptions?: PushSubscriptionJSON[]; // For storing browser push subscriptions
+  pushSubscriptions?: PushSubscriptionJSON[];
 }
 
 interface FirebaseContextType {
@@ -71,6 +71,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
   const [role, setRole] = useState<UserRole>(null);
   const [firebaseActuallyInitializedState, setFirebaseActuallyInitializedState] = useState(false);
   const [initializationErrorState, setInitializationErrorState] = useState<string | null>(null);
+  const [internalProviderError, setInternalProviderError] = useState<string | null>(null);
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
   const [clientUnreadNotificationCount, setClientUnreadNotificationCount] = useState(0);
   const [generalUnreadNotificationsCount, setGeneralUnreadNotificationsCount] = useState(0);
@@ -78,9 +79,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchUserProfile = useCallback(async (currentUser: FirebaseUser | null) => {
     if (!db) {
-      console.warn("Firestore (db) not initialized, skipping profile fetch.");
+      console.error("FirebaseProvider: Firestore (db) is null in fetchUserProfile. This indicates a critical Firebase initialization issue.");
       setUserProfile(null);
       setRole(null);
+      setInternalProviderError("Critical: Firestore service became unavailable after initial load. Check Firebase setup.");
+      setIsNotificationsEnabledOnDevice(false);
       return;
     }
 
@@ -111,9 +114,8 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           } else {
             setRole(null);
           }
-          // Check if current device has an active subscription
-          if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
-            const currentSubscription = await navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription());
+          if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && navigator.serviceWorker.controller) {
+            const currentSubscription = await navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription());
             if (currentSubscription) {
               const currentEndpoint = currentSubscription.toJSON().endpoint;
               setIsNotificationsEnabledOnDevice(profileData.pushSubscriptions?.some(sub => sub.endpoint === currentEndpoint) || false);
@@ -123,26 +125,16 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
           } else {
              setIsNotificationsEnabledOnDevice(false);
           }
-
         } else {
-          const basicProfile: UserProfile = {
-            uid: currentUser.uid, email: currentUser.email, role: null, 
-            bookmarkedGigIds: [], averageRating: 0, totalRatings: 0,
-            following: [], followersCount: 0, personalEmail: '', personalPhone: '',
-            blockedUserIds: [], readReceiptsEnabled: true, isBanned: false, pushSubscriptions: [],
-          };
+          const basicProfile: UserProfile = { uid: currentUser.uid, email: currentUser.email, role: null, bookmarkedGigIds: [], averageRating: 0, totalRatings: 0, following: [], followersCount: 0, personalEmail: '', personalPhone: '', blockedUserIds: [], readReceiptsEnabled: true, isBanned: false, pushSubscriptions: [] };
           setUserProfile(basicProfile);
           setRole(null);
           setIsNotificationsEnabledOnDevice(false);
         }
       } catch (error) {
         console.error("Error fetching user profile:", error);
-        setUserProfile({
-          uid: currentUser.uid, email: currentUser.email, role: null,
-          bookmarkedGigIds: [], averageRating: 0, totalRatings: 0,
-          following: [], followersCount: 0, personalEmail: '', personalPhone: '',
-          blockedUserIds: [], readReceiptsEnabled: true, isBanned: false, pushSubscriptions: [],
-        });
+        setInternalProviderError(`Error fetching profile: ${(error as Error).message}`);
+        setUserProfile({ uid: currentUser.uid, email: currentUser.email, role: null, bookmarkedGigIds: [], averageRating: 0, totalRatings: 0, following: [], followersCount: 0, personalEmail: '', personalPhone: '', blockedUserIds: [], readReceiptsEnabled: true, isBanned: false, pushSubscriptions: []});
         setRole(null);
         setIsNotificationsEnabledOnDevice(false);
       }
@@ -165,41 +157,71 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     let unsubscribeAuth: (() => void) | null = null;
 
-    if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
-      let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
-       if (firebaseInitializationDetails.areEnvVarsMissing) {
-        specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Details: ${firebaseInitializationDetails.errorMessage}`;
-      } else if (firebaseInitializationDetails.didCoreServicesFail) {
-        specificErrorMessage = `Firebase core services failed to initialize. Original error: ${firebaseInitializationDetails.errorMessage}`;
+    try {
+      if (!firebaseInitializationDetails.isSuccessfullyInitialized) {
+        let specificErrorMessage = firebaseInitializationDetails.errorMessage || "An unknown Firebase initialization error occurred.";
+        if (firebaseInitializationDetails.areEnvVarsMissing) {
+          specificErrorMessage = `CRITICAL: Firebase environment variables are missing or not loaded. Details: ${firebaseInitializationDetails.errorMessage}`;
+        } else if (firebaseInitializationDetails.didCoreServicesFail) {
+          specificErrorMessage = `Firebase core services failed to initialize. Original error: ${firebaseInitializationDetails.errorMessage}`;
+        }
+        setInitializationErrorState(specificErrorMessage);
+        setInternalProviderError(null); // Clear provider error if it's an init error
+        setFirebaseActuallyInitializedState(false);
+        setLoading(false); setUser(null); setUserProfile(null); setRole(null);
+        return;
       }
-      setInitializationErrorState(specificErrorMessage);
-      setFirebaseActuallyInitializedState(false);
-      setLoading(false); setUser(null); setUserProfile(null); setRole(null);
-      return;
-    }
 
-    setFirebaseActuallyInitializedState(true);
-    setInitializationErrorState(null); 
+      setFirebaseActuallyInitializedState(true);
+      setInitializationErrorState(null);
+      setInternalProviderError(null); 
 
-    if (auth) {
+      if (!auth) {
+        const authErrorMessage = "FirebaseProvider: Auth service is unexpectedly null after successful Firebase initialization. This indicates a critical issue.";
+        console.error(authErrorMessage);
+        setInitializationErrorState(authErrorMessage); 
+        setFirebaseActuallyInitializedState(false);
+        setLoading(false); setUser(null); setUserProfile(null); setRole(null);
+        return;
+      }
+      if (!db) {
+        const dbErrorMessage = "FirebaseProvider: Firestore (db) service is unexpectedly null after successful Firebase initialization. This indicates a critical issue.";
+        console.error(dbErrorMessage);
+        setInitializationErrorState(dbErrorMessage);
+        setFirebaseActuallyInitializedState(false);
+        setLoading(false); setUser(null); setUserProfile(null); setRole(null);
+        return;
+      }
+
       unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-        setUser(currentUser);
-        await fetchUserProfile(currentUser);
-        setLoading(false);
+        try { 
+          setUser(currentUser);
+          await fetchUserProfile(currentUser);
+        } catch (authStateError: any) {
+          console.error("Error during onAuthStateChanged or fetchUserProfile:", authStateError);
+          setInternalProviderError(`Error processing user session: ${authStateError.message}`);
+          setUser(null); setUserProfile(null); setRole(null);
+        } finally {
+          setLoading(false);
+        }
       }, (error) => {
+        console.error("Firebase Auth onAuthStateChanged error listener triggered:", error);
         setInitializationErrorState(`Firebase Auth error: ${error.message}`);
         setUser(null); setUserProfile(null); setRole(null); setLoading(false);
       });
-    } else {
-      const authErrorMessage = "Firebase context: Auth service is unexpectedly null after successful initialization check.";
-      setInitializationErrorState(authErrorMessage);
-      setFirebaseActuallyInitializedState(false); 
+
+    } catch (providerSetupError: any) {
+      console.error("Critical error during FirebaseProvider setup:", providerSetupError);
+      setInternalProviderError(`Provider setup failed: ${providerSetupError.message}`);
+      setFirebaseActuallyInitializedState(false);
       setLoading(false);
     }
+
     return () => { if (unsubscribeAuth) unsubscribeAuth(); };
   }, [fetchUserProfile]); 
 
   const urlBase64ToUint8Array = (base64String: string) => {
+    if (typeof window === 'undefined') return new Uint8Array(0);
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = window.atob(base64);
@@ -212,18 +234,27 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
   const requestNotificationPermission = async (): Promise<boolean> => {
     if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.warn('Browser does not support push notifications or APIs not available.');
+      console.warn('Browser does not support push notifications or required APIs are not available.');
       return false;
     }
     if (!user || !db) {
       console.warn('User not logged in or DB not available for push subscription.');
       return false;
     }
+    if (!navigator.serviceWorker.controller) {
+      console.warn('Service worker is not active/controlling the page. Push notifications cannot be set up.');
+      // Optionally, try to register it if you have a robust registration elsewhere,
+      // or prompt user to refresh after service worker activation.
+      // For now, just inform and fail.
+      alert("Push notifications require an active service worker. Please try refreshing the page, or ensure your browser isn't blocking service workers for this site.");
+      return false;
+    }
+
 
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        console.info('Notification permission not granted.');
+        console.info('Notification permission not granted by user.');
         setIsNotificationsEnabledOnDevice(false);
         return false;
       }
@@ -231,27 +262,36 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       const registration = await navigator.serviceWorker.ready;
       const existingSubscription = await registration.pushManager.getSubscription();
       
-      if (existingSubscription) {
-        console.log('User already subscribed:', existingSubscription.endpoint);
-        const subJSON = existingSubscription.toJSON() as PushSubscriptionJSON;
-        if (userProfile && !userProfile.pushSubscriptions?.some(s => s.endpoint === subJSON.endpoint)) {
-          const userDocRef = doc(db, 'users', user.uid);
-          await updateDoc(userDocRef, {
-            pushSubscriptions: arrayUnion(subJSON)
-          });
-          await refreshUserProfile();
-        }
-        setIsNotificationsEnabledOnDevice(true);
-        return true;
-      }
-      
       const vapidPublicKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
       if (!vapidPublicKey) {
         console.error('VAPID public key is not defined. Cannot subscribe for push notifications.');
         alert("Push notification setup is incomplete on the server (missing VAPID key). Please contact support.");
         return false;
       }
+      
+      // If already subscribed with the current VAPID key, ensure it's stored
+      if (existingSubscription) {
+        const currentKey = existingSubscription.options.applicationServerKey ?
+            btoa(String.fromCharCode(...new Uint8Array(existingSubscription.options.applicationServerKey)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : null;
+        const newVapidKeyB64 = vapidPublicKey.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+        if (currentKey === newVapidKeyB64) {
+            console.log('User already subscribed with current VAPID key:', existingSubscription.endpoint);
+            const subJSON = existingSubscription.toJSON() as PushSubscriptionJSON;
+            if (userProfile && !userProfile.pushSubscriptions?.some(s => s.endpoint === subJSON.endpoint)) {
+              const userDocRef = doc(db, 'users', user.uid);
+              await updateDoc(userDocRef, { pushSubscriptions: arrayUnion(subJSON) });
+              await refreshUserProfile();
+            }
+            setIsNotificationsEnabledOnDevice(true);
+            return true;
+        } else {
+            console.log('Existing subscription found with a different VAPID key. Unsubscribing and re-subscribing.');
+            await existingSubscription.unsubscribe();
+        }
+      }
+      
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
@@ -259,9 +299,7 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
 
       const subscriptionJSON = subscription.toJSON() as PushSubscriptionJSON;
       const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, {
-        pushSubscriptions: arrayUnion(subscriptionJSON)
-      });
+      await updateDoc(userDocRef, { pushSubscriptions: arrayUnion(subscriptionJSON) });
       
       setIsNotificationsEnabledOnDevice(true);
       await refreshUserProfile();
@@ -295,7 +333,6 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
       console.error('Error unsubscribing from push notifications:', error);
     }
   };
-
 
   useEffect(() => {
     if (!user || !db) { setGeneralUnreadNotificationsCount(0); return; }
@@ -334,12 +371,11 @@ export const FirebaseProvider = ({ children }: { children: ReactNode }) => {
     return () => { unsubGeneral(); unsubChats(); if (unsubClient) unsubClient(); };
   }, [user, role]);
 
-
   const value = { 
     user, userProfile, loading, role, refreshUserProfile, 
     totalUnreadChats, clientUnreadNotificationCount, generalUnreadNotificationsCount, 
     firebaseActuallyInitialized: firebaseActuallyInitializedState, 
-    initializationError: initializationErrorState,
+    initializationError: initializationErrorState || internalProviderError,
     isNotificationsEnabledOnDevice, requestNotificationPermission, disableNotificationsOnDevice,
   };
 
@@ -358,3 +394,4 @@ export const useFirebase = () => {
   return context;
 };
 
+    
