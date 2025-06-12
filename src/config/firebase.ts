@@ -129,7 +129,7 @@ if (missingOrEmptyConfigValues.length > 0) {
 
     if (app && auth && db && storage) { // Check core services
       firebaseInitializationDetails.isSuccessfullyInitialized = true;
-      console.log("Firebase initialized successfully with config:", firebaseConfig);
+      // The console.log that was here has been removed.
     } else {
       firebaseInitializationDetails.didCoreServicesFail = true;
       const missingServices = [];
