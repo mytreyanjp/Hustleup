@@ -9,7 +9,7 @@ import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText, DollarSign } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Users, Trash2, CheckCircle, XCircle, Eye, Settings2, Hourglass, MessageSquare, FileText, DollarSign, IndianRupee } from 'lucide-react'; // Added IndianRupee
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { ProgressReport } from '@/app/student/works/page';
@@ -289,7 +289,7 @@ export default function ClientGigsPage() {
             Deadline: {formatDeadline(gig.deadline)}
          </div>
          <div className="text-xs sm:text-sm text-muted-foreground">
-            Payment: {gig.currency} {gig.budget.toFixed(2)}
+            Payment: ₹{gig.budget.toFixed(2)}
          </div>
          <div className="flex items-center text-xs sm:text-sm text-muted-foreground mt-2">
             <Users className="mr-1 h-4 w-4" /> {(gig.applicants || []).length} Applicant(s)
@@ -304,7 +304,7 @@ export default function ClientGigsPage() {
               )}
               {gig.isPaymentRequestedByStudent && (
                  <div className="flex items-center text-xs sm:text-sm text-green-600 dark:text-green-400 mt-1">
-                    <DollarSign className="mr-1 h-4 w-4" /> Student Requested Payment
+                    <IndianRupee className="mr-1 h-4 w-4" /> Student Requested Payment
                  </div>
               )}
             </>
@@ -423,4 +423,3 @@ export default function ClientGigsPage() {
     </div>
   );
 }
-    

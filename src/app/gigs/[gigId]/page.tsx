@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, DollarSign, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban } from 'lucide-react';
+import { Loader2, CalendarDays, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban, IndianRupee } from 'lucide-react'; // Added IndianRupee
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -533,8 +533,8 @@ export default function GigDetailPage() {
            </div>
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="flex items-center text-sm">
-                  <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground mr-1">Payment:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span>
+                  <IndianRupee className="mr-2 h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground mr-1">Payment:</span> <span className="font-medium">₹{gig.budget.toFixed(2)}</span>
               </div>
               <div className="flex items-center text-sm">
                   <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />

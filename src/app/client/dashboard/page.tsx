@@ -4,7 +4,7 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, Users, CreditCard, Briefcase, Loader2, FileText, UserX } from 'lucide-react';
+import { PlusCircle, Users, CreditCard, Briefcase, Loader2, FileText, UserX, IndianRupee } from 'lucide-react'; // Added IndianRupee
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -159,7 +159,7 @@ export default function ClientDashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
             {/* TODO: Fetch actual payment data */}
-            <div className="text-2xl sm:text-3xl font-bold">$0.00</div>
+            <div className="text-2xl sm:text-3xl font-bold">₹0.00</div>
             <p className="text-xs text-muted-foreground mt-1">
               Track your spending on completed gigs.
             </p>
@@ -183,4 +183,3 @@ export default function ClientDashboardPage() {
     </div>
   );
 }
-

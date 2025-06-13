@@ -780,4 +780,3 @@ export default function AdminGigDetailPage() {
     </div>
   );
 }
-

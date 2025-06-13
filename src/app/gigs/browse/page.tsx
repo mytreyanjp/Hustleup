@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, DollarSign, Star, Filter as FilterIcon, X as XIcon, Settings2, Layers } from 'lucide-react'; // Added Layers
+import { Loader2, CalendarDays, Star, Filter as FilterIcon, X as XIcon, Settings2, Layers, IndianRupee } from 'lucide-react'; // Added Layers, IndianRupee
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -325,7 +325,7 @@ export default function BrowseGigsPage() {
                       </div>
                    </div>
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
-                       <DollarSign className="mr-1 h-4 w-4" /> Payment: {gig.currency} {gig.budget.toFixed(2)}
+                       <IndianRupee className="mr-1 h-4 w-4" /> Payment: ₹{gig.budget.toFixed(2)}
                    </div>
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                        <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
@@ -359,4 +359,3 @@ export default function BrowseGigsPage() {
     </div>
   );
 }
-    

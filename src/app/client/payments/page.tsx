@@ -9,7 +9,7 @@ import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, DollarSign, CalendarDays } from 'lucide-react';
+import { Loader2, CalendarDays, IndianRupee } from 'lucide-react'; // Replaced DollarSign with IndianRupee
 import Link from 'next/link';
 import { format } from 'date-fns';
 
@@ -116,7 +116,7 @@ export default function ClientPaymentsPage() {
         <CardContent>
           {transactions.length === 0 ? (
             <div className="text-center py-10">
-                 <DollarSign className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                 <IndianRupee className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No payment history found.</p>
                <p className="text-sm text-muted-foreground mt-1">Payments will appear here after you pay for completed gigs.</p>
             </div>
@@ -143,7 +143,7 @@ export default function ClientPaymentsPage() {
                     </TableCell>
                     <TableCell>{tx.studentUsername}</TableCell>
                     <TableCell className="text-right font-medium">
-                        {tx.currency.toUpperCase()} {tx.amount.toFixed(2)}
+                        ₹{tx.amount.toFixed(2)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={getStatusBadgeVariant(tx.status)} className="capitalize">
@@ -163,5 +163,3 @@ export default function ClientPaymentsPage() {
     </div>
   );
 }
-
-    

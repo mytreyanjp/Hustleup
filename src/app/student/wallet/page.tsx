@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -9,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Wallet, Download } from 'lucide-react';
+import { Loader2, Wallet, Download, IndianRupee } from 'lucide-react'; // Added IndianRupee
 import Link from 'next/link';
 import { format } from 'date-fns';
 
@@ -115,7 +116,7 @@ export default function StudentWalletPage() {
                 <CardDescription className="text-primary-foreground/80">The sum of all successful payouts received.</CardDescription>
            </CardHeader>
             <CardContent>
-               <p className="text-4xl font-bold">${totalEarned.toFixed(2)}</p>
+               <p className="text-4xl font-bold">₹{totalEarned.toFixed(2)}</p>
             </CardContent>
              {/* Optional: Add payout button if implementing withdrawals */}
              {/* <CardFooter>
@@ -161,7 +162,7 @@ export default function StudentWalletPage() {
                     </TableCell>
                     <TableCell>{tx.clientUsername || 'N/A'}</TableCell>
                     <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
-                       + {tx.currency.toUpperCase()} {tx.amount.toFixed(2)}
+                       + ₹{tx.amount.toFixed(2)}
                     </TableCell>
                      <TableCell className="text-xs text-muted-foreground truncate max-w-[100px]">
                        {tx.razorpayPaymentId}
