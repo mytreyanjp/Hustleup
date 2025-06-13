@@ -317,9 +317,15 @@ export default function PublicProfilePage() {
 
   const handleBanToggle = async () => {
     if (!viewerUser || viewerRole !== 'admin' || !profile || !db || !viewerUserProfile) {
-      toast({ title: "Permission Denied", description: "Only admins can ban users.", variant: "destructive" });
+      toast({ title: "Permission Denied", description: "Only admins can perform this action.", variant: "destructive" });
       return;
     }
+    if (viewerRole === 'admin' && profile.role === 'admin') {
+      toast({ title: "Action Not Allowed", description: "Administrators cannot ban other administrators.", variant: "destructive" });
+      setShowBanConfirmDialog(false);
+      return;
+    }
+
     setIsBanningProcessing(true);
     const targetUserDocRef = doc(db, 'users', profile.uid);
     const batch = writeBatch(db);
@@ -584,6 +590,7 @@ export default function PublicProfilePage() {
     : (profile.username || 'Student Profile');
 
   const followingCount = profile.following?.length || 0;
+  const canAdminBanThisUser = viewerRole === 'admin' && profile.role !== 'admin';
 
 
   return (
@@ -646,7 +653,12 @@ export default function PublicProfilePage() {
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem
                                                 onSelect={() => setShowBanConfirmDialog(true)}
-                                                className={cn("cursor-pointer", profile.isBanned ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")}
+                                                className={cn(
+                                                    "cursor-pointer", 
+                                                    !canAdminBanThisUser && "opacity-50 cursor-not-allowed",
+                                                    canAdminBanThisUser && (profile.isBanned ? "text-green-600 focus:bg-green-500/10 focus:text-green-700" : "text-destructive focus:bg-destructive/10 focus:text-destructive")
+                                                )}
+                                                disabled={!canAdminBanThisUser}
                                             >
                                                 {profile.isBanned ? <UserCheck className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
                                                 <span>{profile.isBanned ? "Unban User" : "Ban User"}</span>
@@ -1006,7 +1018,7 @@ export default function PublicProfilePage() {
                     <AlertDialogDescription>
                         {profile?.isBanned
                             ? `Unbanning ${displayName} will restore their access to platform features.`
-                            : `Banning ${displayName} will restrict their ability to post gigs, apply for work, and use other platform features. Their active work and posts may be affected. They will be notified of this action.`}
+                            : `Banning ${displayName} will restrict their ability to post gigs, apply for work, and use other platform features. Their active work and posts may be affected. They will be notified of this action. ${profile?.role === 'admin' ? ' WARNING: You are about to ban another administrator.' : ''}`}
                         Are you sure?
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -1014,7 +1026,7 @@ export default function PublicProfilePage() {
                     <AlertDialogCancel onClick={() => setShowBanConfirmDialog(false)} disabled={isBanningProcessing}>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={handleBanToggle}
-                        disabled={isBanningProcessing}
+                        disabled={isBanningProcessing || (viewerRole === 'admin' && profile?.role === 'admin' && profile.uid !== viewerUser?.uid)}
                         className={cn(profile?.isBanned ? "" : "bg-destructive hover:bg-destructive/90 text-destructive-foreground")}
                     >
                         {isBanningProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1079,3 +1091,4 @@ export default function PublicProfilePage() {
     </div>
   );
 }
+
