@@ -705,7 +705,7 @@ export default function StudentProfilePage() {
               <Wallet className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
-              <div className="text-2xl sm:text-3xl font-bold">$0.00</div>
+              <div className="text-2xl sm:text-3xl font-bold">₹0.00</div>
               <p className="text-xs text-muted-foreground mt-1">Total earnings from completed gigs.</p>
               <Button variant="link" size="sm" className="p-0 h-auto mt-3 text-sm" asChild><Link href="/student/wallet">View Wallet History</Link></Button>
             </CardContent>
