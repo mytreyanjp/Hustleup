@@ -8,11 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Loader2, ArrowLeft, MessageSquare, Bell, BellOff } from 'lucide-react'; // Added Bell, BellOff
+import { Loader2, ArrowLeft, MessageSquare, Bell, BellOff, Edit3, UserCircle as ViewProfileIcon } from 'lucide-react'; // Added Edit3, ViewProfileIcon
 import { sendPasswordResetEmail, deleteUser as deleteFirebaseAuthUser } from 'firebase/auth';
 import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link'; // Added Link import
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,7 @@ export default function SettingsPage() {
     user, 
     userProfile, 
     loading, 
+    role, // Added role here
     refreshUserProfile, 
     isNotificationsEnabledOnDevice, 
     requestNotificationPermission, 
@@ -142,6 +144,17 @@ export default function SettingsPage() {
     }
   };
 
+  const profileLink = 
+    role === 'student' ? '/student/profile' :
+    role === 'client' ? '/client/profile/edit' :
+    role === 'admin' && user ? `/profile/${user.uid}` :
+    '/auth/login';
+
+  const profileLinkText = 
+    role === 'admin' ? 'View My Profile' : 'Edit Profile';
+  
+  const ProfileIcon = role === 'admin' ? ViewProfileIcon : Edit3;
+
   return (
     <div className="max-w-2xl mx-auto py-8">
        <Button variant="outline" size="sm" onClick={() => router.back()} className="mb-6 self-start">
@@ -150,6 +163,32 @@ export default function SettingsPage() {
        <h1 className="text-3xl font-bold tracking-tight mb-6">Account Settings</h1>
 
        <Card className="glass-card">
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+          <CardDescription>Manage your public profile information.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+              <div>
+                <p className="font-medium">Your Profile</p>
+                <p className="text-sm text-muted-foreground">
+                  {role === 'admin' ? 'View your basic user profile information.' : 'Update your public profile details and preferences.'}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                asChild
+                className="mt-2 sm:mt-0"
+              >
+                <Link href={profileLink}>
+                  <ProfileIcon className="mr-2 h-4 w-4" /> {profileLinkText}
+                </Link>
+              </Button>
+            </div>
+        </CardContent>
+      </Card>
+
+       <Card className="glass-card mt-6">
         <CardHeader>
           <CardTitle>Preferences</CardTitle>
           <CardDescription>Manage your account preferences.</CardDescription>
@@ -264,17 +303,6 @@ export default function SettingsPage() {
                   </AlertDialogContent>
                 </AlertDialog>
            </div>
-        </CardContent>
-      </Card>
-      
-      <Card className="mt-6 glass-card">
-        <CardHeader>
-          <CardTitle>Browser Notification Details</CardTitle>
-        </CardHeader>
-        <CardContent className="text-xs text-muted-foreground space-y-1">
-            <p><strong>Important:</strong> This feature relies on browser capabilities and a properly configured Service Worker with Firebase Cloud Messaging (FCM).</p>
-            <p>Ensure <code>NEXT_PUBLIC_FIREBASE_VAPID_KEY</code> is set in your <code>.env.local</code> file with your FCM VAPID key (Web push certificate public key from Firebase Project Settings &gt; Cloud Messaging &gt; Web configuration).</p>
-            <p>A <code>public/firebase-messaging-sw.js</code> file is required to handle background notifications. The actual sending of push notifications happens server-side (e.g., via Firebase Functions) when new in-app notifications are created for you.</p>
         </CardContent>
       </Card>
     </div>
