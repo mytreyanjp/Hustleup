@@ -544,7 +544,7 @@ export default function AdminGigDetailPage() {
                 <div className="flex gap-2">
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/chat?userId=${clientProfile.uid}&gigId=${gig.id}`}>
-                        <MessageSquare className="mr-1 h-3 w-3"/> Chat
+                        <MessageSquare className="mr-1"/> Chat
                       </Link>
                     </Button>
                 </div>
@@ -575,7 +575,7 @@ export default function AdminGigDetailPage() {
                  <div className="flex gap-2">
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/chat?userId=${selectedStudentProfile.uid}&gigId=${gig.id}`}>
-                        <MessageSquare className="mr-1 h-3 w-3"/> Chat
+                        <MessageSquare className="mr-1"/> Chat
                       </Link>
                     </Button>
                 </div>
@@ -624,16 +624,16 @@ export default function AdminGigDetailPage() {
                     <TableCell><Badge variant={getStatusBadgeVariant(applicant.status || 'pending')} className="capitalize text-xs">{applicant.status || 'pending'}</Badge></TableCell>
                     <TableCell className="text-right">
                        <div className="flex flex-col sm:flex-row gap-1.5 justify-end items-center">
-                         <Button variant="outline" size="xs" asChild className="text-xs">
+                         <Button variant="outline" size="sm" asChild>
                            <Link href={`/chat?userId=${applicant.studentId}&gigId=${gig.id}`}>
-                             <MessageSquare className="mr-1 h-3 w-3"/> Chat
+                             <MessageSquare className="mr-1"/> Chat
                            </Link>
                          </Button>
-                         <Button variant="outline" size="xs" asChild className="text-xs">
+                         <Button variant="outline" size="sm" asChild>
                            <Link href={`/profile/${applicant.studentId}`} target="_blank">View Profile</Link>
                          </Button>
-                         <Button variant="destructive" size="xs" className="text-xs" onClick={() => {setApplicantToDelete(applicant); setShowDeleteApplicantDialog(true);}} disabled={isDeletingApplicant && applicantToDelete?.studentId === applicant.studentId}>
-                           {isDeletingApplicant && applicantToDelete?.studentId === applicant.studentId ? <Loader2 className="h-3 w-3 animate-spin"/> : <Trash2 className="h-3 w-3"/>}
+                         <Button variant="destructive" size="sm" onClick={() => {setApplicantToDelete(applicant); setShowDeleteApplicantDialog(true);}} disabled={isDeletingApplicant && applicantToDelete?.studentId === applicant.studentId}>
+                           {isDeletingApplicant && applicantToDelete?.studentId === applicant.studentId ? <Loader2 className="animate-spin"/> : <Trash2 />}
                          </Button>
                        </div>
                     </TableCell>
@@ -660,8 +660,8 @@ export default function AdminGigDetailPage() {
                     <Badge variant={getStatusBadgeVariant(report.clientStatus)} size="sm" className="capitalize text-xs">
                       {report.clientStatus ? report.clientStatus.replace('_', ' ') : 'Awaiting Submission'}
                     </Badge>
-                    <Button variant="destructive" size="xs" onClick={() => {setReportToDeleteNumber(report.reportNumber); setShowDeleteReportDialog(true);}} disabled={isDeletingReport && reportToDeleteNumber === report.reportNumber}>
-                        {isDeletingReport && reportToDeleteNumber === report.reportNumber ? <Loader2 className="h-3 w-3 animate-spin"/> : <Trash2 className="h-3 w-3"/>}
+                    <Button variant="destructive" size="sm" onClick={() => {setReportToDeleteNumber(report.reportNumber); setShowDeleteReportDialog(true);}} disabled={isDeletingReport && reportToDeleteNumber === report.reportNumber}>
+                        {isDeletingReport && reportToDeleteNumber === report.reportNumber ? <Loader2 className="animate-spin"/> : <Trash2/>}
                     </Button>
                   </div>
                 </div>
