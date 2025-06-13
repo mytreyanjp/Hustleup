@@ -4,11 +4,41 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, ShieldCheck, Settings, Briefcase, HelpCircle, Search } from 'lucide-react'; 
+import { Users, ShieldCheck, Settings, Briefcase, HelpCircle, Search, Loader2 } from 'lucide-react'; 
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import { Badge } from '@/components/ui/badge'; // Import Badge component
 
 export default function AdminDashboardPage() {
-  const { userProfile } = useFirebase();
+  const { userProfile, role } = useFirebase();
+  const [pendingSupportRequestsCount, setPendingSupportRequestsCount] = useState<number | null>(null);
+  const [isLoadingSupportCount, setIsLoadingSupportCount] = useState(true);
+
+  useEffect(() => {
+    if (role === 'admin' && db) {
+      setIsLoadingSupportCount(true);
+      const requestsQuery = query(
+        collection(db, 'admin_chat_requests'),
+        where('status', '==', 'pending')
+      );
+
+      const unsubscribe = onSnapshot(requestsQuery, (querySnapshot) => {
+        setPendingSupportRequestsCount(querySnapshot.size);
+        setIsLoadingSupportCount(false);
+      }, (error) => {
+        console.error("Error fetching pending support requests count:", error);
+        setPendingSupportRequestsCount(0); // Default to 0 on error
+        setIsLoadingSupportCount(false);
+      });
+
+      return () => unsubscribe();
+    } else {
+      setIsLoadingSupportCount(false);
+      setPendingSupportRequestsCount(0);
+    }
+  }, [role]);
 
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-0">
@@ -67,7 +97,14 @@ export default function AdminDashboardPage() {
         
         <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
-            <CardTitle className="text-sm font-medium">Support Chat Requests</CardTitle>
+            <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-medium">Support Chat Requests</CardTitle>
+                {isLoadingSupportCount ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                ) : pendingSupportRequestsCount !== null && pendingSupportRequestsCount > 0 && (
+                    <Badge variant="destructive">{pendingSupportRequestsCount}</Badge>
+                )}
+            </div>
             <HelpCircle className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
