@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import NextImage from 'next/image';
-import { Loader2, Send, MessageCircle, UserCircle, Trash2 } from 'lucide-react'; // Added Trash2
+import { Loader2, Send, MessageCircle, UserCircle, Trash2 } from 'lucide-react';
 import { db } from '@/config/firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, increment, Timestamp } from 'firebase/firestore';
 import type { StudentPost, Comment } from '@/types/posts';
@@ -24,8 +24,8 @@ interface PostViewDialogProps {
   viewerUser: FirebaseUser | null;
   viewerUserProfile: UserProfile | null;
   onCommentAdded?: () => void;
-  onInitiateDelete?: (post: StudentPost) => void; // Callback to open delete dialog in parent
-  canViewerDeletePost?: boolean; // Determined by parent
+  onInitiateDelete?: (post: StudentPost) => void; 
+  canViewerDeletePost?: boolean; 
 }
 
 // Simple Mention Renderer (highlights mentions, doesn't link yet)
@@ -246,3 +246,4 @@ export function PostViewDialog({ post, isOpen, onOpenChange, viewerUser, viewerU
     </Dialog>
   );
 }
+

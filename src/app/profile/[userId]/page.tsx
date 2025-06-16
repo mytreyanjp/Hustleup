@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2, Ban, Trash2 } from 'lucide-react'; // Added Trash2
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2, Ban, Trash2 } from 'lucide-react';
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -533,11 +533,18 @@ export default function PublicProfilePage() {
   };
 
   const handleConfirmDeletePost = async () => {
-    if (!postToDelete || !viewerUser || viewerRole !== 'admin' || !profile || profile.role === 'admin' || !db) {
-        toast({title: "Error", description: "Cannot delete post. Invalid conditions or permissions.", variant: "destructive"});
+    if (!postToDelete || !viewerUser || !profile || !db) {
+        toast({title: "Error", description: "Cannot delete post. Invalid conditions.", variant: "destructive"});
         setPostToDelete(null);
         return;
     }
+    // Check if admin OR if it's the user's own post
+    if (viewerRole !== 'admin' && viewerUser.uid !== postToDelete.studentId) {
+        toast({title: "Permission Denied", description: "You can only delete your own posts.", variant: "destructive"});
+        setPostToDelete(null);
+        return;
+    }
+
     setIsDeletingPost(true);
     try {
         // Delete Firestore document
@@ -552,13 +559,12 @@ export default function PublicProfilePage() {
                 await deleteObject(imageRef);
             } catch (storageError: any) {
                 console.warn("Could not delete post image from storage:", storageError);
-                // Non-fatal, image might not exist or rules issue. Toast for admin?
                 if (storageError.code !== 'storage/object-not-found') {
                    toast({ title: "Storage Deletion Issue", description: `Post document deleted, but image removal failed: ${storageError.message}. Check storage rules.`, variant: "default", duration: 7000});
                 }
             }
         }
-        toast({ title: "Post Deleted", description: "The student's post has been successfully removed." });
+        toast({ title: "Post Deleted", description: "The post has been successfully removed." });
         await fetchStudentPosts(); // Refresh the posts list
         if (selectedPostForDialog?.id === postToDelete.id) {
             setSelectedPostForDialog(null); // Close dialog if deleted post was open
@@ -648,7 +654,8 @@ export default function PublicProfilePage() {
 
   const followingCount = profile.following?.length || 0;
   const canAdminBanThisUser = viewerRole === 'admin' && profile.role !== 'admin';
-  const canViewerDeletePostsOnThisProfile = viewerRole === 'admin' && profile.role === 'student';
+  // const canViewerDeletePostsOnThisProfile = viewerRole === 'admin' && profile.role === 'student';
+  const canViewerDeletePostsOnThisProfile = (viewerRole === 'admin' && profile.role === 'student') || (isOwnProfile && profile.role === 'student');
 
 
   return (
@@ -1174,3 +1181,4 @@ export default function PublicProfilePage() {
     </div>
   );
 }
+

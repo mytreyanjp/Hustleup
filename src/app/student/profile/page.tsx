@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc, orderBy, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc, orderBy, arrayUnion, arrayRemove, increment, deleteDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
-import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle as AlertDialogPrimitiveTitle, AlertDialogDescription as AlertDialogPrimitiveDescription } from "@/components/ui/alert-dialog"; // Aliased to avoid conflict
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { PostViewDialog } from '@/components/posts/post-view-dialog';
@@ -32,7 +33,7 @@ import type { StudentPost } from '@/types/posts';
 import { Progress } from '@/components/ui/progress';
 import ReactCrop, { centerCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { Skeleton } from '@/components/ui/skeleton'; // Added Skeleton import
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Helper function to create a cropped image
 function getCroppedImg(image: HTMLImageElement, crop: PixelCrop, fileName: string): Promise<File> {
@@ -148,6 +149,9 @@ export default function StudentProfilePage() {
   const [posts, setPosts] = useState<StudentPost[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(true);
   const [selectedPostForDialog, setSelectedPostForDialog] = useState<StudentPost | null>(null);
+  const [postToDelete, setPostToDelete] = useState<StudentPost | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -229,14 +233,12 @@ export default function StudentProfilePage() {
     if (!authLoading) {
       if (!user || role !== 'student') {
         router.push('/auth/login?redirect=/student/profile');
-      } else if (userProfile) { // Ensure userProfile is available before setting form ready
+      } else if (userProfile) { 
         populateFormAndPreview(userProfile);
         fetchStudentPosts();
         setIsFormReady(true);
       } else {
-        // userProfile is null, but auth is done, and user is a student.
-        // This means profile is still being fetched by FirebaseProvider.
-        setIsFormReady(false); // Keep form not ready
+        setIsFormReady(false); 
       }
     }
   }, [user, userProfile, authLoading, role, router, populateFormAndPreview, fetchStudentPosts]);
@@ -291,7 +293,7 @@ export default function StudentProfilePage() {
   }, [user, userProfile, role, authLoading, toast]);
 
  useEffect(() => {
-    if (selectedFile && !cropModalOpen) { // Only trigger if a new file is selected and cropper isn't open
+    if (selectedFile && !cropModalOpen) { 
         const reader = new FileReader();
         reader.onloadend = () => setImagePreview(reader.result as string);
         reader.readAsDataURL(selectedFile);
@@ -300,12 +302,11 @@ export default function StudentProfilePage() {
     } else if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
         setImagePreview(watchedImageUrl);
         setSelectedPredefinedAvatar(null);
-        setSelectedFile(null); // Clear selected file if URL is used
+        setSelectedFile(null); 
     } else if (!watchedImageUrl && selectedPredefinedAvatar) {
         setImagePreview(selectedPredefinedAvatar);
-        setSelectedFile(null); // Clear selected file if predefined avatar is used
+        setSelectedFile(null); 
     } else if (!watchedImageUrl && !selectedPredefinedAvatar && !selectedFile && !cropModalOpen && userProfile) {
-        // Default to existing profile picture if no other selections are active
         setImagePreview(userProfile.profilePictureUrl || null);
     }
   }, [selectedFile, watchedImageUrl, selectedPredefinedAvatar, userProfile, form, form.formState.errors.imageUrl, cropModalOpen]);
@@ -383,16 +384,12 @@ export default function StudentProfilePage() {
       } else if (selectedPredefinedAvatar) {
         updateData.profilePictureUrl = selectedPredefinedAvatar;
       } else if (form.getValues("imageUrl") === "" && !selectedFile && !selectedPredefinedAvatar) {
-        // This means the user cleared the image URL, has no local file selected, and no predefined avatar.
-        // We should clear the profilePictureUrl in Firestore.
         updateData.profilePictureUrl = "";
       }
-      // If none of the above conditions are met, profilePictureUrl is not included in updateData, so it remains unchanged.
-
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
-      if (refreshUserProfile) await refreshUserProfile(); // Refresh context
+      if (refreshUserProfile) await refreshUserProfile(); 
       setIsEditing(false);
       setShowAvatarGrid(false);
       setSelectedFile(null);
@@ -408,7 +405,7 @@ export default function StudentProfilePage() {
   };
 
   const handleCancelEdit = () => {
-    populateFormAndPreview(userProfile); // Reset form to original profile data
+    populateFormAndPreview(userProfile); 
     setIsEditing(false);
     setShowAvatarGrid(false);
     setSelectedFile(null);
@@ -427,17 +424,17 @@ export default function StudentProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
-    form.setValue("imageUrl", ""); // Clear URL field
-    setSelectedFile(null); // Clear selected file
+    form.setValue("imageUrl", ""); 
+    setSelectedFile(null); 
     setImgSrcToCrop(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setShowAvatarGrid(false); // Close grid after selection
+    setShowAvatarGrid(false); 
   };
 
   const handleFileSelectForCropper = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB
+      if (file.size > 5 * 1024 * 1024) { 
         toast({ title: "File too large", description: "Profile picture must be under 5MB.", variant: "destructive"});
         if(fileInputRef.current) fileInputRef.current.value = "";
         return;
@@ -452,16 +449,14 @@ export default function StudentProfilePage() {
       reader.addEventListener('load', () => setImgSrcToCrop(reader.result?.toString() || null));
       reader.readAsDataURL(file);
       setCropModalOpen(true);
-      form.setValue("imageUrl", ""); // Clear URL field
-      setSelectedPredefinedAvatar(null); // Clear predefined avatar
+      form.setValue("imageUrl", ""); 
+      setSelectedPredefinedAvatar(null); 
     }
   };
 
   const clearImageSelection = () => {
     setSelectedFile(null);
     setImgSrcToCrop(null);
-    // When clearing, reset preview to the original profile picture URL from context
-    // if it's not one of the predefined ones.
     if (userProfile?.profilePictureUrl && !PREDEFINED_AVATARS.some(a => a.url === userProfile.profilePictureUrl)) {
         setImagePreview(userProfile.profilePictureUrl);
         form.setValue("imageUrl", userProfile.profilePictureUrl || "");
@@ -470,7 +465,7 @@ export default function StudentProfilePage() {
         setImagePreview(userProfile.profilePictureUrl);
         setSelectedPredefinedAvatar(userProfile.profilePictureUrl);
         form.setValue("imageUrl", "");
-    } else { // No initial profile picture or it was cleared
+    } else { 
         setImagePreview(null);
         form.setValue("imageUrl", "");
         setSelectedPredefinedAvatar(null);
@@ -478,7 +473,6 @@ export default function StudentProfilePage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
     setCrop(undefined);
     setCompletedCrop(undefined);
-    // Do not close avatar grid here automatically, user might want to pick another
   };
 
 
@@ -537,6 +531,48 @@ export default function StudentProfilePage() {
         setIsLoadingModalList(false);
     }
   };
+  
+  const handleOpenDeletePostDialog = (post: StudentPost) => {
+    setPostToDelete(post);
+  };
+
+  const handleConfirmDeletePost = async () => {
+    if (!postToDelete || !user || user.uid !== postToDelete.studentId || !db) {
+        toast({title: "Error", description: "Cannot delete post. Invalid conditions or permissions.", variant: "destructive"});
+        setPostToDelete(null);
+        return;
+    }
+    setIsDeletingPost(true);
+    try {
+        const postDocRef = doc(db, 'student_posts', postToDelete.id);
+        await deleteDoc(postDocRef);
+
+        if (postToDelete.imageUrl && storage) {
+            try {
+                const imagePath = decodeURIComponent(new URL(postToDelete.imageUrl).pathname.split('/o/')[1].split('?')[0]);
+                const imageRef = storageRefFn(storage, imagePath);
+                await deleteObject(imageRef);
+            } catch (storageError: any) {
+                console.warn("Could not delete post image from storage:", storageError);
+                if (storageError.code !== 'storage/object-not-found') {
+                   toast({ title: "Storage Deletion Issue", description: `Post document deleted, but image removal failed: ${storageError.message}. Check storage rules.`, variant: "default", duration: 7000});
+                }
+            }
+        }
+        toast({ title: "Post Deleted", description: "Your post has been successfully removed." });
+        await fetchStudentPosts(); 
+        if (selectedPostForDialog?.id === postToDelete.id) {
+            setSelectedPostForDialog(null); 
+        }
+    } catch (error: any) {
+        console.error("Error deleting post:", error);
+        toast({ title: "Deletion Failed", description: `Could not delete post: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsDeletingPost(false);
+        setPostToDelete(null);
+    }
+  };
+
 
   const followersCount = userProfile?.followersCount || 0;
   const followingCount = userProfile?.following?.length || 0;
@@ -879,28 +915,39 @@ export default function StudentProfilePage() {
           ) : posts.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
               {posts.map(post => (
-                <button
-                  key={post.id}
-                  className="aspect-square relative group overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                  onClick={() => setSelectedPostForDialog(post)}
-                  aria-label={`View post: ${post.caption || 'Image post'}`}
-                  disabled={userProfile.isBanned}
-                >
-                  {post.imageUrl && post.imageUrl.trim() !== '' ? (
-                    <Image
-                      src={post.imageUrl}
-                      alt={post.caption || `Post by ${userProfile.username || 'user'}`}
-                      layout="fill"
-                      objectFit="cover"
-                      className="group-hover:scale-105 transition-transform duration-300"
-                      data-ai-hint="student work"
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full w-full bg-muted rounded-md">
-                      <ImageIconLucide className="h-12 w-12 text-muted-foreground" />
-                    </div>
-                  )}
-                </button>
+                <div key={post.id} className="relative group">
+                  <button
+                    className="aspect-square w-full relative group/post-item overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                    onClick={() => setSelectedPostForDialog(post)}
+                    aria-label={`View post: ${post.caption || 'Image post'}`}
+                    disabled={userProfile.isBanned}
+                  >
+                    {post.imageUrl && post.imageUrl.trim() !== '' ? (
+                      <Image
+                        src={post.imageUrl}
+                        alt={post.caption || `Post by ${userProfile.username || 'user'}`}
+                        layout="fill"
+                        objectFit="cover"
+                        className="group-hover/post-item:scale-105 transition-transform duration-300"
+                        data-ai-hint="student work"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full w-full bg-muted rounded-md">
+                        <ImageIconLucide className="h-12 w-12 text-muted-foreground" />
+                      </div>
+                    )}
+                  </button>
+                  <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                      onClick={() => handleOpenDeletePostDialog(post)}
+                      title="Delete Post"
+                      disabled={userProfile.isBanned}
+                  >
+                      <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
               ))}
             </div>
           ) : (
@@ -922,8 +969,29 @@ export default function StudentProfilePage() {
           viewerUser={user}
           viewerUserProfile={userProfile}
           onCommentAdded={fetchStudentPosts}
+          onInitiateDelete={handleOpenDeletePostDialog} 
+          canViewerDeletePost={user?.uid === selectedPostForDialog.studentId} 
         />
       )}
+      
+      <AlertDialog open={!!postToDelete} onOpenChange={(isOpen) => !isOpen && setPostToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogPrimitiveTitle>Delete this post?</AlertDialogPrimitiveTitle>
+            <AlertDialogPrimitiveDescription>
+              This action cannot be undone. The post and its image will be permanently deleted.
+            </AlertDialogPrimitiveDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingPost}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeletePost} disabled={isDeletingPost} className="bg-destructive hover:bg-destructive/90">
+              {isDeletingPost ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Yes, Delete Post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       <Dialog open={cropModalOpen} onOpenChange={(open) => { if (!open) { setCropModalOpen(false); setImgSrcToCrop(null); if (fileInputRef.current) fileInputRef.current.value = ""; } }}>
         <DialogContent className="max-w-md">
