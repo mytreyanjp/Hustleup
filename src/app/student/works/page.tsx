@@ -711,8 +711,8 @@ export default function StudentWorksPage() {
   if (error) return (
       <div
         className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] mt-[-2rem] mb-[-2rem] bg-cover bg-center bg-no-repeat bg-fixed flex items-center justify-center"
-        style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=Dynamic+Background')" }}
-        data-ai-hint="workspace desk"
+        style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
+        data-ai-hint="modern office"
       >
         <div className="absolute inset-0 bg-background/80 backdrop-blur-lg"></div>
         <div className="text-center py-10 text-destructive relative z-10 p-4 bg-background/80 rounded-lg shadow-xl">
@@ -725,8 +725,8 @@ export default function StudentWorksPage() {
   return (
     <div
       className="relative min-h-[calc(100vh-4rem)] w-screen ml-[calc(50%-50vw)] mt-[-2rem] mb-[-2rem] bg-cover bg-center bg-no-repeat bg-fixed"
-      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=Dynamic+Background')" }}
-      data-ai-hint="workspace desk"
+      style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
+      data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
       <div className="container mx-auto px-4 py-8 relative z-10">
