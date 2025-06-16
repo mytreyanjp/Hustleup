@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays, CircleDollarSign } from 'lucide-react';
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays, CircleDollarSign, Share2, Link as LinkIcon, Trash2, IndianRupee } from 'lucide-react'; // Added Share2, LinkIcon, Trash2, IndianRupee
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -22,7 +22,7 @@ import { StarRating } from '@/components/ui/star-rating';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
+import type { NotificationType } from '@/types/notifications'; 
 
 
 interface ApplicantInfo {
@@ -42,9 +42,9 @@ interface Attachment {
 
 interface StudentSubmission {
   text: string;
-  fileUrl?: string; // For backward compatibility
-  fileName?: string; // For backward compatibility
-  attachments?: Attachment[]; // New field for multiple attachments
+  fileUrl?: string; 
+  fileName?: string; 
+  attachments?: Attachment[]; 
   submittedAt: Timestamp;
 }
 
@@ -74,6 +74,7 @@ interface Gig {
   currency: "INR";
   numberOfReports?: number;
   progressReports?: ProgressReport[];
+  sharedDriveLink?: string; 
 }
 
 interface Review {
@@ -145,6 +146,10 @@ export default function ManageGigPage() {
 
   const [currentReviewingReportNumber, setCurrentReviewingReportNumber] = useState<number | null>(null);
   const [clientFeedbackText, setClientFeedbackText] = useState("");
+
+  const [driveLinkInput, setDriveLinkInput] = useState('');
+  const [isEditingDriveLink, setIsEditingDriveLink] = useState(false);
+  const [isSavingDriveLink, setIsSavingDriveLink] = useState(false);
 
 
    const handlePaymentSuccess = async (paymentDetails: { paymentId: string; orderId?: string; signature?: string }) => {
@@ -242,6 +247,8 @@ export default function ManageGigPage() {
                     }
                     fetchedGig.progressReports = completeProgressReports;
                     setGig(fetchedGig);
+                    setDriveLinkInput(fetchedGig.sharedDriveLink || '');
+
 
                     if ((fetchedGig.status === 'completed' || fetchedGig.status === 'awaiting_payout') && fetchedGig.selectedStudentId) {
                         const reviewsQuery = query( collection(db, 'reviews'), where('gigId', '==', gigId), where('clientId', '==', user.uid), where('studentId', '==', fetchedGig.selectedStudentId) );
@@ -450,6 +457,58 @@ export default function ManageGigPage() {
     }
   };
 
+  const handleSaveDriveLink = async () => {
+    if (!gig || !db || !user || !userProfile) return;
+    if (!driveLinkInput.trim()) {
+      toast({ title: "Invalid Link", description: "Please provide a valid drive link.", variant: "destructive" });
+      return;
+    }
+    setIsSavingDriveLink(true);
+    try {
+      const gigDocRef = doc(db, 'gigs', gig.id);
+      await updateDoc(gigDocRef, { sharedDriveLink: driveLinkInput.trim() });
+      setGig(prev => prev ? { ...prev, sharedDriveLink: driveLinkInput.trim() } : null);
+      toast({ title: "Drive Link Saved", description: "The shared drive link has been updated." });
+      setIsEditingDriveLink(false);
+
+      if (gig.selectedStudentId) {
+        await createNotification(
+          gig.selectedStudentId,
+          `${userProfile.companyName || userProfile.username || 'The client'} has ${gig.sharedDriveLink ? 'updated' : 'added'} the shared drive link for the gig "${gig.title}".`,
+          'gig_drive_link_updated',
+          gig.id,
+          gig.title,
+          `/gigs/${gig.id}`,
+          user.uid,
+          userProfile.companyName || userProfile.username || 'The Client'
+        );
+      }
+    } catch (err: any) {
+      console.error("Error saving drive link:", err);
+      toast({ title: "Save Failed", description: `Could not save drive link: ${err.message}`, variant: "destructive" });
+    } finally {
+      setIsSavingDriveLink(false);
+    }
+  };
+
+  const handleRemoveDriveLink = async () => {
+    if (!gig || !db) return;
+    setIsSavingDriveLink(true);
+    try {
+      const gigDocRef = doc(db, 'gigs', gig.id);
+      await updateDoc(gigDocRef, { sharedDriveLink: "" }); // Or deleteField() if preferred
+      setGig(prev => prev ? { ...prev, sharedDriveLink: "" } : null);
+      setDriveLinkInput("");
+      toast({ title: "Drive Link Removed" });
+      setIsEditingDriveLink(false);
+    } catch (err: any) {
+      console.error("Error removing drive link:", err);
+      toast({ title: "Remove Failed", description: `Could not remove drive link: ${err.message}`, variant: "destructive" });
+    } finally {
+      setIsSavingDriveLink(false);
+    }
+  };
+
 
    const formatDate = (timestamp: Timestamp | undefined | null): string => {
      if (!timestamp) return 'N/A';
@@ -573,7 +632,7 @@ export default function ManageGigPage() {
                                                 {report.studentSubmission.attachments.map((att, idx) => (
                                                   <Button key={idx} variant="link" size="xs" asChild className="p-0 h-auto text-xs block">
                                                     <a href={att.url} target="_blank" rel="noopener noreferrer">
-                                                      <FileText className="mr-1 h-3 w-3" /> {att.name}
+                                                      <FileText className="mr-1 h-3 w-3" /> View Attachment ({att.name})
                                                     </a>
                                                   </Button>
                                                 ))}
@@ -623,6 +682,52 @@ export default function ManageGigPage() {
                     </div>
                 </div>
               )}
+               {/* Shared Drive Link Section */}
+                <Card className="mt-4 glass-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-md flex items-center gap-2"><Share2 className="h-5 w-5 text-primary"/>Shared Resources</CardTitle>
+                    <CardDescription className="text-xs">Share a Google Drive, Dropbox, or other cloud storage link with your student.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {isEditingDriveLink ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="url"
+                            placeholder="https://drive.google.com/..."
+                            value={driveLinkInput}
+                            onChange={(e) => setDriveLinkInput(e.target.value)}
+                            disabled={isSavingDriveLink}
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => {setIsEditingDriveLink(false); setDriveLinkInput(gig?.sharedDriveLink || '');}} disabled={isSavingDriveLink}>Cancel</Button>
+                          <Button size="sm" onClick={handleSaveDriveLink} disabled={isSavingDriveLink || !driveLinkInput.trim()}>
+                            {isSavingDriveLink && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Link
+                          </Button>
+                        </div>
+                      </div>
+                    ) : gig?.sharedDriveLink ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Current Shared Link:</p>
+                        <a href={gig.sharedDriveLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all block">
+                          {gig.sharedDriveLink}
+                        </a>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button variant="outline" size="sm" onClick={() => setIsEditingDriveLink(true)}><Edit3 className="mr-2 h-3 w-3" /> Edit</Button>
+                            <Button variant="destructive" size="sm" onClick={handleRemoveDriveLink} disabled={isSavingDriveLink}><Trash2 className="mr-2 h-3 w-3" /> Remove</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-2">No link shared yet.</p>
+                        <Button variant="outline" size="sm" onClick={() => setIsEditingDriveLink(true)}><PlusCircle className="mr-2 h-4 w-4"/> Add Link</Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
                 <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Gig Payment: **INR {gig.budget.toFixed(2)}**. Ready to pay for the completed work by {selectedStudent.studentUsername}? </p>

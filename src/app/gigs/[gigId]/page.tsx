@@ -10,13 +10,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CalendarDays, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban, IndianRupee } from 'lucide-react'; // Added IndianRupee
+import { Loader2, CalendarDays, Send, UserCircle, ArrowLeft, Bookmark, BookmarkCheck, Globe, Building, Share2, Layers, Edit, FileText as FileIconLucide, MessageSquare, Hourglass, Ban, IndianRupee, Link as LinkIcon } from 'lucide-react'; // Added IndianRupee, LinkIcon
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
+import type { NotificationType } from '@/types/notifications'; 
 
 // Define ProgressReport related interfaces directly here or import if moved to a shared types file
 interface StudentSubmission {
@@ -53,6 +53,7 @@ interface Gig {
   selectedStudentId?: string | null;
   numberOfReports?: number;
   progressReports?: ProgressReport[];
+  sharedDriveLink?: string; 
 }
 
 // Notification creation helper
@@ -541,6 +542,14 @@ export default function GigDetailPage() {
                    <span className="text-muted-foreground mr-1">Deadline:</span> <span className="font-medium">{formatDeadline(gig.deadline)}</span>
               </div>
            </div>
+            {isGigInProgressForCurrentUser && gig.sharedDriveLink && (
+                <div className="pt-3 border-t">
+                    <h3 className="font-semibold mb-1 text-md flex items-center gap-2"><LinkIcon className="h-4 w-4 text-muted-foreground" /> Shared Resources by Client</h3>
+                    <a href={gig.sharedDriveLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all block">
+                        {gig.sharedDriveLink}
+                    </a>
+                </div>
+            )}
         </CardContent>
         {!isGigInProgressForCurrentUser && viewerRole !== 'admin' && (
             <CardFooter>
@@ -733,3 +742,4 @@ export default function GigDetailPage() {
     </div>
   );
 }
+

@@ -10,7 +10,7 @@ import { ref as storageRefFn, uploadBytesResumable, getDownloadURL, deleteObject
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass } from 'lucide-react';
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon } from 'lucide-react'; // Added LinkIcon
 import Link from 'next/link';
 import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from '@/lib/utils';
-import type { NotificationType } from '@/types/notifications'; // Added NotificationType import
+import type { NotificationType } from '@/types/notifications'; 
 import { Progress } from '@/components/ui/progress';
 
 interface Attachment {
@@ -65,6 +65,7 @@ interface WorkGig {
   effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
   nextUpcomingDeadline?: Timestamp | null;
   paymentRequestAvailableAt?: Timestamp | null;
+  sharedDriveLink?: string; 
 }
 
 type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
@@ -247,6 +248,7 @@ export default function StudentWorksPage() {
               studentPaymentRequestPending: gigData.studentPaymentRequestPending || false,
               progressReports: completeProgressReports,
               paymentRequestAvailableAt: paymentRequestAvailableAtCalc,
+              sharedDriveLink: gigData.sharedDriveLink || "", 
             } as WorkGig;
           });
 
@@ -860,6 +862,15 @@ export default function StudentWorksPage() {
                     {gig.nextUpcomingDeadline && gig.nextUpcomingDeadline.toMillis() !== gig.deadline.toMillis() && (
                          <div className="flex items-center text-xs sm:text-sm text-amber-600 dark:text-amber-400"> <CalendarDays className="mr-2 h-4 w-4" /> <span className="font-semibold mr-1">Next Report Due:</span> <span className="font-medium">{formatDeadlineDate(gig.nextUpcomingDeadline)}</span> </div>
                     )}
+                    {gig.sharedDriveLink && (
+                        <div className="pt-2 border-t">
+                            <h4 className="font-semibold mt-1 mb-1 text-sm flex items-center gap-1"><LinkIcon className="h-4 w-4 text-muted-foreground" /> Client Shared Link:</h4>
+                            <a href={gig.sharedDriveLink} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all block">
+                                {gig.sharedDriveLink}
+                            </a>
+                        </div>
+                    )}
+
 
                     {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                       <div className="pt-2 border-t">

@@ -18,7 +18,8 @@ export type NotificationType =
   | 'report_submitted'           // For client, when student submits a progress report
   | 'report_reviewed'            // For student, when client reviews their report
   | 'report_attachment_deleted'  // For student/client, when admin deletes an attachment from a report
-  | 'payment_requested_by_student'; // For client, when student requests payment for a gig
+  | 'payment_requested_by_student' // For client, when student requests payment for a gig
+  | 'gig_drive_link_updated';    // For student, when client adds/updates shared drive link
 
 export interface Notification {
   id: string; // Firestore document ID
@@ -45,3 +46,4 @@ export interface PushSubscriptionJSON {
     auth: string;
   };
 }
+
