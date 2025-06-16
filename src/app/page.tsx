@@ -48,8 +48,8 @@ export default function Home() {
 
   return (
     <div
-      className="relative min-h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=HustleUp+Welcome')" }}
+      className="relative min-h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat bg-fixed"
+      style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
       data-ai-hint="modern office"
     >
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
