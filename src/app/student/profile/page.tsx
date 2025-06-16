@@ -25,7 +25,16 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle as AlertDialogPrimitiveTitle, AlertDialogDescription as AlertDialogPrimitiveDescription } from "@/components/ui/alert-dialog"; // Aliased to avoid conflict
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle as AlertDialogPrimitiveTitle,
+  AlertDialogDescription as AlertDialogPrimitiveDescription,
+  AlertDialogFooter // Added missing import
+} from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { PostViewDialog } from '@/components/posts/post-view-dialog';
@@ -233,12 +242,12 @@ export default function StudentProfilePage() {
     if (!authLoading) {
       if (!user || role !== 'student') {
         router.push('/auth/login?redirect=/student/profile');
-      } else if (userProfile) { 
+      } else if (userProfile) {
         populateFormAndPreview(userProfile);
         fetchStudentPosts();
         setIsFormReady(true);
       } else {
-        setIsFormReady(false); 
+        setIsFormReady(false);
       }
     }
   }, [user, userProfile, authLoading, role, router, populateFormAndPreview, fetchStudentPosts]);
@@ -263,7 +272,7 @@ export default function StudentProfilePage() {
             }
           });
           setActiveApplicationsCount(activeApps);
-          
+
           setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
 
           const currentWorksQuery = query(collection(db, 'gigs'), where('selectedStudentId', '==', user.uid), where('status', '==', 'in-progress'));
@@ -293,7 +302,7 @@ export default function StudentProfilePage() {
   }, [user, userProfile, role, authLoading, toast]);
 
  useEffect(() => {
-    if (selectedFile && !cropModalOpen) { 
+    if (selectedFile && !cropModalOpen) {
         const reader = new FileReader();
         reader.onloadend = () => setImagePreview(reader.result as string);
         reader.readAsDataURL(selectedFile);
@@ -302,10 +311,10 @@ export default function StudentProfilePage() {
     } else if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
         setImagePreview(watchedImageUrl);
         setSelectedPredefinedAvatar(null);
-        setSelectedFile(null); 
+        setSelectedFile(null);
     } else if (!watchedImageUrl && selectedPredefinedAvatar) {
         setImagePreview(selectedPredefinedAvatar);
-        setSelectedFile(null); 
+        setSelectedFile(null);
     } else if (!watchedImageUrl && !selectedPredefinedAvatar && !selectedFile && !cropModalOpen && userProfile) {
         setImagePreview(userProfile.profilePictureUrl || null);
     }
@@ -325,7 +334,7 @@ export default function StudentProfilePage() {
       const originalFile = (fileInputRef.current?.files && fileInputRef.current.files[0]) || new File([], "cropped-image.png", {type: "image/png"});
       const croppedFile = await getCroppedImg(imgRef.current, completedCrop, originalFile.name);
       setSelectedFile(croppedFile);
-      
+
       const reader = new FileReader();
       reader.onloadend = () => setImagePreview(reader.result as string);
       reader.readAsDataURL(croppedFile);
@@ -389,7 +398,7 @@ export default function StudentProfilePage() {
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
-      if (refreshUserProfile) await refreshUserProfile(); 
+      if (refreshUserProfile) await refreshUserProfile();
       setIsEditing(false);
       setShowAvatarGrid(false);
       setSelectedFile(null);
@@ -405,7 +414,7 @@ export default function StudentProfilePage() {
   };
 
   const handleCancelEdit = () => {
-    populateFormAndPreview(userProfile); 
+    populateFormAndPreview(userProfile);
     setIsEditing(false);
     setShowAvatarGrid(false);
     setSelectedFile(null);
@@ -420,21 +429,21 @@ export default function StudentProfilePage() {
     if (email) return email.substring(0, 2).toUpperCase();
     return '??';
   };
-  
+
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
-    form.setValue("imageUrl", ""); 
-    setSelectedFile(null); 
+    form.setValue("imageUrl", "");
+    setSelectedFile(null);
     setImgSrcToCrop(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setShowAvatarGrid(false); 
+    setShowAvatarGrid(false);
   };
 
   const handleFileSelectForCropper = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { 
+      if (file.size > 5 * 1024 * 1024) {
         toast({ title: "File too large", description: "Profile picture must be under 5MB.", variant: "destructive"});
         if(fileInputRef.current) fileInputRef.current.value = "";
         return;
@@ -449,8 +458,8 @@ export default function StudentProfilePage() {
       reader.addEventListener('load', () => setImgSrcToCrop(reader.result?.toString() || null));
       reader.readAsDataURL(file);
       setCropModalOpen(true);
-      form.setValue("imageUrl", ""); 
-      setSelectedPredefinedAvatar(null); 
+      form.setValue("imageUrl", "");
+      setSelectedPredefinedAvatar(null);
     }
   };
 
@@ -465,7 +474,7 @@ export default function StudentProfilePage() {
         setImagePreview(userProfile.profilePictureUrl);
         setSelectedPredefinedAvatar(userProfile.profilePictureUrl);
         form.setValue("imageUrl", "");
-    } else { 
+    } else {
         setImagePreview(null);
         form.setValue("imageUrl", "");
         setSelectedPredefinedAvatar(null);
@@ -531,7 +540,7 @@ export default function StudentProfilePage() {
         setIsLoadingModalList(false);
     }
   };
-  
+
   const handleOpenDeletePostDialog = (post: StudentPost) => {
     setPostToDelete(post);
   };
@@ -560,9 +569,9 @@ export default function StudentProfilePage() {
             }
         }
         toast({ title: "Post Deleted", description: "Your post has been successfully removed." });
-        await fetchStudentPosts(); 
+        await fetchStudentPosts();
         if (selectedPostForDialog?.id === postToDelete.id) {
-            setSelectedPostForDialog(null); 
+            setSelectedPostForDialog(null);
         }
     } catch (error: any) {
         console.error("Error deleting post:", error);
@@ -673,7 +682,7 @@ export default function StudentProfilePage() {
                     </div>
                   </div>
                 )}
-                
+
                  <FormItem>
                   <FormLabel className="flex items-center gap-1">
                     <UploadCloud className="h-4 w-4 text-muted-foreground" /> Upload Profile Picture
@@ -706,9 +715,9 @@ export default function StudentProfilePage() {
                          <LinkIconLucide className="h-4 w-4 text-muted-foreground" /> Or Enter Image URL
                       </FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="https://example.com/image.png" 
-                          {...field} 
+                        <Input
+                          placeholder="https://example.com/image.png"
+                          {...field}
                           onChange={(e) => {
                             field.onChange(e);
                             if (e.target.value) {
@@ -969,11 +978,11 @@ export default function StudentProfilePage() {
           viewerUser={user}
           viewerUserProfile={userProfile}
           onCommentAdded={fetchStudentPosts}
-          onInitiateDelete={handleOpenDeletePostDialog} 
-          canViewerDeletePost={user?.uid === selectedPostForDialog.studentId} 
+          onInitiateDelete={handleOpenDeletePostDialog}
+          canViewerDeletePost={user?.uid === selectedPostForDialog.studentId}
         />
       )}
-      
+
       <AlertDialog open={!!postToDelete} onOpenChange={(isOpen) => !isOpen && setPostToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1081,4 +1090,4 @@ export default function StudentProfilePage() {
     </div>
   );
 }
-    
+
