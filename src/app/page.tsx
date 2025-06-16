@@ -47,14 +47,16 @@ export default function Home() {
   }
 
   return (
-    <div
-      className="relative min-h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat bg-fixed"
-      style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
-      data-ai-hint="modern office"
-    >
-      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
+    <>
+      <div
+        className="fixed inset-0 -z-10 h-screen w-screen overflow-hidden bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url('https://picsum.photos/1980/1080')" }}
+        data-ai-hint="modern office"
+      >
+        <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
+      </div>
       
-      <div className="relative z-0 flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4 py-8">
+      <div className="relative z-0 flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center">
         <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
           Welcome to HustleUp by PromoFlix
         </h1>
@@ -82,7 +84,6 @@ export default function Home() {
           </Button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
-
