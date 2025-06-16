@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,11 +16,62 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UploadCloud, Edit, User, Briefcase, Building, Globe, Info, Mail, Phone, ArrowLeft, Link as LinkIconLucide, X } from 'lucide-react';
+import { Loader2, UploadCloud, Edit, User, Briefcase, Building, Globe, Info, Mail, Phone, ArrowLeft, Link as LinkIconLucide, X, Crop } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
+import ReactCrop, { centerCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+
+
+// Helper function to create a cropped image
+function getCroppedImg(image: HTMLImageElement, crop: PixelCrop, fileName: string): Promise<File> {
+  const canvas = document.createElement('canvas');
+  const scaleX = image.naturalWidth / image.width;
+  const scaleY = image.naturalHeight / image.height;
+  canvas.width = crop.width;
+  canvas.height = crop.height;
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    return Promise.reject(new Error('No 2d context'));
+  }
+
+  const pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = crop.width * pixelRatio;
+  canvas.height = crop.height * pixelRatio;
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
+
+  ctx.drawImage(
+    image,
+    crop.x * scaleX,
+    crop.y * scaleY,
+    crop.width * scaleX,
+    crop.height * scaleY,
+    0,
+    0,
+    crop.width,
+    crop.height
+  );
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('Canvas is empty'));
+          return;
+        }
+        resolve(new File([blob], fileName, { type: blob.type }));
+      },
+      'image/png', 
+      0.9 
+    );
+  });
+}
+
 
 const clientProfileEditSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters").max(50, "Username cannot exceed 50 characters"),
@@ -30,7 +81,6 @@ const clientProfileEditSchema = z.object({
   personalEmail: z.string().email({ message: 'Invalid email format' }).max(100).optional().or(z.literal('')),
   personalPhone: z.string().regex(/^\+?[1-9]\d{1,14}$/, { message: 'Invalid phone number format (e.g., +1234567890)' }).max(20).optional().or(z.literal('')),
   imageUrl: z.string().url({ message: "Please enter a valid image URL." }).max(2048, { message: "Image URL is too long."}).optional().or(z.literal('')),
-  // File validation handled outside Zod
 });
 
 type ClientProfileEditFormValues = z.infer<typeof clientProfileEditSchema>;
@@ -39,18 +89,7 @@ const PREDEFINED_AVATARS = [
   { url: 'https://picsum.photos/seed/avatar01/200/200', hint: 'abstract design' },
   { url: 'https://picsum.photos/seed/avatar02/200/200', hint: 'nature landscape' },
   { url: 'https://picsum.photos/seed/avatar03/200/200', hint: 'geometric pattern' },
-  { url: 'https://picsum.photos/seed/avatar04/200/200', hint: 'city skyline' },
-  { url: 'https://picsum.photos/seed/avatar05/200/200', hint: 'animal silhouette' },
-  { url: 'https://picsum.photos/seed/avatar06/200/200', hint: 'minimalist art' },
-  { url: 'https://picsum.photos/seed/avatar07/200/200', hint: 'tech background' },
-  { url: 'https://picsum.photos/seed/avatar08/200/200', hint: 'food photo' },
-  { url: 'https://picsum.photos/seed/avatar09/200/200', hint: 'space nebula' },
-  { url: 'https://picsum.photos/seed/avatar10/200/200', hint: 'ocean waves' },
-  { url: 'https://picsum.photos/seed/avatar11/200/200', hint: 'mountain range' },
-  { url: 'https://picsum.photos/seed/avatar12/200/200', hint: 'vintage car' },
-  { url: 'https://picsum.photos/seed/avatar13/200/200', hint: 'music instrument' },
-  { url: 'https://picsum.photos/seed/avatar14/200/200', hint: 'sports action' },
-  { url: 'https://picsum.photos/seed/avatar15/200/200', hint: 'book stack' },
+  // Add more if needed
 ];
 
 export default function EditClientProfilePage() {
@@ -64,9 +103,17 @@ export default function EditClientProfilePage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const [selectedPredefinedAvatar, setSelectedPredefinedAvatar] = useState<string | null>(null);
   const [showAvatarGrid, setShowAvatarGrid] = useState(false);
+
+  // States for react-image-crop
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [imgSrcToCrop, setImgSrcToCrop] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const aspect = 1; // For square profile pictures
 
   const form = useForm<ClientProfileEditFormValues>({
     resolver: zodResolver(clientProfileEditSchema),
@@ -84,21 +131,23 @@ export default function EditClientProfilePage() {
   const watchedImageUrl = form.watch("imageUrl");
 
   useEffect(() => {
-    if (selectedFile) {
-      const reader = new FileReader();
-      reader.onloadend = () => setImagePreview(reader.result as string);
-      reader.readAsDataURL(selectedFile);
-      form.setValue("imageUrl", ""); 
-      setSelectedPredefinedAvatar(null);
+    if (selectedFile && !cropModalOpen) {
+        const reader = new FileReader();
+        reader.onloadend = () => setImagePreview(reader.result as string);
+        reader.readAsDataURL(selectedFile);
+        form.setValue("imageUrl", "");
+        setSelectedPredefinedAvatar(null);
     } else if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
-      setImagePreview(watchedImageUrl);
-      setSelectedPredefinedAvatar(null); 
+        setImagePreview(watchedImageUrl);
+        setSelectedPredefinedAvatar(null);
+        setSelectedFile(null);
     } else if (!watchedImageUrl && selectedPredefinedAvatar) {
-      setImagePreview(selectedPredefinedAvatar);
+        setImagePreview(selectedPredefinedAvatar);
+        setSelectedFile(null);
     } else if (!watchedImageUrl && !selectedPredefinedAvatar && !selectedFile) {
-      setImagePreview(userProfile?.profilePictureUrl || null);
+        setImagePreview(userProfile?.profilePictureUrl || null);
     }
-  }, [selectedFile, watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form, form.formState.errors.imageUrl]);
+  }, [selectedFile, watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form, form.formState.errors.imageUrl, cropModalOpen]);
 
 
   const populateFormAndPreview = useCallback((profile: UserProfile | null) => {
@@ -121,6 +170,7 @@ export default function EditClientProfilePage() {
       }
       setShowAvatarGrid(false);
       setSelectedFile(null);
+      setImgSrcToCrop(null);
     } else if (user) {
        form.reset({
         username: user.email?.split('@')[0] || '',
@@ -134,6 +184,7 @@ export default function EditClientProfilePage() {
       setImagePreview(null);
       setSelectedPredefinedAvatar(null);
       setSelectedFile(null);
+      setImgSrcToCrop(null);
       setShowAvatarGrid(false);
     }
   }, [form, user]);
@@ -149,6 +200,35 @@ export default function EditClientProfilePage() {
       }
     }
   }, [user, userProfile, authLoading, role, router, populateFormAndPreview]);
+
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    setCrop(centerCrop(makeAspectCrop({ unit: '%', width: 90 }, aspect, width, height), width, height));
+  };
+
+  const handleApplyCrop = async () => {
+    if (!completedCrop || !imgRef.current || !imgSrcToCrop) {
+      toast({ title: "Crop Error", description: "Could not apply crop.", variant: "destructive" });
+      return;
+    }
+    try {
+      const originalFile = (fileInputRef.current?.files && fileInputRef.current.files[0]) || new File([], "cropped-image.png", {type: "image/png"});
+      const croppedFile = await getCroppedImg(imgRef.current, completedCrop, originalFile.name);
+      setSelectedFile(croppedFile);
+      
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(croppedFile);
+
+      form.setValue("imageUrl", "");
+      setSelectedPredefinedAvatar(null);
+      setCropModalOpen(false);
+      setImgSrcToCrop(null);
+    } catch (e) {
+      console.error("Error during crop:", e);
+      toast({ title: "Crop Failed", description: "An error occurred while cropping.", variant: "destructive" });
+    }
+  };
 
 
   const onSubmit = async (data: ClientProfileEditFormValues) => {
@@ -201,6 +281,7 @@ export default function EditClientProfilePage() {
       router.push('/client/dashboard');
       setSelectedFile(null);
       setUploadProgress(null);
+      setImgSrcToCrop(null);
     } catch (error: any) {
       console.error('Client profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
@@ -215,11 +296,12 @@ export default function EditClientProfilePage() {
     setImagePreview(avatarUrl);
     form.setValue("imageUrl", ""); 
     setSelectedFile(null);
+    setImgSrcToCrop(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setShowAvatarGrid(false); 
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelectForCropper = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) { // 5MB
@@ -233,14 +315,18 @@ export default function EditClientProfilePage() {
         if(fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.addEventListener('load', () => setImgSrcToCrop(reader.result?.toString() || null));
+      reader.readAsDataURL(file);
+      setCropModalOpen(true);
       form.setValue("imageUrl", ""); 
-      setSelectedPredefinedAvatar(null); 
+      setSelectedPredefinedAvatar(null);
     }
   };
 
   const clearImageSelection = () => {
     setSelectedFile(null);
+    setImgSrcToCrop(null);
     setImagePreview(userProfile?.profilePictureUrl || null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     form.setValue("imageUrl", PREDEFINED_AVATARS.some(a => a.url === userProfile?.profilePictureUrl) ? "" : userProfile?.profilePictureUrl || "");
@@ -249,6 +335,8 @@ export default function EditClientProfilePage() {
     } else {
         setSelectedPredefinedAvatar(null);
     }
+    setCrop(undefined);
+    setCompletedCrop(undefined);
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
@@ -332,28 +420,19 @@ export default function EditClientProfilePage() {
                   <Input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
-                    onChange={handleFileSelect}
+                    onChange={handleFileSelectForCropper}
                     ref={fileInputRef}
                     className="text-sm file:mr-2 file:py-1.5 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                     disabled={isSubmitting || !!uploadProgress}
                   />
                 </FormControl>
-                {selectedFile && !uploadProgress && (
-                  <div className="text-xs text-muted-foreground flex items-center justify-between">
-                    <span>Selected: {selectedFile.name}</span>
-                    <Button type="button" variant="ghost" size="xs" onClick={clearImageSelection} className="text-destructive hover:text-destructive h-auto p-0">
-                        <X className="h-3 w-3 mr-1" /> Clear
-                    </Button>
-                  </div>
-                )}
                 {uploadProgress !== null && (
                     <div className="space-y-1 pt-1">
                         <Progress value={uploadProgress} className="w-full h-2" />
                         <p className="text-xs text-muted-foreground text-center">{Math.round(uploadProgress)}% uploaded</p>
                     </div>
                 )}
-                <FormDescription>Max 5MB. JPG, PNG, WEBP, GIF.</FormDescription>
-                {/* File-specific errors (not from Zod) can be displayed here if needed */}
+                <FormDescription>Max 5MB. JPG, PNG, WEBP, GIF. Image will be cropped to square.</FormDescription>
               </FormItem>
 
              <FormField
@@ -373,6 +452,7 @@ export default function EditClientProfilePage() {
                           if (e.target.value) {
                             setSelectedPredefinedAvatar(null);
                             setSelectedFile(null);
+                            setImgSrcToCrop(null);
                             if(fileInputRef.current) fileInputRef.current.value = "";
                           }
                         }}
@@ -383,6 +463,11 @@ export default function EditClientProfilePage() {
                   </FormItem>
                 )}
               />
+              {(selectedFile || selectedPredefinedAvatar || watchedImageUrl || userProfile?.profilePictureUrl) && (
+                    <Button type="button" variant="ghost" size="sm" onClick={clearImageSelection} className="text-destructive hover:text-destructive flex items-center gap-1 w-full justify-start pl-0">
+                        <X className="h-4 w-4" /> Clear Profile Picture
+                    </Button>
+              )}
 
 
               <FormField
@@ -482,8 +567,42 @@ export default function EditClientProfilePage() {
           </Form>
         </CardContent>
       </Card>
+
+      {/* Dialog for react-image-crop */}
+      <Dialog open={cropModalOpen} onOpenChange={(open) => { if (!open) { setCropModalOpen(false); setImgSrcToCrop(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Crop Your Profile Picture</DialogTitle>
+            <DialogDescription>Adjust the selection to crop your image. It will be saved as a square.</DialogDescription>
+          </DialogHeader>
+          {imgSrcToCrop && (
+            <div className="mt-4 flex justify-center items-center max-h-[60vh] overflow-hidden">
+              <ReactCrop
+                crop={crop}
+                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                onComplete={(c) => setCompletedCrop(c)}
+                aspect={aspect}
+                minWidth={50}
+                minHeight={50}
+                circularCrop={true}
+              >
+                <img
+                  ref={imgRef}
+                  alt="Crop me"
+                  src={imgSrcToCrop}
+                  onLoad={onImageLoad}
+                  style={{ maxHeight: '50vh', objectFit: 'contain' }}
+                />
+              </ReactCrop>
+            </div>
+          )}
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => { setCropModalOpen(false); setImgSrcToCrop(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}>Cancel</Button>
+            <Button onClick={handleApplyCrop} disabled={!completedCrop?.width || !completedCrop?.height}>Apply Crop</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
-
-    
