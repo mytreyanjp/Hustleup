@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Briefcase, GraduationCap, Loader2, Info } from 'lucide-react'; // Added Info icon
+import { ArrowRight, Briefcase, GraduationCap, Loader2, Info } from 'lucide-react'; // ArrowRight is no longer used but kept for other potential uses
 
 export default function Home() {
   const { user, role, loading: authLoading } = useFirebase();
@@ -79,7 +79,7 @@ export default function Home() {
           <span>Already have an account?</span>
           <Button variant="link" asChild className="p-0 h-auto text-base">
             <Link href="/auth/login">
-              Log In <ArrowRight className="ml-1 h-4 w-4" />
+              Log In
             </Link>
           </Button>
           <span className="hidden sm:inline">|</span>
