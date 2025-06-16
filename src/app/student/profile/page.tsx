@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, updateDoc, collection, query, where, getDocs, Timestamp, getDoc, orderBy } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIconLucide, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon, UserX } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, UploadCloud, Users, FileText as ApplicationsIcon, Search, Wallet, Edit, Bookmark, Briefcase, GraduationCap, Link as LinkIconLucide, Grid3X3, Image as ImageIconLucide, ExternalLink, Star as StarIcon, UserX, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
@@ -29,6 +30,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { PostViewDialog } from '@/components/posts/post-view-dialog';
 import type { StudentPost } from '@/types/posts';
+import { Progress } from '@/components/ui/progress';
 
 
 interface Gig {
@@ -50,6 +52,7 @@ const profileSchema = z.object({
   skills: z.array(z.string()).max(20, { message: 'Maximum 20 skills allowed' }).optional(),
   portfolioLinks: z.array(portfolioLinkSchema).max(5, { message: 'Maximum 5 portfolio links allowed' }).optional(),
   imageUrl: z.string().url({ message: "Please enter a valid image URL." }).max(2048, { message: "Image URL is too long."}).optional().or(z.literal('')),
+  // File validation will be handled outside Zod for direct uploads
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -80,7 +83,11 @@ export default function StudentProfilePage() {
   const [isFormReady, setIsFormReady] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [selectedPredefinedAvatar, setSelectedPredefinedAvatar] = useState<string | null>(null);
   const [showAvatarGrid, setShowAvatarGrid] = useState(false);
 
@@ -99,7 +106,6 @@ export default function StudentProfilePage() {
   const [posts, setPosts] = useState<StudentPost[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(true);
   const [selectedPostForDialog, setSelectedPostForDialog] = useState<StudentPost | null>(null);
-
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -120,16 +126,21 @@ export default function StudentProfilePage() {
   const watchedImageUrl = form.watch("imageUrl");
 
   useEffect(() => {
-    if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
+    if (selectedFile) {
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(selectedFile);
+      form.setValue("imageUrl", ""); // Clear URL if file is selected
+      setSelectedPredefinedAvatar(null);
+    } else if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
       setImagePreview(watchedImageUrl);
-      setSelectedPredefinedAvatar(null); // Clear predefined selection if URL is used
+      setSelectedPredefinedAvatar(null); 
     } else if (!watchedImageUrl && selectedPredefinedAvatar) {
       setImagePreview(selectedPredefinedAvatar);
-    } else if (!watchedImageUrl && !selectedPredefinedAvatar) {
+    } else if (!watchedImageUrl && !selectedPredefinedAvatar && !selectedFile) {
       setImagePreview(userProfile?.profilePictureUrl || null);
     }
-  }, [watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form.formState.errors.imageUrl]);
-
+  }, [selectedFile, watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form, form.formState.errors.imageUrl]);
 
   const populateFormAndPreview = useCallback((profile: UserProfile | null) => {
     if (profile) {
@@ -148,6 +159,7 @@ export default function StudentProfilePage() {
         setImagePreview(profile.profilePictureUrl || null);
       }
       setShowAvatarGrid(false);
+      setSelectedFile(null);
     } else if (user) {
       form.reset({
         username: user.email?.split('@')[0] || '',
@@ -158,6 +170,7 @@ export default function StudentProfilePage() {
       });
       setImagePreview(null);
       setSelectedPredefinedAvatar(null);
+      setSelectedFile(null);
       setShowAvatarGrid(false);
     }
   }, [form, user]);
@@ -185,7 +198,6 @@ export default function StudentProfilePage() {
     }
   }, [user, toast]);
 
-
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'student') {
@@ -199,11 +211,10 @@ export default function StudentProfilePage() {
   }, [user, userProfile, authLoading, role, router, populateFormAndPreview, fetchStudentPosts]);
 
   useEffect(() => {
-    if (user && userProfile && role === 'student' && db && !userProfile.isBanned) { // Don't fetch stats if banned
+    if (user && userProfile && role === 'student' && db && !userProfile.isBanned) {
       const fetchStudentDashboardStats = async () => {
         setIsLoadingStats(true);
         try {
-          // Fetch available gigs count
           const gigsCollectionRef = collection(db, 'gigs');
           const openGigsQuery = query(gigsCollectionRef, where('status', '==', 'open'));
           const openGigsSnapshot = await getDocs(openGigsQuery);
@@ -226,8 +237,6 @@ export default function StudentProfilePage() {
             matchingGigsCount = allOpenGigs.length;
           }
           setAvailableGigsCount(matchingGigsCount);
-
-          // Fetch active applications and current works count
           const allGigsForAppsSnapshot = await getDocs(collection(db, 'gigs'));
           let currentActiveApplications = 0;
           let currentActiveWorks = 0;
@@ -245,15 +254,10 @@ export default function StudentProfilePage() {
           });
           setActiveApplicationsCount(currentActiveApplications);
           setCurrentWorksCount(currentActiveWorks);
-
-          // Bookmarked gigs count
           setBookmarkedGigsCount(userProfile.bookmarkedGigIds?.length || 0);
-
-          // Fetch reviews count
           const reviewsQuery = query(collection(db, 'reviews'), where('studentId', '==', user.uid));
           const reviewsSnapshot = await getDocs(reviewsQuery);
           setReviewsCount(reviewsSnapshot.size);
-
         } catch (error) {
           console.error("Error fetching student dashboard stats:", error);
           toast({ title: "Stats Error", description: "Could not load dashboard statistics.", variant: "destructive" });
@@ -277,14 +281,15 @@ export default function StudentProfilePage() {
     }
   }, [user, userProfile, role, authLoading, toast]);
 
-
   const onSubmit = async (data: ProfileFormValues) => {
-    if (!user || !db) return;
+    if (!user || !db || !storage) return;
     if (userProfile?.isBanned) {
         toast({ title: "Account Suspended", description: "Your account is currently suspended. You cannot edit your profile.", variant: "destructive", duration: 7000 });
         return;
     }
     setIsSubmitting(true);
+    setUploadProgress(null);
+
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const updateData: Partial<UserProfile> = {
@@ -295,22 +300,47 @@ export default function StudentProfilePage() {
         updatedAt: Timestamp.now(),
       };
 
-      if (data.imageUrl) {
+      if (selectedFile) {
+        const storagePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedFile.name}`;
+        const imageRef = storageRefFn(storage, storagePath);
+        const uploadTask = uploadBytesResumable(imageRef, selectedFile);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            },
+            (error) => { console.error("Upload error:", error); reject(error); },
+            async () => {
+              try {
+                updateData.profilePictureUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve();
+              } catch (urlError) { reject(urlError); }
+            }
+          );
+        });
+      } else if (data.imageUrl) {
         updateData.profilePictureUrl = data.imageUrl;
       } else if (selectedPredefinedAvatar) {
         updateData.profilePictureUrl = selectedPredefinedAvatar;
-      } else {
-        updateData.profilePictureUrl = userProfile?.profilePictureUrl || '';
+      } else if (form.getValues("imageUrl") === "" && !selectedFile && !selectedPredefinedAvatar) {
+        // If URL is explicitly cleared and no file/predefined chosen
+        updateData.profilePictureUrl = "";
       }
+
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your profile details have been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
       setIsEditing(false);
       setShowAvatarGrid(false);
+      setSelectedFile(null); 
+      setUploadProgress(null);
     } catch (error: any) {
       console.error('Profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
+      setUploadProgress(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -320,6 +350,9 @@ export default function StudentProfilePage() {
     populateFormAndPreview(userProfile);
     setIsEditing(false);
     setShowAvatarGrid(false);
+    setSelectedFile(null);
+    setUploadProgress(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null) => {
@@ -331,9 +364,44 @@ export default function StudentProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
-    form.setValue("imageUrl", ""); // Clear URL if predefined is selected
-    setShowAvatarGrid(false);
+    form.setValue("imageUrl", ""); 
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setShowAvatarGrid(false); 
   };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB
+        toast({ title: "File too large", description: "Profile picture must be under 5MB.", variant: "destructive"});
+        if(fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (!validTypes.includes(file.type)) {
+        toast({ title: "Invalid file type", description: "Please select a JPG, PNG, WEBP, or GIF.", variant: "destructive"});
+        if(fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      setSelectedFile(file);
+      form.setValue("imageUrl", ""); // Clear URL field
+      setSelectedPredefinedAvatar(null); // Clear predefined avatar
+    }
+  };
+
+  const clearImageSelection = () => {
+    setSelectedFile(null);
+    setImagePreview(userProfile?.profilePictureUrl || null); // Revert to original or none
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    form.setValue("imageUrl", PREDEFINED_AVATARS.some(a => a.url === userProfile?.profilePictureUrl) ? "" : userProfile?.profilePictureUrl || "");
+    if (PREDEFINED_AVATARS.some(a => a.url === userProfile?.profilePictureUrl)) {
+        setSelectedPredefinedAvatar(userProfile?.profilePictureUrl || null);
+    } else {
+        setSelectedPredefinedAvatar(null);
+    }
+  };
+
 
   const handleOpenFollowingModal = async () => {
     if (!userProfile || !userProfile.following || userProfile.following.length === 0) {
@@ -388,10 +456,8 @@ export default function StudentProfilePage() {
     }
   };
 
-
   const followersCount = userProfile?.followersCount || 0;
   const followingCount = userProfile?.following?.length || 0;
-
 
   if (authLoading || !isFormReady) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -456,7 +522,6 @@ export default function StudentProfilePage() {
           {isEditing ? (
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                
                 {showAvatarGrid && (
                   <FormItem>
                     <FormLabel>Choose a Predefined Avatar</FormLabel>
@@ -468,7 +533,7 @@ export default function StudentProfilePage() {
                           onClick={() => handleSelectPredefinedAvatar(avatar.url)}
                           className={cn(
                             "rounded-lg overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 aspect-square",
-                            imagePreview === avatar.url && !watchedImageUrl ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                            imagePreview === avatar.url && !watchedImageUrl && !selectedFile ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
                           )}
                           title={`Select avatar: ${avatar.hint}`}
                         >
@@ -486,6 +551,38 @@ export default function StudentProfilePage() {
                   </FormItem>
                 )}
 
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    <UploadCloud className="h-4 w-4 text-muted-foreground" /> Upload Profile Picture
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleFileSelect}
+                      ref={fileInputRef}
+                      className="text-sm file:mr-2 file:py-1.5 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                      disabled={isSubmitting || !!uploadProgress}
+                    />
+                  </FormControl>
+                  {selectedFile && !uploadProgress && (
+                    <div className="text-xs text-muted-foreground flex items-center justify-between">
+                      <span>Selected: {selectedFile.name}</span>
+                      <Button type="button" variant="ghost" size="xs" onClick={clearImageSelection} className="text-destructive hover:text-destructive h-auto p-0">
+                         <X className="h-3 w-3 mr-1" /> Clear
+                      </Button>
+                    </div>
+                  )}
+                  {uploadProgress !== null && (
+                     <div className="space-y-1 pt-1">
+                        <Progress value={uploadProgress} className="w-full h-2" />
+                        <p className="text-xs text-muted-foreground text-center">{Math.round(uploadProgress)}% uploaded</p>
+                    </div>
+                  )}
+                  <FormDescription>Max 5MB. JPG, PNG, WEBP, GIF.</FormDescription>
+                  <FormMessage>{/* For file-specific errors not caught by Zod on other fields */}</FormMessage>
+                </FormItem>
+                
                 <FormField
                   control={form.control}
                   name="imageUrl"
@@ -500,7 +597,11 @@ export default function StudentProfilePage() {
                           {...field} 
                           onChange={(e) => {
                             field.onChange(e);
-                            if (e.target.value) setSelectedPredefinedAvatar(null);
+                            if (e.target.value) {
+                              setSelectedPredefinedAvatar(null);
+                              setSelectedFile(null);
+                              if(fileInputRef.current) fileInputRef.current.value = "";
+                            }
                           }}
                         />
                       </FormControl>
@@ -509,9 +610,6 @@ export default function StudentProfilePage() {
                     </FormItem>
                   )}
                 />
-                <p className="text-xs text-muted-foreground text-center">File uploads are currently disabled. Use a URL or a predefined avatar.</p>
-
-
                 <FormField
                   control={form.control} name="username"
                   render={({ field }) => (
@@ -582,7 +680,7 @@ export default function StudentProfilePage() {
                 </div>
                 <div className="flex gap-2 justify-end pt-4">
                   <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSubmitting}>Cancel</Button>
-                  <Button type="submit" disabled={isSubmitting}>
+                  <Button type="submit" disabled={isSubmitting || !!uploadProgress && uploadProgress < 100}>
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Changes
                   </Button>
@@ -729,7 +827,7 @@ export default function StudentProfilePage() {
             </div>
           ) : posts.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 sm:gap-2">
-                {posts.slice(0, 4).map(post => ( // Show up to 4 recent posts
+                {posts.slice(0, 4).map(post => ( 
                    <button
                       key={post.id}
                       className="aspect-square relative group overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
@@ -777,29 +875,21 @@ export default function StudentProfilePage() {
         />
       )}
 
-      {/* Followers Modal */}
-       <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
+      <Dialog open={showFollowersModal} onOpenChange={setShowFollowersModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Followers</DialogTitle>
-            <DialogDescription>
-              Users who follow you.
-            </DialogDescription>
+            <DialogDescription>Users who follow you.</DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[300px] py-4">
             {isLoadingModalList ? (
-              <div className="flex justify-center items-center h-20">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
+              <div className="flex justify-center items-center h-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
                 {modalUserList.map(userItem => (
                   <li key={userItem.uid} className="flex items-center justify-between">
                     <Link href={`/profile/${userItem.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowersModal(false)}>
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} />
-                        <AvatarFallback>{getInitials(userItem.email, userItem.username)}</AvatarFallback>
-                      </Avatar>
+                      <Avatar className="h-8 w-8"><AvatarImage src={userItem.profilePictureUrl} alt={userItem.username} /><AvatarFallback>{getInitials(userItem.email, userItem.username)}</AvatarFallback></Avatar>
                       <span className="text-sm font-medium">{userItem.companyName || userItem.username || 'User'}</span>
                     </Link>
                   </li>
@@ -811,37 +901,25 @@ export default function StudentProfilePage() {
                  <p className="text-sm text-muted-foreground text-center">Could not load followers at this time.</p>
             )}
           </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">Close</Button>
-            </DialogClose>
-          </DialogFooter>
+          <DialogFooter><DialogClose asChild><Button type="button" variant="secondary">Close</Button></DialogClose></DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Following Modal */}
       <Dialog open={showFollowingModal} onOpenChange={setShowFollowingModal}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Following</DialogTitle>
-            <DialogDescription>
-              Users you are following.
-            </DialogDescription>
+            <DialogDescription>Users you are following.</DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[300px] py-4">
             {isLoadingModalList ? (
-              <div className="flex justify-center items-center h-20">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
+              <div className="flex justify-center items-center h-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
             ) : modalUserList.length > 0 ? (
               <ul className="space-y-3">
                 {modalUserList.map((followedUser) => (
                   <li key={followedUser.uid} className="flex items-center justify-between">
                     <Link href={`/profile/${followedUser.uid}`} className="flex items-center gap-3 hover:underline" onClick={() => setShowFollowingModal(false)}>
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={followedUser.profilePictureUrl} alt={followedUser.username} />
-                        <AvatarFallback>{getInitials(followedUser.email, followedUser.username)}</AvatarFallback>
-                      </Avatar>
+                      <Avatar className="h-8 w-8"><AvatarImage src={followedUser.profilePictureUrl} alt={followedUser.username} /><AvatarFallback>{getInitials(followedUser.email, followedUser.username)}</AvatarFallback></Avatar>
                       <span className="text-sm font-medium">{followedUser.companyName || followedUser.username || 'User'}</span>
                     </Link>
                   </li>
@@ -851,15 +929,11 @@ export default function StudentProfilePage() {
               <p className="text-sm text-muted-foreground text-center">You are not following anyone yet.</p>
             )}
           </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">Close</Button>
-            </DialogClose>
-          </DialogFooter>
+          <DialogFooter><DialogClose asChild><Button type="button" variant="secondary">Close</Button></DialogClose></DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
 
+    

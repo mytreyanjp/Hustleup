@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
+import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,10 +16,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UploadCloud, Edit, User, Briefcase, Building, Globe, Info, Mail, Phone, ArrowLeft, Link } from 'lucide-react';
+import { Loader2, UploadCloud, Edit, User, Briefcase, Building, Globe, Info, Mail, Phone, ArrowLeft, Link as LinkIconLucide, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
 import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
 
 const clientProfileEditSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters").max(50, "Username cannot exceed 50 characters"),
@@ -28,6 +30,7 @@ const clientProfileEditSchema = z.object({
   personalEmail: z.string().email({ message: 'Invalid email format' }).max(100).optional().or(z.literal('')),
   personalPhone: z.string().regex(/^\+?[1-9]\d{1,14}$/, { message: 'Invalid phone number format (e.g., +1234567890)' }).max(20).optional().or(z.literal('')),
   imageUrl: z.string().url({ message: "Please enter a valid image URL." }).max(2048, { message: "Image URL is too long."}).optional().or(z.literal('')),
+  // File validation handled outside Zod
 });
 
 type ClientProfileEditFormValues = z.infer<typeof clientProfileEditSchema>;
@@ -57,7 +60,11 @@ export default function EditClientProfilePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormReady, setIsFormReady] = useState(false);
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [selectedPredefinedAvatar, setSelectedPredefinedAvatar] = useState<string | null>(null);
   const [showAvatarGrid, setShowAvatarGrid] = useState(false);
 
@@ -77,15 +84,21 @@ export default function EditClientProfilePage() {
   const watchedImageUrl = form.watch("imageUrl");
 
   useEffect(() => {
-    if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
+    if (selectedFile) {
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(selectedFile);
+      form.setValue("imageUrl", ""); 
+      setSelectedPredefinedAvatar(null);
+    } else if (watchedImageUrl && form.formState.errors.imageUrl === undefined) {
       setImagePreview(watchedImageUrl);
       setSelectedPredefinedAvatar(null); 
     } else if (!watchedImageUrl && selectedPredefinedAvatar) {
       setImagePreview(selectedPredefinedAvatar);
-    } else if (!watchedImageUrl && !selectedPredefinedAvatar) {
+    } else if (!watchedImageUrl && !selectedPredefinedAvatar && !selectedFile) {
       setImagePreview(userProfile?.profilePictureUrl || null);
     }
-  }, [watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form.formState.errors.imageUrl]);
+  }, [selectedFile, watchedImageUrl, selectedPredefinedAvatar, userProfile?.profilePictureUrl, form, form.formState.errors.imageUrl]);
 
 
   const populateFormAndPreview = useCallback((profile: UserProfile | null) => {
@@ -107,6 +120,7 @@ export default function EditClientProfilePage() {
         setImagePreview(profile.profilePictureUrl || null);
       }
       setShowAvatarGrid(false);
+      setSelectedFile(null);
     } else if (user) {
        form.reset({
         username: user.email?.split('@')[0] || '',
@@ -119,6 +133,7 @@ export default function EditClientProfilePage() {
       });
       setImagePreview(null);
       setSelectedPredefinedAvatar(null);
+      setSelectedFile(null);
       setShowAvatarGrid(false);
     }
   }, [form, user]);
@@ -137,8 +152,9 @@ export default function EditClientProfilePage() {
 
 
   const onSubmit = async (data: ClientProfileEditFormValues) => {
-    if (!user || !db) return;
+    if (!user || !db || !storage) return;
     setIsSubmitting(true);
+    setUploadProgress(null);
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const updateData: Partial<UserProfile> = {
@@ -151,21 +167,44 @@ export default function EditClientProfilePage() {
         updatedAt: Timestamp.now(),
       };
 
-      if (data.imageUrl) {
+      if (selectedFile) {
+        const storagePath = `profile_pictures/${user.uid}/${Date.now()}_${selectedFile.name}`;
+        const imageRef = storageRefFn(storage, storagePath);
+        const uploadTask = uploadBytesResumable(imageRef, selectedFile);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            },
+            (error) => { console.error("Upload error:", error); reject(error); },
+            async () => {
+              try {
+                updateData.profilePictureUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve();
+              } catch (urlError) { reject(urlError); }
+            }
+          );
+        });
+      } else if (data.imageUrl) {
         updateData.profilePictureUrl = data.imageUrl;
       } else if (selectedPredefinedAvatar) {
         updateData.profilePictureUrl = selectedPredefinedAvatar;
-      } else {
-        updateData.profilePictureUrl = userProfile?.profilePictureUrl || '';
+      } else if (form.getValues("imageUrl") === "" && !selectedFile && !selectedPredefinedAvatar) {
+        updateData.profilePictureUrl = "";
       }
 
       await updateDoc(userDocRef, updateData);
       toast({ title: 'Profile Updated', description: 'Your client profile has been successfully saved.' });
       if (refreshUserProfile) await refreshUserProfile();
       router.push('/client/dashboard');
+      setSelectedFile(null);
+      setUploadProgress(null);
     } catch (error: any) {
       console.error('Client profile update error:', error);
       toast({ title: 'Update Failed', description: `Could not update profile: ${error.message}`, variant: 'destructive' });
+      setUploadProgress(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -174,8 +213,42 @@ export default function EditClientProfilePage() {
   const handleSelectPredefinedAvatar = (avatarUrl: string) => {
     setSelectedPredefinedAvatar(avatarUrl);
     setImagePreview(avatarUrl);
-    form.setValue("imageUrl", ""); // Clear URL if predefined is selected
+    form.setValue("imageUrl", ""); 
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowAvatarGrid(false); 
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB
+        toast({ title: "File too large", description: "Profile picture must be under 5MB.", variant: "destructive"});
+        if(fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (!validTypes.includes(file.type)) {
+        toast({ title: "Invalid file type", description: "Please select a JPG, PNG, WEBP, or GIF.", variant: "destructive"});
+        if(fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      setSelectedFile(file);
+      form.setValue("imageUrl", ""); 
+      setSelectedPredefinedAvatar(null); 
+    }
+  };
+
+  const clearImageSelection = () => {
+    setSelectedFile(null);
+    setImagePreview(userProfile?.profilePictureUrl || null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    form.setValue("imageUrl", PREDEFINED_AVATARS.some(a => a.url === userProfile?.profilePictureUrl) ? "" : userProfile?.profilePictureUrl || "");
+    if (PREDEFINED_AVATARS.some(a => a.url === userProfile?.profilePictureUrl)) {
+        setSelectedPredefinedAvatar(userProfile?.profilePictureUrl || null);
+    } else {
+        setSelectedPredefinedAvatar(null);
+    }
   };
 
   const getInitials = (email: string | null | undefined, username?: string | null, companyName?: string | null) => {
@@ -184,7 +257,6 @@ export default function EditClientProfilePage() {
     if (email) return email.substring(0, 2).toUpperCase();
     return '??';
   };
-
 
   if (authLoading || !isFormReady) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -230,7 +302,7 @@ export default function EditClientProfilePage() {
                       onClick={() => handleSelectPredefinedAvatar(avatar.url)}
                       className={cn(
                         "rounded-lg overflow-hidden border-2 p-0.5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 aspect-square",
-                        imagePreview === avatar.url && !watchedImageUrl ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
+                        imagePreview === avatar.url && !watchedImageUrl && !selectedFile ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground/50"
                       )}
                       title={`Select avatar: ${avatar.hint}`}
                     >
@@ -247,11 +319,42 @@ export default function EditClientProfilePage() {
                 </div>
               </div>
             )}
-             <p className="text-xs text-muted-foreground mt-2 text-center">File uploads are currently disabled.</p>
+             
           </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+             <FormItem>
+                <FormLabel className="flex items-center gap-1">
+                  <UploadCloud className="h-4 w-4 text-muted-foreground" /> Upload Profile Picture
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleFileSelect}
+                    ref={fileInputRef}
+                    className="text-sm file:mr-2 file:py-1.5 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                    disabled={isSubmitting || !!uploadProgress}
+                  />
+                </FormControl>
+                {selectedFile && !uploadProgress && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between">
+                    <span>Selected: {selectedFile.name}</span>
+                    <Button type="button" variant="ghost" size="xs" onClick={clearImageSelection} className="text-destructive hover:text-destructive h-auto p-0">
+                        <X className="h-3 w-3 mr-1" /> Clear
+                    </Button>
+                  </div>
+                )}
+                {uploadProgress !== null && (
+                    <div className="space-y-1 pt-1">
+                        <Progress value={uploadProgress} className="w-full h-2" />
+                        <p className="text-xs text-muted-foreground text-center">{Math.round(uploadProgress)}% uploaded</p>
+                    </div>
+                )}
+                <FormDescription>Max 5MB. JPG, PNG, WEBP, GIF.</FormDescription>
+                {/* File-specific errors (not from Zod) can be displayed here if needed */}
+              </FormItem>
 
              <FormField
                 control={form.control}
@@ -259,7 +362,7 @@ export default function EditClientProfilePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
-                      <Link className="h-4 w-4 text-muted-foreground" /> Or Enter Image URL
+                      <LinkIconLucide className="h-4 w-4 text-muted-foreground" /> Or Enter Image URL
                     </FormLabel>
                     <FormControl>
                       <Input 
@@ -267,7 +370,11 @@ export default function EditClientProfilePage() {
                         {...field}
                         onChange={(e) => {
                           field.onChange(e);
-                          if (e.target.value) setSelectedPredefinedAvatar(null); // Clear predefined if URL is typed
+                          if (e.target.value) {
+                            setSelectedPredefinedAvatar(null);
+                            setSelectedFile(null);
+                            if(fileInputRef.current) fileInputRef.current.value = "";
+                          }
                         }}
                       />
                     </FormControl>
@@ -367,7 +474,7 @@ export default function EditClientProfilePage() {
                 </CardContent>
               </Card>
 
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || !!uploadProgress && uploadProgress < 100}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>
@@ -378,3 +485,5 @@ export default function EditClientProfilePage() {
     </div>
   );
 }
+
+    
