@@ -4,12 +4,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, query, where, orderBy, Timestamp, getDocs, updateDoc, arrayUnion, arrayRemove, increment, addDoc, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { db, storage } from '@/config/firebase'; // Ensure storage is imported
+import { ref as storageRefFn, deleteObject } from 'firebase/storage'; // Import deleteObject
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2, Ban } from 'lucide-react';
+import { Loader2, Link as LinkIcon, ArrowLeft, GraduationCap, MessageSquare, Grid3X3, Image as ImageIconLucide, Star as StarIcon, Building, Globe, Info, Briefcase, DollarSign, CalendarDays, UserPlus, UserCheck, Users, ShieldAlert, Copy, MoreVertical, UserX, Share2, Ban, Trash2 } from 'lucide-react'; // Added Trash2
 import type { UserProfile } from '@/context/firebase-context';
 import { useFirebase } from '@/context/firebase-context';
 import { Separator } from '@/components/ui/separator';
@@ -34,8 +35,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PostViewDialog } from '@/components/posts/post-view-dialog'; 
-import type { StudentPost } from '@/types/posts'; 
+import { PostViewDialog } from '@/components/posts/post-view-dialog';
+import type { StudentPost } from '@/types/posts';
 
 interface ClientGigForProfile {
   id: string;
@@ -129,12 +130,36 @@ export default function PublicProfilePage() {
   const [isBanningProcessing, setIsBanningProcessing] = useState(false);
 
   const [selectedPostForDialog, setSelectedPostForDialog] = useState<StudentPost | null>(null);
+  const [postToDelete, setPostToDelete] = useState<StudentPost | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
 
+
+  const fetchStudentPosts = useCallback(async () => {
+    if (!userId || !db) return;
+    setIsLoadingPosts(true);
+    try {
+      const postsQuery = query(
+        collection(db, 'student_posts'),
+        where('studentId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      const postsSnapshot = await getDocs(postsQuery);
+      const fetchedPosts = postsSnapshot.docs.map(postDoc => ({
+        id: postDoc.id,
+        ...postDoc.data()
+      })) as StudentPost[];
+      setPosts(fetchedPosts);
+    } catch (error) {
+      console.error("Error fetching student posts:", error);
+    } finally {
+      setIsLoadingPosts(false);
+    }
+  }, [userId]);
 
   const fetchProfileData = useCallback(async () => {
     if (!userId) {
       setError("User ID is missing.");
-      setIsLoading(false); 
+      setIsLoading(false);
       return;
     }
     
@@ -162,19 +187,7 @@ export default function PublicProfilePage() {
 
 
          if (fetchedProfile.role === 'student') {
-            setIsLoadingPosts(true);
-            const postsQuery = query(
-              collection(db, 'student_posts'),
-              where('studentId', '==', userId),
-              orderBy('createdAt', 'desc')
-            );
-            const postsSnapshot = await getDocs(postsQuery);
-            const fetchedPosts = postsSnapshot.docs.map(postDoc => ({
-              id: postDoc.id,
-              ...postDoc.data()
-            })) as StudentPost[];
-            setPosts(fetchedPosts);
-            setIsLoadingPosts(false);
+            await fetchStudentPosts();
          } else if (fetchedProfile.role === 'client') {
             setIsLoadingClientGigs(true);
             const clientGigsQuery = query(
@@ -200,7 +213,7 @@ export default function PublicProfilePage() {
       setError("Failed to load profile details. Please try again later. This could be due to a missing Firestore index.");
       setProfile(null); 
     }
-  }, [userId, viewerUserProfile]); 
+  }, [userId, viewerUserProfile, fetchStudentPosts]); 
 
   useEffect(() => {
     if (!userId) {
@@ -515,6 +528,50 @@ export default function PublicProfilePage() {
     }
   };
 
+  const handleOpenDeletePostDialog = (post: StudentPost) => {
+    setPostToDelete(post);
+  };
+
+  const handleConfirmDeletePost = async () => {
+    if (!postToDelete || !viewerUser || viewerRole !== 'admin' || !profile || profile.role === 'admin' || !db) {
+        toast({title: "Error", description: "Cannot delete post. Invalid conditions or permissions.", variant: "destructive"});
+        setPostToDelete(null);
+        return;
+    }
+    setIsDeletingPost(true);
+    try {
+        // Delete Firestore document
+        const postDocRef = doc(db, 'student_posts', postToDelete.id);
+        await deleteDoc(postDocRef);
+
+        // Delete image from Firebase Storage
+        if (postToDelete.imageUrl && storage) {
+            try {
+                const imagePath = decodeURIComponent(new URL(postToDelete.imageUrl).pathname.split('/o/')[1].split('?')[0]);
+                const imageRef = storageRefFn(storage, imagePath);
+                await deleteObject(imageRef);
+            } catch (storageError: any) {
+                console.warn("Could not delete post image from storage:", storageError);
+                // Non-fatal, image might not exist or rules issue. Toast for admin?
+                if (storageError.code !== 'storage/object-not-found') {
+                   toast({ title: "Storage Deletion Issue", description: `Post document deleted, but image removal failed: ${storageError.message}. Check storage rules.`, variant: "default", duration: 7000});
+                }
+            }
+        }
+        toast({ title: "Post Deleted", description: "The student's post has been successfully removed." });
+        await fetchStudentPosts(); // Refresh the posts list
+        if (selectedPostForDialog?.id === postToDelete.id) {
+            setSelectedPostForDialog(null); // Close dialog if deleted post was open
+        }
+    } catch (error: any) {
+        console.error("Error deleting post:", error);
+        toast({ title: "Deletion Failed", description: `Could not delete post: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsDeletingPost(false);
+        setPostToDelete(null);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -591,6 +648,7 @@ export default function PublicProfilePage() {
 
   const followingCount = profile.following?.length || 0;
   const canAdminBanThisUser = viewerRole === 'admin' && profile.role !== 'admin';
+  const canViewerDeletePostsOnThisProfile = viewerRole === 'admin' && profile.role === 'student';
 
 
   return (
@@ -690,7 +748,6 @@ export default function PublicProfilePage() {
                                       </Link>
                                   </Button>
                                 )}
-                                {/* Removed: Chat with Admin button for non-admin viewers viewing an admin's profile */}
                             </>
                         )}
                     </div>
@@ -832,27 +889,39 @@ export default function PublicProfilePage() {
                 ) : posts.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-2 md:gap-4">
                         {posts.map(post => (
-                           <button
-                              key={post.id}
-                              className="aspect-square relative group overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                              onClick={() => setSelectedPostForDialog(post)}
-                              aria-label={`View post: ${post.caption || 'Image post'}`}
-                            >
-                                {post.imageUrl && post.imageUrl.trim() !== '' ? (
-                                    <Image
-                                        src={post.imageUrl}
-                                        alt={post.caption || `Post by ${profile.username || 'user'}`}
-                                        layout="fill"
-                                        objectFit="cover"
-                                        className="group-hover:scale-105 transition-transform duration-300"
-                                        data-ai-hint="student content"
-                                    />
-                                ) : (
-                                    <div className="flex items-center justify-center h-full w-full bg-muted rounded-md">
-                                        <ImageIconLucide className="h-10 w-10 text-muted-foreground" />
-                                    </div>
-                                )}
-                            </button>
+                           <div key={post.id} className="relative group">
+                             <button
+                                className="aspect-square w-full relative group/post-item overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                                onClick={() => setSelectedPostForDialog(post)}
+                                aria-label={`View post: ${post.caption || 'Image post'}`}
+                              >
+                                  {post.imageUrl && post.imageUrl.trim() !== '' ? (
+                                      <Image
+                                          src={post.imageUrl}
+                                          alt={post.caption || `Post by ${profile.username || 'user'}`}
+                                          layout="fill"
+                                          objectFit="cover"
+                                          className="group-hover/post-item:scale-105 transition-transform duration-300"
+                                          data-ai-hint="student content"
+                                      />
+                                  ) : (
+                                      <div className="flex items-center justify-center h-full w-full bg-muted rounded-md">
+                                          <ImageIconLucide className="h-10 w-10 text-muted-foreground" />
+                                      </div>
+                                  )}
+                              </button>
+                              {canViewerDeletePostsOnThisProfile && (
+                                <Button
+                                  variant="destructive"
+                                  size="icon"
+                                  className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                  onClick={() => handleOpenDeletePostDialog(post)}
+                                  title="Delete Post"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                           </div>
                         ))}
                     </div>
                 ) : (
@@ -932,9 +1001,29 @@ export default function PublicProfilePage() {
           }}
           viewerUser={viewerUser}
           viewerUserProfile={viewerUserProfile}
-          onCommentAdded={() => fetchProfileData()} 
+          onCommentAdded={fetchProfileData}
+          onInitiateDelete={canViewerDeletePostsOnThisProfile ? handleOpenDeletePostDialog : undefined}
+          canViewerDeletePost={canViewerDeletePostsOnThisProfile}
         />
       )}
+
+      <AlertDialog open={!!postToDelete} onOpenChange={(isOpen) => !isOpen && setPostToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The post and its image will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingPost}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeletePost} disabled={isDeletingPost} className="bg-destructive hover:bg-destructive/90">
+              {isDeletingPost ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Yes, Delete Post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showReportDialog} onOpenChange={setShowReportDialog}>
         <AlertDialogContent>
@@ -1085,4 +1174,3 @@ export default function PublicProfilePage() {
     </div>
   );
 }
-

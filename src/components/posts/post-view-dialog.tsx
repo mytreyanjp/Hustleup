@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import NextImage from 'next/image';
-import { Loader2, Send, MessageCircle, UserCircle } from 'lucide-react';
+import { Loader2, Send, MessageCircle, UserCircle, Trash2 } from 'lucide-react'; // Added Trash2
 import { db } from '@/config/firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, increment, Timestamp } from 'firebase/firestore';
 import type { StudentPost, Comment } from '@/types/posts';
@@ -23,7 +23,9 @@ interface PostViewDialogProps {
   onOpenChange: (open: boolean) => void;
   viewerUser: FirebaseUser | null;
   viewerUserProfile: UserProfile | null;
-  onCommentAdded?: () => void; // Optional callback after comment is added
+  onCommentAdded?: () => void;
+  onInitiateDelete?: (post: StudentPost) => void; // Callback to open delete dialog in parent
+  canViewerDeletePost?: boolean; // Determined by parent
 }
 
 // Simple Mention Renderer (highlights mentions, doesn't link yet)
@@ -44,7 +46,7 @@ const MentionRenderer: React.FC<{ text: string }> = ({ text }) => {
 };
 
 
-export function PostViewDialog({ post, isOpen, onOpenChange, viewerUser, viewerUserProfile, onCommentAdded }: PostViewDialogProps) {
+export function PostViewDialog({ post, isOpen, onOpenChange, viewerUser, viewerUserProfile, onCommentAdded, onInitiateDelete, canViewerDeletePost }: PostViewDialogProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
@@ -123,6 +125,12 @@ export function PostViewDialog({ post, isOpen, onOpenChange, viewerUser, viewerU
     return 'U';
   };
 
+  const handleDeleteClick = () => {
+    if (post && onInitiateDelete && canViewerDeletePost) {
+        onInitiateDelete(post);
+    }
+  };
+
 
   if (!post) return null;
 
@@ -141,23 +149,36 @@ export function PostViewDialog({ post, isOpen, onOpenChange, viewerUser, viewerU
         {/* Content Section */}
         <div className="w-full sm:w-1/2 h-1/2 sm:h-full flex flex-col">
           <DialogHeader className="p-4 border-b">
-            <div className="flex items-center gap-3">
-                <Link href={`/profile/${post.studentId}`} passHref>
-                    <Avatar className="h-10 w-10 cursor-pointer">
-                        <AvatarImage src={post.studentProfilePictureUrl} alt={post.studentUsername} />
-                        <AvatarFallback>{post.studentUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
-                    </Avatar>
-                </Link>
-                <div>
-                    <DialogTitle className="text-base">
-                         <Link href={`/profile/${post.studentId}`} className="hover:underline">
-                            {post.studentUsername}
-                         </Link>
-                    </DialogTitle>
-                    <p className="text-xs text-muted-foreground">
-                        Posted {formatCommentDate(post.createdAt)}
-                    </p>
+            <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                    <Link href={`/profile/${post.studentId}`} passHref>
+                        <Avatar className="h-10 w-10 cursor-pointer">
+                            <AvatarImage src={post.studentProfilePictureUrl} alt={post.studentUsername} />
+                            <AvatarFallback>{post.studentUsername?.substring(0,1).toUpperCase() || 'U'}</AvatarFallback>
+                        </Avatar>
+                    </Link>
+                    <div>
+                        <DialogTitle className="text-base">
+                            <Link href={`/profile/${post.studentId}`} className="hover:underline">
+                                {post.studentUsername}
+                            </Link>
+                        </DialogTitle>
+                        <p className="text-xs text-muted-foreground">
+                            Posted {formatCommentDate(post.createdAt)}
+                        </p>
+                    </div>
                 </div>
+                {canViewerDeletePost && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={handleDeleteClick}
+                        title="Delete Post"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                )}
             </div>
           </DialogHeader>
           
