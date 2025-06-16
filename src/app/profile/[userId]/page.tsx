@@ -34,8 +34,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PostViewDialog } from '@/components/posts/post-view-dialog'; // New import
-import type { StudentPost } from '@/types/posts'; // New import
+import { PostViewDialog } from '@/components/posts/post-view-dialog'; 
+import type { StudentPost } from '@/types/posts'; 
 
 interface ClientGigForProfile {
   id: string;
@@ -690,13 +690,7 @@ export default function PublicProfilePage() {
                                       </Link>
                                   </Button>
                                 )}
-                                {viewerRole !== 'admin' && profile.role === 'admin' && !profile.isBanned && (
-                                  <Button size="sm" variant="default" asChild className="w-full sm:w-auto">
-                                    <Link href={`/chat?userId=${profile.uid}`}>
-                                      <MessageSquare className="mr-1 h-4 w-4"/>Chat with Admin
-                                    </Link>
-                                  </Button>
-                                )}
+                                {/* Removed: Chat with Admin button for non-admin viewers viewing an admin's profile */}
                             </>
                         )}
                     </div>
@@ -938,7 +932,7 @@ export default function PublicProfilePage() {
           }}
           viewerUser={viewerUser}
           viewerUserProfile={viewerUserProfile}
-          onCommentAdded={() => fetchProfileData()} // Optionally refresh post data if comment count is directly on post
+          onCommentAdded={() => fetchProfileData()} 
         />
       )}
 
