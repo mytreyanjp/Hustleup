@@ -47,10 +47,13 @@ export default function Home() {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden">
-      <div
-        className="absolute inset-0 -z-10 h-full w-full bg-gradient-to-tr from-primary via-accent to-secondary animate-gradient-xy"
-      />
+    <div
+      className="relative min-h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('https://placehold.co/1920x1080.png?text=HustleUp+Welcome')" }}
+      data-ai-hint="modern office"
+    >
+      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm"></div>
+      
       <div className="relative z-0 flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center px-4 py-8">
         <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
           Welcome to HustleUp by PromoFlix
@@ -82,3 +85,4 @@ export default function Home() {
     </div>
   );
 }
+
