@@ -10,23 +10,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Wallet, Download, IndianRupee } from 'lucide-react'; // Added IndianRupee
+import { Loader2, Wallet, Download, IndianRupee } from 'lucide-react'; 
 import Link from 'next/link';
 import { format } from 'date-fns';
 
-// Assume the same Transaction interface as client/payments,
-// but queried by studentId
 interface Transaction {
-  id: string; // Firestore document ID
+  id: string; 
   gigId: string;
-  gigTitle: string; // Denormalized
-  clientId: string; // Added clientId
-  clientUsername: string; // Denormalized
+  gigTitle: string; 
+  clientId: string; 
+  clientUsername: string; 
   amount: number;
   currency: string;
-  status: 'succeeded' | 'failed' | 'pending' | 'processing'; // Added processing
-  razorpayPaymentId: string;
-  paidAt: Timestamp; // Timestamp of successful payment/payout initiation
+  status: 'succeeded' | 'failed' | 'pending' | 'payout_to_student_succeeded'; 
+  paymentId?: string; // Generic payment ID
+  payoutProcessedAt?: Timestamp; // For student payouts
+  paidAt: Timestamp; 
 }
 
 export default function StudentWalletPage() {
@@ -51,13 +50,12 @@ export default function StudentWalletPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Querying the same 'transactions' collection, but by studentId
       const transactionsRef = collection(db, "transactions");
       const q = query(
         transactionsRef,
-        where("studentId", "==", user.uid), // Filter by student ID
-         where("status", "==", "succeeded"), // Only show successful payouts
-        orderBy("paidAt", "desc")
+        where("studentId", "==", user.uid), 
+        where("status", "==", "payout_to_student_succeeded"), // Only show successful payouts to student
+        orderBy("payoutProcessedAt", "desc") // Order by when payout was processed
       );
       const querySnapshot = await getDocs(q);
 
@@ -84,7 +82,7 @@ export default function StudentWalletPage() {
    const formatDate = (timestamp: Timestamp | undefined): string => {
      if (!timestamp) return 'N/A';
      try {
-       return format(timestamp.toDate(), "MMM d, yyyy"); // e.g., Jan 15, 2025
+       return format(timestamp.toDate(), "MMM d, yyyy"); 
      } catch (e) {
        return 'Invalid Date';
      }
@@ -118,10 +116,6 @@ export default function StudentWalletPage() {
             <CardContent>
                <p className="text-4xl font-bold">₹{totalEarned.toFixed(2)}</p>
             </CardContent>
-             {/* Optional: Add payout button if implementing withdrawals */}
-             {/* <CardFooter>
-                 <Button variant="secondary">Withdraw Funds (Soon)</Button>
-             </CardFooter> */}
        </Card>
 
 
@@ -146,15 +140,15 @@ export default function StudentWalletPage() {
                 <TableRow>
                   <TableHead>Date Received</TableHead>
                   <TableHead>Gig Title</TableHead>
-                  <TableHead>Client</TableHead>
+                  <TableHead>From Client</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                   <TableHead>Payment ID</TableHead>
+                   <TableHead>Transaction ID</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {transactions.map((tx) => (
                   <TableRow key={tx.id}>
-                    <TableCell className="whitespace-nowrap">{formatDate(tx.paidAt)}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDate(tx.payoutProcessedAt || tx.paidAt)}</TableCell>
                     <TableCell>
                        <Link href={`/gigs/${tx.gigId}`} className="hover:underline font-medium">
                            {tx.gigTitle}
@@ -165,7 +159,7 @@ export default function StudentWalletPage() {
                        + ₹{tx.amount.toFixed(2)}
                     </TableCell>
                      <TableCell className="text-xs text-muted-foreground truncate max-w-[100px]">
-                       {tx.razorpayPaymentId}
+                       {tx.id} 
                      </TableCell>
                   </TableRow>
                 ))}
@@ -184,3 +178,4 @@ export default function StudentWalletPage() {
     </div>
   );
 }
+

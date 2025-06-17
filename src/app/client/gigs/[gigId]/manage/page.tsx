@@ -15,7 +15,7 @@ import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, A
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { useRazorpay } from '@/hooks/use-razorpay';
+// import { useRazorpay } from '@/hooks/use-razorpay'; // Removed Razorpay
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getChatId } from '@/lib/utils';
 import { StarRating } from '@/components/ui/star-rating';
@@ -75,7 +75,7 @@ interface Gig {
   numberOfReports?: number;
   progressReports?: ProgressReport[];
   sharedDriveLink?: string; 
-  studentPaymentRequestPending?: boolean; // Added
+  studentPaymentRequestPending?: boolean; 
 }
 
 interface Review {
@@ -136,7 +136,7 @@ export default function ManageGigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingApplicantId, setUpdatingApplicantId] = useState<string | null>(null);
-  const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null);
+  const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null); // Still used for UI state, not direct payment
   const [updatingRequestStudentId, setUpdatingRequestStudentId] = useState<string | null>(null);
 
   const [rating, setRating] = useState(0);
@@ -151,77 +151,64 @@ export default function ManageGigPage() {
   const [isEditingDriveLink, setIsEditingDriveLink] = useState(false);
   const [isSavingDriveLink, setIsSavingDriveLink] = useState(false);
 
+  // Placeholder for payment processing state
+  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
 
-   const handlePaymentSuccess = async (paymentDetails: { paymentId: string; orderId?: string; signature?: string }) => {
-     if (!payingStudent || !gig || !user || !userProfile) return;
-     setIsLoading(true);
-     try {
-         const transactionData = {
-             clientId: user.uid,
-             clientUsername: userProfile?.username || user.email?.split('@')[0] || 'Client',
-             studentId: payingStudent.studentId,
-             studentUsername: payingStudent.studentUsername,
-             gigId: gig.id,
-             gigTitle: gig.title,
-             amount: gig.budget,
-             currency: "INR" as "INR",
-             status: 'pending_release_to_student' as 'pending_release_to_student' | 'succeeded' | 'failed' | 'pending',
-             razorpayPaymentId: paymentDetails.paymentId,
-             razorpayOrderId: paymentDetails.orderId,
-             paidAt: serverTimestamp(),
-         };
-         await addDoc(collection(db, "transactions"), transactionData);
 
-          const gigDocRef = doc(db, 'gigs', gig.id);
-          await updateDoc(gigDocRef, { 
+  const handleSimulatedPaymentSuccess = async (student: ApplicantInfo) => {
+    if (!gig || !user || !userProfile) return;
+    setIsSimulatingPayment(true);
+    try {
+        // Simulate a payment ID for transaction record
+        const simulatedPaymentId = `sim_${Date.now()}`;
+
+        const transactionData = {
+            clientId: user.uid,
+            clientUsername: userProfile?.companyName || userProfile?.username || user.email?.split('@')[0] || 'Client',
+            studentId: student.studentId,
+            studentUsername: student.studentUsername,
+            gigId: gig.id,
+            gigTitle: gig.title,
+            amount: gig.budget,
+            currency: "INR" as "INR",
+            status: 'pending_release_to_student' as 'pending_release_to_student' | 'succeeded' | 'failed' | 'pending',
+            paymentId: simulatedPaymentId, // Generic payment ID
+            paidAt: serverTimestamp(),
+        };
+        await addDoc(collection(db, "transactions"), transactionData);
+
+        const gigDocRef = doc(db, 'gigs', gig.id);
+        await updateDoc(gigDocRef, { 
             status: 'awaiting_payout',
-            studentPaymentRequestPending: false // Reset this flag
-          });
-         setGig(prev => prev ? { ...prev, status: 'awaiting_payout', studentPaymentRequestPending: false } : null);
+            studentPaymentRequestPending: false 
+        });
+        setGig(prev => prev ? { ...prev, status: 'awaiting_payout', studentPaymentRequestPending: false } : null);
 
-         toast({
-             title: "Payment Successful!",
-             description: `Payment of INR ${gig.budget.toFixed(2)} received. Funds will be released to ${payingStudent.studentUsername} after admin review.`,
-         });
-         fetchGigAndReviewStatus();
+        toast({
+            title: "Payment Processed (Simulated)",
+            description: `Payment of INR ${gig.budget.toFixed(2)} recorded. Funds will be released to ${student.studentUsername} after admin review. This is a placeholder action.`,
+            duration: 7000,
+        });
+        fetchGigAndReviewStatus();
 
+    } catch (err) {
+        console.error("Error recording transaction or updating gig status:", err);
+        toast({ title: "Payment Update Failed", description: "Updating gig status failed. Please contact support.", variant: "destructive" });
+    } finally {
+        setPayingStudent(null);
+        setIsSimulatingPayment(false);
+    }
+  };
 
-     } catch (err) {
-         console.error("Error recording transaction or updating gig status:", err);
-         toast({ title: "Payment Recorded, Update Failed", description: "Payment was successful but updating gig status failed. Please contact support.", variant: "destructive" });
-     } finally {
-         setPayingStudent(null);
-         setIsLoading(false);
-     }
-   };
-
-   const handlePaymentError = (errorData: any) => {
-     console.error("Razorpay Error:", errorData);
-     toast({ title: "Payment Failed", description: errorData.description || errorData.reason || "An error occurred during payment.", variant: "destructive" });
-     setPayingStudent(null);
-   };
-
-   const { openCheckout, isLoaded: isRazorpayLoaded } = useRazorpay({
-     keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-     onPaymentSuccess: handlePaymentSuccess,
-     onPaymentError: handlePaymentError,
-   });
-
-   const initiatePayment = (student: ApplicantInfo) => {
-     if (!gig || !userProfile || !isRazorpayLoaded || !user) {
-         toast({ title: "Cannot Initiate Payment", description: "Payment gateway or user details missing.", variant: "destructive"});
-         return;
-     };
-     setPayingStudent(student);
-     openCheckout({
-       amount: gig.budget * 100,
-       currency: "INR",
-       name: "HustleUp by PromoFlix Gig Payment",
-       description: `Payment for Gig: ${gig.title}. To HustleUp Platform.`,
-       prefill: { name: userProfile?.username || user?.email?.split('@')[0], email: user?.email || '' },
-       notes: { gigId: gig.id, studentId: student.studentId, clientId: user?.uid },
-     });
-   };
+  const initiateSimulatedPayment = (student: ApplicantInfo) => {
+    if (!gig || !userProfile || !user) {
+        toast({ title: "Cannot Initiate Payment", description: "User details missing.", variant: "destructive"});
+        return;
+    };
+    setPayingStudent(student);
+    // Directly call the success handler for simulation
+    handleSimulatedPaymentSuccess(student); 
+  };
 
     const fetchGigAndReviewStatus = useCallback(async () => {
         if (!gigId || !user || !db) return;
@@ -730,10 +717,10 @@ export default function ManageGigPage() {
                 </Card>
            </CardContent>
             <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 border-t pt-4">
-                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Gig Payment: **INR {gig.budget.toFixed(2)}**. Ready to pay for the completed work by {selectedStudent.studentUsername}? </p>
-                <Button size="lg" onClick={() => initiatePayment(selectedStudent)} disabled={!isRazorpayLoaded || isLoading || payingStudent?.studentId === selectedStudent.studentId || !allReportsApproved} className="w-full sm:w-auto">
-                   {(isLoading && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                   Pay INR {gig.budget.toFixed(2)}
+                <p className="text-sm text-muted-foreground flex-grow text-center sm:text-left mb-2 sm:mb-0"> Gig Payment: INR {gig.budget.toFixed(2)}. Ready to pay for the completed work by {selectedStudent.studentUsername}? </p>
+                <Button size="lg" onClick={() => initiateSimulatedPayment(selectedStudent)} disabled={isSimulatingPayment || payingStudent?.studentId === selectedStudent.studentId || !allReportsApproved} className="w-full sm:w-auto">
+                   {(isSimulatingPayment && payingStudent?.studentId === selectedStudent.studentId) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                   Pay INR {gig.budget.toFixed(2)} (Simulated)
                  </Button>
             </CardFooter>
              {!allReportsApproved && gig.numberOfReports && gig.numberOfReports > 0 && (
@@ -862,3 +849,4 @@ export default function ManageGigPage() {
      </div>
    );
 }
+

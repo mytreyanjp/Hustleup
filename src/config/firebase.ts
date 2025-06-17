@@ -24,7 +24,6 @@ import { getStorage, FirebaseStorage } from "firebase/storage";
 //    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="YOUR_ACTUAL_STORAGE_BUCKET"
 //    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="YOUR_ACTUAL_MESSAGING_SENDER_ID"
 //    NEXT_PUBLIC_FIREBASE_APP_ID="YOUR_ACTUAL_APP_ID"
-//    NEXT_PUBLIC_RAZORPAY_KEY_ID="YOUR_RAZORPAY_KEY_ID" // If using Razorpay
 //
 // 3. CRITICAL: After creating or modifying the `.env.local` file,
 //    you MUST COMPLETELY STOP your Next.js development server and then RESTART it.

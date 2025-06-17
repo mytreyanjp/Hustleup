@@ -9,20 +9,20 @@ import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CalendarDays, IndianRupee } from 'lucide-react'; // Replaced DollarSign with IndianRupee
+import { Loader2, CalendarDays, IndianRupee } from 'lucide-react'; 
 import Link from 'next/link';
 import { format } from 'date-fns';
 
 interface Transaction {
-  id: string; // Firestore document ID
+  id: string; 
   gigId: string;
-  gigTitle: string; // Denormalized
+  gigTitle: string; 
   studentId: string;
-  studentUsername: string; // Denormalized
+  studentUsername: string; 
   amount: number;
   currency: string;
-  status: 'succeeded' | 'failed' | 'pending' | 'pending_release_to_student'; // Added 'pending_release_to_student'
-  razorpayPaymentId: string;
+  status: 'succeeded' | 'failed' | 'pending' | 'pending_release_to_student'; 
+  paymentId?: string; // Generic payment ID, no longer Razorpay specific
   paidAt: Timestamp;
 }
 
@@ -50,7 +50,7 @@ export default function ClientPaymentsPage() {
       const transactionsRef = collection(db, "transactions");
       const q = query(
         transactionsRef,
-        where("clientId", "==", user.uid), // Filter by client ID
+        where("clientId", "==", user.uid), 
         orderBy("paidAt", "desc")
       );
       const querySnapshot = await getDocs(q);
@@ -72,7 +72,7 @@ export default function ClientPaymentsPage() {
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'N/A';
     try {
-      return format(timestamp.toDate(), "MMM d, yyyy, h:mm a"); // e.g., Jan 15, 2025, 2:30 PM
+      return format(timestamp.toDate(), "MMM d, yyyy, h:mm a"); 
     } catch (e) {
       return 'Invalid Date';
     }
@@ -83,7 +83,7 @@ export default function ClientPaymentsPage() {
            case 'succeeded': return 'default'; 
            case 'failed': return 'destructive';
            case 'pending': return 'secondary';
-           case 'pending_release_to_student': return 'outline'; // Use outline for pending release
+           case 'pending_release_to_student': return 'outline'; 
            default: return 'outline';
        }
    };
@@ -151,7 +151,7 @@ export default function ClientPaymentsPage() {
                       </Badge>
                     </TableCell>
                      <TableCell className="text-xs text-muted-foreground truncate max-w-[100px]">
-                        {tx.razorpayPaymentId}
+                        {tx.paymentId || 'N/A'}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -163,3 +163,4 @@ export default function ClientPaymentsPage() {
     </div>
   );
 }
+
