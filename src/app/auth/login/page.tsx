@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { signInWithEmailAndPassword, signInWithPopup, getAdditionalUserInfo, UserCredential, OAuthProvider } from 'firebase/auth';
-import { auth, googleAuthProvider, appleAuthProvider, githubAuthProvider, db } from '@/config/firebase';
+import { auth, googleAuthProvider, githubAuthProvider, db } from '@/config/firebase'; // Removed appleAuthProvider
 import { doc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,13 +31,6 @@ const GoogleIcon = () => (
   <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
     <path fill="currentColor" d="M488 261.8C488 403.3 381.5 512 244 512 110.5 512 0 401.5 0 265.5S110.5 19 244 19c70.5 0 132.5 29 177.5 76.5l-64.5 64.5C330.5 131.5 290.5 112 244 112c-80.5 0-147 65.5-147 153.5S163.5 419 244 419c47.5 0 87.5-24.5 113.5-62.5H244v-87h244c1.5 10.5 2.5 22.5 2.5 34.5z"></path>
   </svg>
-);
-
-// SVG for Apple Icon
-const AppleIcon = () => (
-    <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="apple" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512">
-        <path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C39.2 141.6 0 184.8 0 246.4c0 37.5 19.7 74.7 50.4 99.5C34.3 368 19.8 405.2 19.8 442.6c0 6.7 .6 13.4 1.7 19.9H192v-29.3H17.4c-.8-6.5-1.4-13.2-1.4-20.2 .1-33.9 14.6-60.5 40.8-79.2 25.2-17.9 50.5-27.5 76.8-27.5 27.7 0 53.5 11.7 76.8 31.4 22.3 18.9 35.9 45.8 35.9 77.9 .1 21.3-5.3 42.8-15.1 63.2H318.7c1.6-11.6 2.4-23.6 2.4-36C321.1 300.1 318.9 284.2 318.7 268.7zM226.1 184c-15.5-16.4-35.5-25.3-55.7-25.3-21.3 0-42.5 10.2-59.3 26.8-17.2 16.8-29.3 39.9-30.1 64.6H287c-.7-24.4-12.5-47.1-29.9-63.2-5.2-4.8-11.3-9.1-17.9-12.9-1.1-.6-2.2-1.2-3.1-1.8z"></path>
-    </svg>
 );
 
 // SVG for GitHub Icon
@@ -125,7 +118,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleOAuthSignIn = async (provider: typeof googleAuthProvider | typeof appleAuthProvider | typeof githubAuthProvider, providerName: string) => {
+  const handleOAuthSignIn = async (provider: typeof googleAuthProvider | typeof githubAuthProvider, providerName: string) => { // Removed appleAuthProvider
     if (!provider || !auth || !db) {
       toast({ title: 'Error', description: `Firebase not configured for ${providerName} Sign-In.`, variant: 'destructive' });
       setIsOAuthLoading(false);
@@ -133,11 +126,6 @@ export default function LoginPage() {
     }
     setIsOAuthLoading(true);
     try {
-      if (providerName === "Apple" && appleAuthProvider) {
-        (appleAuthProvider as OAuthProvider).addScope('email');
-        (appleAuthProvider as OAuthProvider).addScope('name');
-      }
-
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
@@ -187,11 +175,7 @@ export default function LoginPage() {
              errorMessage = `An error occurred with ${providerName} Sign-In. Please ensure your ${providerName} application is correctly configured and linked in Firebase. Full error: ${error.message}`;
              break;
           default:
-            if (providerName === "Apple") {
-                errorMessage = `Apple Sign-In failed. This often indicates an issue with the complex setup required in both the Apple Developer portal and Firebase. Please double-check all App IDs, Services IDs, private keys, and team configurations. (Code: ${error.code || 'N/A'}, Message: ${error.message || 'No specific message'})`;
-            } else {
-                errorMessage = `${providerName} Sign-In error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code || 'N/A'})`;
-            }
+            errorMessage = `${providerName} Sign-In error: ${error.message || 'An unknown error occurred.'} (Code: ${error.code || 'N/A'})`;
         }
       }
       toast({
@@ -290,20 +274,6 @@ export default function LoginPage() {
                 <GoogleIcon />
               )}
               Sign in with Google
-            </Button>
-
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => handleOAuthSignIn(appleAuthProvider, "Apple")}
-              disabled={isLoading || isOAuthLoading || !appleAuthProvider || authContextLoading} 
-            >
-              {isOAuthLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <AppleIcon />
-              )}
-              Sign in with Apple
             </Button>
 
             <Button
