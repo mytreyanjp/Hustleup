@@ -10,9 +10,9 @@ import { ref as storageRefFn, uploadBytesResumable, getDownloadURL, deleteObject
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon, IndianRupee } from 'lucide-react';
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon, IndianRupee, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
-import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
+import { format, formatDistanceToNow, isBefore, addHours, differenceInHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -56,6 +56,7 @@ interface WorkGig {
   clientUsername?: string;
   clientCompanyName?: string;
   deadline: Timestamp;
+  updatedAt: Timestamp; // Used to estimate time in 'awaiting_payout'
   budget: number; // Gross budget
   currency: string;
   numberOfReports?: number;
@@ -182,6 +183,8 @@ export default function StudentWorksPage() {
   const [isRequestingPayment, setIsRequestingPayment] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const PAYMENT_DELAY_THRESHOLD_HOURS = 72; // 3 days
+
   useEffect(() => {
     if (!authLoading) {
       if (!user || role !== 'student') {
@@ -197,7 +200,7 @@ export default function StudentWorksPage() {
           gigsRef,
           where("selectedStudentId", "==", user.uid),
           where("status", "in", ["in-progress", "awaiting_payout", "completed"]),
-          orderBy("createdAt", "desc")
+          orderBy("createdAt", "desc") // Or orderBy("updatedAt", "desc") if more relevant for "awaiting_payout"
         );
 
         const unsubscribe = onSnapshot(q, async (querySnapshot) => {
@@ -245,7 +248,9 @@ export default function StudentWorksPage() {
               description: gigData.description || "", 
               requiredSkills: gigData.requiredSkills || [], 
               clientId: gigData.clientId, clientUsername, clientCompanyName,
-              deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
+              deadline: gigData.deadline, 
+              updatedAt: gigData.updatedAt, // Ensure updatedAt is fetched
+              budget: gigData.budget || 0, currency: gigData.currency || "INR",
               numberOfReports: numReports, status: gigData.status,
               progressReports: completeProgressReports,
               sharedDriveLink: gigData.sharedDriveLink || "", 
@@ -339,7 +344,8 @@ export default function StudentWorksPage() {
       } else if (sortBy === 'deadlineDesc') {
         return deadlineB - deadlineA;
       }
-      return (b.deadline?.toMillis() || 0) - (a.deadline?.toMillis() || 0);
+      // Default sort by updatedAt if status and explicit sort are same
+      return (b.updatedAt?.toMillis() || 0) - (a.updatedAt?.toMillis() || 0);
     });
 
     return gigsToProcess;
@@ -814,6 +820,7 @@ export default function StudentWorksPage() {
                 "Request payment from client";
               
               const netPayment = gig.budget * (1 - COMMISSION_RATE);
+              const isAwaitingPayoutForLong = gig.status === 'awaiting_payout' && gig.updatedAt && differenceInHours(new Date(), gig.updatedAt.toDate()) > PAYMENT_DELAY_THRESHOLD_HOURS;
 
 
               return (
@@ -830,6 +837,19 @@ export default function StudentWorksPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-start sm:self-center">
+                      {isAwaitingPayoutForLong && (
+                         <Button 
+                            variant="outline" 
+                            size="xs" 
+                            className="h-8 text-xs"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/support?context=payment_delay&gigId=${gig.id}&gigTitle=${encodeURIComponent(gig.title)}`);
+                            }}
+                          >
+                            <HelpCircle className="mr-1.5 h-3.5 w-3.5" /> Ask HustleUp
+                          </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={isCollapsed ? 'Expand' : 'Collapse'}>
                           {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
                       </Button>
