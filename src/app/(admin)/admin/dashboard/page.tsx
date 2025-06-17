@@ -4,12 +4,12 @@
 import { useFirebase } from '@/context/firebase-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, ShieldCheck, Settings, Briefcase, HelpCircle, Search, Loader2 } from 'lucide-react'; 
+import { Users, ShieldCheck, Settings, Briefcase, HelpCircle, Search, Loader2, DollarSign } from 'lucide-react'; 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { Badge } from '@/components/ui/badge'; // Import Badge component
+import { Badge } from '@/components/ui/badge'; 
 
 export default function AdminDashboardPage() {
   const { userProfile, role } = useFirebase();
@@ -29,7 +29,7 @@ export default function AdminDashboardPage() {
         setIsLoadingSupportCount(false);
       }, (error) => {
         console.error("Error fetching pending support requests count:", error);
-        setPendingSupportRequestsCount(0); // Default to 0 on error
+        setPendingSupportRequestsCount(0); 
         setIsLoadingSupportCount(false);
       });
 
@@ -95,6 +95,21 @@ export default function AdminDashboardPage() {
           </CardContent>
         </Card>
         
+        <Card className="glass-card">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+            <CardTitle className="text-sm font-medium">Monitor Transactions</CardTitle>
+            <DollarSign className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="p-4 pt-2 sm:p-6 sm:pt-2">
+            <p className="text-xs text-muted-foreground mt-1 mb-3">
+              View and manage all platform transactions.
+            </p>
+             <Button variant="outline" size="sm" className="text-sm w-full sm:w-auto" asChild>
+                <Link href="/admin/transactions">View Transactions</Link>
+             </Button>
+          </CardContent>
+        </Card>
+
         <Card className="glass-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
             <div className="flex items-center gap-2">
