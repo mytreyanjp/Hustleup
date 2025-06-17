@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Eye, Search, DollarSign, IndianRupee } from 'lucide-react';
+import { Loader2, ArrowLeft, Eye, Search, IndianRupee } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,10 +28,12 @@ interface Transaction {
     amount: number;
     currency: string;
     status: 'succeeded' | 'failed' | 'pending' | 'pending_release_to_student' | 'payout_to_student_succeeded';
-    paymentId?: string; // Generic payment ID
+    paymentId?: string; 
     paidAt: Timestamp;
     payoutProcessedAt?: Timestamp;
 }
+
+const COMMISSION_RATE = 0.10; // 10% commission
 
 export default function AdminTransactionsPage() {
   const { user: adminUser, role: adminRole, loading: adminLoading } = useFirebase();
@@ -140,7 +142,7 @@ export default function AdminTransactionsPage() {
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-lg sm:text-xl">Monitor Transactions</CardTitle>
-          <CardDescription>View and manage all platform financial transactions.</CardDescription>
+          <CardDescription>View platform financial transactions and commissions earned.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
@@ -173,6 +175,7 @@ export default function AdminTransactionsPage() {
               <TableRow>
                 <TableHead className="min-w-[120px] text-xs sm:text-sm">Date</TableHead>
                 <TableHead className="min-w-[100px] text-xs sm:text-sm hidden md:table-cell">Amount</TableHead>
+                <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Commission (INR)</TableHead>
                 <TableHead className="min-w-[150px] text-xs sm:text-sm">Status</TableHead>
                 <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Client</TableHead>
                 <TableHead className="min-w-[120px] text-xs sm:text-sm hidden md:table-cell">Student</TableHead>
@@ -182,40 +185,49 @@ export default function AdminTransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="text-xs sm:text-sm whitespace-nowrap">{formatDate(tx.payoutProcessedAt || tx.paidAt)}</TableCell>
-                  <TableCell className="text-xs sm:text-sm hidden md:table-cell">₹{tx.amount.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(tx.status)} className="capitalize text-xs whitespace-nowrap">
-                        {tx.status === 'pending_release_to_student' ? 'Paid by Client (Held)' : 
-                         tx.status === 'payout_to_student_succeeded' ? 'Paid to Student' : 
-                         tx.status.replace(/_/g, ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs sm:text-sm hidden md:table-cell truncate max-w-[100px]">
-                    <Link href={`/profile/${tx.clientId}`} className="hover:underline text-primary" target="_blank">
-                        {tx.clientUsername}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-xs sm:text-sm hidden md:table-cell truncate max-w-[100px]">
-                     <Link href={`/profile/${tx.studentId}`} className="hover:underline text-primary" target="_blank">
-                        {tx.studentUsername}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-medium max-w-[150px] sm:max-w-xs truncate text-xs sm:text-sm">
-                    <Link href={`/admin/manage-gigs/${tx.gigId}`} className="hover:underline text-primary">
-                        {tx.gigTitle}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-xs sm:text-sm hidden md:table-cell truncate max-w-[100px]">{tx.paymentId || 'N/A'}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/admin/manage-gigs/${tx.gigId}`}><Eye className="mr-0 md:mr-1 h-4 w-4" /> <span className="hidden md:inline">View Gig</span></Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filteredTransactions.map((tx) => {
+                let commissionAmount: number | null = null;
+                if (tx.status === 'pending_release_to_student' || tx.status === 'payout_to_student_succeeded' || tx.status === 'succeeded') {
+                    commissionAmount = tx.amount * COMMISSION_RATE;
+                }
+                return (
+                  <TableRow key={tx.id}>
+                    <TableCell className="text-xs sm:text-sm whitespace-nowrap">{formatDate(tx.payoutProcessedAt || tx.paidAt)}</TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell">₹{tx.amount.toFixed(2)}</TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell">
+                        {commissionAmount !== null ? `₹${commissionAmount.toFixed(2)}` : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(tx.status)} className="capitalize text-xs whitespace-nowrap">
+                          {tx.status === 'pending_release_to_student' ? 'Paid by Client (Held)' : 
+                           tx.status === 'payout_to_student_succeeded' ? 'Paid to Student' : 
+                           tx.status.replace(/_/g, ' ')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell truncate max-w-[100px]">
+                      <Link href={`/profile/${tx.clientId}`} className="hover:underline text-primary" target="_blank">
+                          {tx.clientUsername}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell truncate max-w-[100px]">
+                       <Link href={`/profile/${tx.studentId}`} className="hover:underline text-primary" target="_blank">
+                          {tx.studentUsername}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="font-medium max-w-[150px] sm:max-w-xs truncate text-xs sm:text-sm">
+                      <Link href={`/admin/manage-gigs/${tx.gigId}`} className="hover:underline text-primary">
+                          {tx.gigTitle}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-xs sm:text-sm hidden md:table-cell truncate max-w-[100px]">{tx.paymentId || 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/admin/manage-gigs/${tx.gigId}`}><Eye className="mr-0 md:mr-1 h-4 w-4" /> <span className="hidden md:inline">View Gig</span></Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           {filteredTransactions.length === 0 && !isLoading && (
