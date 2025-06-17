@@ -19,7 +19,8 @@ export type NotificationType =
   | 'report_reviewed'            // For student, when client reviews their report
   | 'report_attachment_deleted'  // For student/client, when admin deletes an attachment from a report
   | 'payment_requested_by_student' // For client, when student requests payment for a gig
-  | 'gig_drive_link_updated';    // For student, when client adds/updates shared drive link
+  | 'gig_drive_link_updated'    // For student, when client adds/updates shared drive link
+  | 'client_payment_for_gig_received'; // For student, when client pays HustleUp for their gig
 
 export interface Notification {
   id: string; // Firestore document ID

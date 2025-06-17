@@ -15,7 +15,6 @@ import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, A
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-// import { useRazorpay } from '@/hooks/use-razorpay'; // Removed Razorpay
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getChatId } from '@/lib/utils';
 import { StarRating } from '@/components/ui/star-rating';
@@ -136,7 +135,7 @@ export default function ManageGigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingApplicantId, setUpdatingApplicantId] = useState<string | null>(null);
-  const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null); // Still used for UI state, not direct payment
+  const [payingStudent, setPayingStudent] = useState<ApplicantInfo | null>(null); 
   const [updatingRequestStudentId, setUpdatingRequestStudentId] = useState<string | null>(null);
 
   const [rating, setRating] = useState(0);
@@ -151,7 +150,6 @@ export default function ManageGigPage() {
   const [isEditingDriveLink, setIsEditingDriveLink] = useState(false);
   const [isSavingDriveLink, setIsSavingDriveLink] = useState(false);
 
-  // Placeholder for payment processing state
   const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
 
 
@@ -159,7 +157,6 @@ export default function ManageGigPage() {
     if (!gig || !user || !userProfile) return;
     setIsSimulatingPayment(true);
     try {
-        // Simulate a payment ID for transaction record
         const simulatedPaymentId = `sim_${Date.now()}`;
 
         const transactionData = {
@@ -172,7 +169,7 @@ export default function ManageGigPage() {
             amount: gig.budget,
             currency: "INR" as "INR",
             status: 'pending_release_to_student' as 'pending_release_to_student' | 'succeeded' | 'failed' | 'pending',
-            paymentId: simulatedPaymentId, // Generic payment ID
+            paymentId: simulatedPaymentId, 
             paidAt: serverTimestamp(),
         };
         await addDoc(collection(db, "transactions"), transactionData);
@@ -184,9 +181,22 @@ export default function ManageGigPage() {
         });
         setGig(prev => prev ? { ...prev, status: 'awaiting_payout', studentPaymentRequestPending: false } : null);
 
+        // Notify student that client has paid
+        await createNotification(
+            student.studentId,
+            `The client, ${userProfile?.companyName || userProfile?.username || 'Client'}, has submitted payment for the gig "${gig.title}". Funds are now being processed by HustleUp.`,
+            'client_payment_for_gig_received',
+            gig.id,
+            gig.title,
+            `/student/works`, // Or `/gigs/${gig.id}` if preferred
+            user.uid,
+            userProfile?.companyName || userProfile?.username || 'The Client'
+        );
+
+
         toast({
             title: "Payment Processed (Simulated)",
-            description: `Payment of INR ${gig.budget.toFixed(2)} recorded. Funds will be released to ${student.studentUsername} after admin review. This is a placeholder action.`,
+            description: `Payment of INR ${gig.budget.toFixed(2)} recorded. Funds will be released to ${student.studentUsername} after admin review. This is a placeholder action. The student has been notified.`,
             duration: 7000,
         });
         fetchGigAndReviewStatus();
@@ -206,7 +216,6 @@ export default function ManageGigPage() {
         return;
     };
     setPayingStudent(student);
-    // Directly call the success handler for simulation
     handleSimulatedPaymentSuccess(student); 
   };
 
