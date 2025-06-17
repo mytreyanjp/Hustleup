@@ -24,10 +24,12 @@ import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import type { ProgressReport } from '@/app/student/works/page'; 
 
+const COMMISSION_RATE = 0.02; // 2%
+
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
   description: z.string().min(20, { message: 'Description must be at least 20 characters' }).max(2000, { message: 'Description cannot exceed 2000 characters'}),
-  budget: z.coerce.number().positive({ message: 'Payment must be a positive number' }),
+  budget: z.coerce.number().positive({ message: 'Payment must be a positive number' }).min(50, { message: 'Minimum payment is ₹50' }), // Added min budget
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
@@ -89,6 +91,8 @@ export default function NewGigPage() {
   const { control, watch, setValue } = form;
   const numberOfReportsValue = watch("numberOfReports", 0);
   const overallGigDeadline = watch("deadline");
+  const budgetValue = watch("budget");
+
   const { fields: reportDeadlineFields, append: appendReportDeadline, remove: removeReportDeadline } = useFieldArray({
     control,
     name: "reportDeadlines"
@@ -100,15 +104,15 @@ export default function NewGigPage() {
 
     if (targetLength > currentLength) {
       const numToAdd = targetLength - currentLength;
-      const newFields = Array(numToAdd).fill(null); // Create an array of nulls
-      appendReportDeadline(newFields);             // Pass the array to append
+      const newFields = Array(numToAdd).fill(null); 
+      appendReportDeadline(newFields);             
     } else if (targetLength < currentLength) {
       const indicesToRemove: number[] = [];
       for (let i = currentLength - 1; i >= targetLength; i--) {
         indicesToRemove.push(i);
       }
       if (indicesToRemove.length > 0) {
-        removeReportDeadline(indicesToRemove); // remove can take an array of indices
+        removeReportDeadline(indicesToRemove); 
       }
     }
   }, [numberOfReportsValue, appendReportDeadline, removeReportDeadline, reportDeadlineFields.length]);
@@ -156,7 +160,7 @@ export default function NewGigPage() {
         clientAvatarUrl: userProfile.profilePictureUrl || '',
         title: data.title,
         description: data.description,
-        budget: data.budget,
+        budget: data.budget, // Gross amount
         deadline: Timestamp.fromDate(data.deadline),
         requiredSkills: data.requiredSkills,
         numberOfReports: data.numberOfReports || 0,
@@ -187,6 +191,9 @@ export default function NewGigPage() {
     }
   };
 
+  const commissionAmount = budgetValue && budgetValue > 0 ? budgetValue * COMMISSION_RATE : 0;
+  const netAmount = budgetValue && budgetValue > 0 ? budgetValue * (1 - COMMISSION_RATE) : 0;
+
   if (authLoading) {
     return (
        <div className="flex justify-center items-center min-h-[calc(100vh-10rem)]">
@@ -195,7 +202,7 @@ export default function NewGigPage() {
     );
   }
 
-  if (!user || role !== 'client' || userProfile?.isBanned) { // Add banned check here for initial render if not redirected
+  if (!user || role !== 'client' || userProfile?.isBanned) { 
     return (
       <div className="flex flex-col justify-center items-center min-h-[calc(100vh-10rem)] text-center p-4">
         {userProfile?.isBanned ? (
@@ -266,9 +273,16 @@ export default function NewGigPage() {
                      <FormItem>
                        <FormLabel>Gig Payment (INR)</FormLabel>
                        <FormControl>
-                         <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} min="1" step="any" />
+                         <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} min="50" step="any" />
                        </FormControl>
-                       <FormDescription>Enter the total payment amount in INR.</FormDescription>
+                       <FormDescription>
+                         Enter the total payment amount in INR (min ₹50).
+                         {budgetValue > 0 && (
+                           <span className="block text-xs text-muted-foreground/80 mt-0.5">
+                             Student will receive ₹{netAmount.toFixed(2)} after a 2% platform fee (₹{commissionAmount.toFixed(2)}).
+                           </span>
+                         )}
+                       </FormDescription>
                        <FormMessage />
                      </FormItem>
                    )}

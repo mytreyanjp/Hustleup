@@ -24,12 +24,13 @@ import { MultiSelectSkills } from '@/components/ui/multi-select-skills';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';
 import type { ProgressReport } from '@/app/student/works/page'; 
 
+const COMMISSION_RATE = 0.02; // 2%
 
 // Schema for gig form validation
 const gigSchema = z.object({
   title: z.string().min(5, { message: 'Title must be at least 5 characters' }).max(100, { message: 'Title cannot exceed 100 characters'}),
   description: z.string().min(20, { message: 'Description must be at least 20 characters' }).max(2000, { message: 'Description cannot exceed 2000 characters'}),
-  budget: z.coerce.number().positive({ message: 'Payment must be a positive number' }),
+  budget: z.coerce.number().positive({ message: 'Payment must be a positive number' }).min(50, { message: 'Minimum payment is ₹50' }),
   deadline: z.date({ required_error: 'A deadline is required.' }),
   requiredSkills: z.array(z.string()).min(1, { message: 'At least one skill is required' }).max(10, { message: 'Maximum 10 skills allowed' }),
   numberOfReports: z.coerce.number().int().min(0, "Number of reports cannot be negative").max(10, "Maximum 10 reports allowed").optional().default(0),
@@ -110,6 +111,8 @@ export default function EditGigPage() {
   const { control, watch, setValue, reset } = form;
   const numberOfReportsValue = watch("numberOfReports", 0);
   const overallGigDeadline = watch("deadline");
+  const budgetValue = watch("budget");
+
   const { fields: reportDeadlineFields, append: appendReportDeadline, remove: removeReportDeadline, replace: replaceReportDeadlines } = useFieldArray({
     control,
     name: "reportDeadlines"
@@ -248,7 +251,7 @@ export default function EditGigPage() {
       const updateData: Partial<FetchedGigData> & { updatedAt: any, progressReports: Partial<ProgressReport>[] } = {
         title: data.title,
         description: data.description,
-        budget: data.budget,
+        budget: data.budget, // Gross amount
         deadline: Timestamp.fromDate(data.deadline),
         requiredSkills: data.requiredSkills,
         numberOfReports: data.numberOfReports || 0,
@@ -275,6 +278,9 @@ export default function EditGigPage() {
       setIsSubmitting(false);
     }
   };
+
+  const commissionAmount = budgetValue && budgetValue > 0 ? budgetValue * COMMISSION_RATE : 0;
+  const netAmount = budgetValue && budgetValue > 0 ? budgetValue * (1 - COMMISSION_RATE) : 0;
 
   if (authLoading || isLoadingGig) {
     return (
@@ -347,9 +353,16 @@ export default function EditGigPage() {
                     <FormItem>
                       <FormLabel>Gig Payment (INR)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || undefined)} min="1" step="any" />
+                        <Input type="number" placeholder="e.g., 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value) || undefined)} min="50" step="any" />
                       </FormControl>
-                      <FormDescription>Enter the total payment amount in INR.</FormDescription>
+                      <FormDescription>
+                        Enter the total payment amount in INR (min ₹50).
+                        {budgetValue > 0 && (
+                           <span className="block text-xs text-muted-foreground/80 mt-0.5">
+                             Student will receive ₹{netAmount.toFixed(2)} after a 2% platform fee (₹{commissionAmount.toFixed(2)}).
+                           </span>
+                         )}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

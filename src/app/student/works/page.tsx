@@ -10,7 +10,7 @@ import { ref as storageRefFn, uploadBytesResumable, getDownloadURL, deleteObject
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon } from 'lucide-react';
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon, IndianRupee } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from '@/lib/utils';
 import type { NotificationType } from '@/types/notifications'; 
 import { Progress } from '@/components/ui/progress';
+
+const COMMISSION_RATE = 0.02; // 2%
 
 interface Attachment {
   url: string;
@@ -54,7 +56,7 @@ interface WorkGig {
   clientUsername?: string;
   clientCompanyName?: string;
   deadline: Timestamp;
-  budget: number;
+  budget: number; // Gross budget
   currency: string;
   numberOfReports?: number;
   status: 'in-progress' | 'awaiting_payout' | 'completed';
@@ -810,6 +812,9 @@ export default function StudentWorksPage() {
                 gig.studentPaymentRequestPending ? "A payment request is already pending with the client" :
                 isCoolDownActive ? `Next payment request available ${coolDownTimeRemaining}` :
                 "Request payment from client";
+              
+              const netPayment = gig.budget * (1 - COMMISSION_RATE);
+
 
               return (
               <Card key={gig.id} className="glass-card">
@@ -848,7 +853,7 @@ export default function StudentWorksPage() {
                             </div>
                         </div>
                     )}
-                    <div className="flex items-center text-xs sm:text-sm"> <DollarSign className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Budget:</span> <span className="font-medium">{gig.currency} {gig.budget.toFixed(2)}</span> </div>
+                    <div className="flex items-center text-xs sm:text-sm"> <IndianRupee className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Your Payout:</span> <span className="font-medium">₹{netPayment.toFixed(2)}</span> </div>
                     <div className="flex items-center text-xs sm:text-sm"> <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" /> <span className="text-muted-foreground mr-1">Gig Deadline:</span> <span className="font-medium">{formatDeadlineDate(gig.deadline)}</span> </div>
                     {gig.nextUpcomingDeadline && gig.nextUpcomingDeadline.toMillis() !== gig.deadline.toMillis() && (
                          <div className="flex items-center text-xs sm:text-sm text-amber-600 dark:text-amber-400"> <CalendarDays className="mr-2 h-4 w-4" /> <span className="font-semibold mr-1">Next Report Due:</span> <span className="font-medium">{formatDeadlineDate(gig.nextUpcomingDeadline)}</span> </div>
@@ -1053,3 +1058,4 @@ export default function StudentWorksPage() {
     </div>
   );
 }
+

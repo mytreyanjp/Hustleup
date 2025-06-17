@@ -18,11 +18,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from '@/components/ui/separator';
 
+const COMMISSION_RATE = 0.02; // 2%
+
 interface Gig {
   id: string;
   title: string;
   description: string;
-  budget: number;
+  budget: number; // Gross budget
   currency: string;
   deadline: Timestamp;
   requiredSkills: Skill[];
@@ -167,10 +169,11 @@ export default function BrowseGigsPage() {
       const max = maxStr ? parseInt(maxStr, 10) : undefined;
       
       processedGigs = processedGigs.filter(gig => {
+        const netBudget = gig.budget * (1 - COMMISSION_RATE); // Calculate net budget for filtering
         if (max === undefined) { 
-          return gig.budget >= min;
+          return netBudget >= min;
         }
-        return gig.budget >= min && gig.budget <= max;
+        return netBudget >= min && netBudget <= max;
       });
     }
     
@@ -253,7 +256,7 @@ export default function BrowseGigsPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="budget-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Payment (INR)</label>
+                            <label htmlFor="budget-filter-gigs" className="block text-sm font-medium text-muted-foreground mb-1">Payment (INR) - Student Payout</label>
                             <Select value={selectedBudgetFilter} onValueChange={setSelectedBudgetFilter}>
                                 <SelectTrigger id="budget-filter-gigs" className="w-full">
                                 <SelectValue placeholder="Select payment range" />
@@ -290,7 +293,9 @@ export default function BrowseGigsPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4 sm:gap-6 pb-8">
-            {filteredAndSortedGigs.map((gig) => (
+            {filteredAndSortedGigs.map((gig) => {
+              const netPayment = gig.budget * (1 - COMMISSION_RATE);
+              return (
               <Card key={gig.id} className="glass-card flex flex-col"> 
                 <CardHeader className="p-4 sm:p-6">
                   <div className="flex justify-between items-start">
@@ -325,7 +330,7 @@ export default function BrowseGigsPage() {
                       </div>
                    </div>
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
-                       <IndianRupee className="mr-1 h-4 w-4" /> Payment: ₹{gig.budget.toFixed(2)}
+                       <IndianRupee className="mr-1 h-4 w-4" /> Payment: ₹{netPayment.toFixed(2)} (Student Payout)
                    </div>
                    <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                        <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
@@ -352,10 +357,11 @@ export default function BrowseGigsPage() {
                   )}
                 </CardFooter>
               </Card>
-            ))}
+            )})}
           </div>
         )}
       </div>
     </div>
   );
 }
+

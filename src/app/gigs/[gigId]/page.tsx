@@ -39,7 +39,7 @@ interface Gig {
   id: string;
   title: string;
   description: string;
-  budget: number;
+  budget: number; // This will be the GROSS budget
   currency: string;
   deadline: Timestamp;
   requiredSkills: string[];
@@ -55,6 +55,8 @@ interface Gig {
   progressReports?: ProgressReport[];
   sharedDriveLink?: string; 
 }
+
+const COMMISSION_RATE = 0.02; // 2%
 
 // Notification creation helper
 const createNotification = async (
@@ -429,6 +431,8 @@ export default function GigDetailPage() {
    const isSelectedStudent = viewerUser && viewerRole === 'student' && gig.selectedStudentId === viewerUser.uid;
    const isGigInProgressForCurrentUser = isSelectedStudent && gig.status === 'in-progress';
    const clientDisplayName = clientProfileDetails?.companyName || clientProfileDetails?.username || gig.clientUsername || 'Client';
+   
+   const netPayment = gig.budget * (1 - COMMISSION_RATE);
 
 
   return (
@@ -535,7 +539,8 @@ export default function GigDetailPage() {
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="flex items-center text-sm">
                   <IndianRupee className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground mr-1">Payment:</span> <span className="font-medium">₹{gig.budget.toFixed(2)}</span>
+                  <span className="text-muted-foreground mr-1">Payment:</span> 
+                  <span className="font-medium">₹{netPayment.toFixed(2)} (Student Payout)</span>
               </div>
               <div className="flex items-center text-sm">
                   <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
