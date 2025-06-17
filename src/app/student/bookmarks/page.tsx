@@ -192,7 +192,7 @@ export default function StudentBookmarksPage() {
                  <div className="flex items-center text-xs sm:text-sm text-muted-foreground mb-1">
                      <CalendarDays className="mr-1 h-4 w-4" /> {formatDeadline(gig.deadline)}
                  </div>
-                 {gig.numberOfReports && gig.numberOfReports > 0 && (
+                 {gig.numberOfReports > 0 && (
                     <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
                        <Layers className="mr-1 h-4 w-4" /> Requires {gig.numberOfReports} progress report{gig.numberOfReports > 1 ? 's' : ''}
                    </div>

@@ -307,7 +307,7 @@ export default function ClientGigsPage() {
                     <IndianRupee className="mr-1 h-4 w-4" /> Student Requested Payment
                  </div>
               )}
-              {gig.numberOfReports && gig.numberOfReports > 0 && (
+              {gig.numberOfReports > 0 && (
                   <div className="flex items-center text-xs sm:text-sm text-muted-foreground mt-1">
                       <Layers className="mr-1 h-4 w-4" /> Requires {gig.numberOfReports} progress report{gig.numberOfReports > 1 ? 's' : ''}
                   </div>
