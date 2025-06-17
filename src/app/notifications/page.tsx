@@ -4,16 +4,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useFirebase } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, Timestamp, doc, updateDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, BellOff, CheckCheck, ArrowLeft, Info, Briefcase, UserX, UserCheck, AlertTriangle, Send, CheckCircle, XCircle } from 'lucide-react'; // Changed UserWarning to UserX
+import { Loader2, BellOff, CheckCheck, ArrowLeft, Info, Briefcase, UserX, UserCheck, AlertTriangle, Send, CheckCircle, XCircle, Trash2 } from 'lucide-react'; // Added Trash2
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Notification, NotificationType } from '@/types/notifications';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
@@ -41,6 +52,8 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showClearAllDialog, setShowClearAllDialog] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -103,6 +116,46 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleConfirmClearAll = async () => {
+    if (!db || !user || notifications.length === 0) {
+        setShowClearAllDialog(false);
+        return;
+    }
+    setIsClearingAll(true);
+    try {
+        // Fetch all notifications for the user again to ensure we get the latest list for deletion
+        // This is safer than relying solely on the client-side state if there were background updates.
+        const userNotificationsQuery = query(
+            collection(db, 'notifications'),
+            where('recipientUserId', '==', user.uid)
+        );
+        const querySnapshot = await getDocs(userNotificationsQuery);
+
+        if (querySnapshot.empty) {
+            toast({ title: "No Notifications", description: "There are no notifications to clear.", variant: "default" });
+            setShowClearAllDialog(false);
+            setIsClearingAll(false);
+            setNotifications([]); // Ensure local state is also cleared
+            return;
+        }
+
+        const batch = writeBatch(db);
+        querySnapshot.forEach(docSnapshot => {
+            batch.delete(docSnapshot.ref);
+        });
+        await batch.commit();
+        toast({ title: "All Notifications Cleared", description: "Your notification list is now empty." });
+        // The onSnapshot listener should automatically update the `notifications` state to an empty array.
+    } catch (error: any) {
+        console.error("Error clearing all notifications:", error);
+        toast({ title: "Clearing Failed", description: `Could not clear all notifications: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsClearingAll(false);
+        setShowClearAllDialog(false);
+    }
+  };
+
+
   const formatDate = (timestamp: Timestamp | undefined): string => {
     if (!timestamp) return 'Just now';
     return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
@@ -123,11 +176,37 @@ export default function NotificationsPage() {
       </Button>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
-        {notifications.some(n => !n.isRead) && (
-          <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="w-full sm:w-auto">
-            <CheckCheck className="mr-2 h-4 w-4" /> Mark All as Read
-          </Button>
-        )}
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            {notifications.some(n => !n.isRead) && (
+            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="w-full sm:w-auto">
+                <CheckCheck className="mr-2 h-4 w-4" /> Mark All as Read
+            </Button>
+            )}
+            {notifications.length > 0 && (
+                <AlertDialog open={showClearAllDialog} onOpenChange={setShowClearAllDialog}>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm" className="w-full sm:w-auto">
+                            <Trash2 className="mr-2 h-4 w-4" /> Clear All Notifications
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete all your notifications.
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isClearingAll}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmClearAll} disabled={isClearingAll} className="bg-destructive hover:bg-destructive/90">
+                            {isClearingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Yes, Clear All
+                        </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
+        </div>
       </div>
 
       {notifications.length === 0 ? (
