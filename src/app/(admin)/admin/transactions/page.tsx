@@ -33,7 +33,7 @@ interface Transaction {
     payoutProcessedAt?: Timestamp;
 }
 
-const COMMISSION_RATE = 0.10; // 10% commission
+const COMMISSION_RATE = 0.02; // 2% commission
 
 export default function AdminTransactionsPage() {
   const { user: adminUser, role: adminRole, loading: adminLoading } = useFirebase();
@@ -142,7 +142,7 @@ export default function AdminTransactionsPage() {
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-lg sm:text-xl">Monitor Transactions</CardTitle>
-          <CardDescription>View platform financial transactions and commissions earned.</CardDescription>
+          <CardDescription>View platform financial transactions and 2% commissions earned.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
