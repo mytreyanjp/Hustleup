@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion, increment } from 'firebase/firestore'; // Removed arrayUnion from here as it's covered by writeBatch
+import { doc, getDoc, updateDoc, Timestamp, setDoc, collection, addDoc, serverTimestamp, writeBatch, query, where, getDocs, arrayUnion, increment } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 import { ref as storageRefFn, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays, CircleDollarSign, Share2, Link as LinkIcon, Trash2, IndianRupee, PlusCircle } from 'lucide-react'; // Added PlusCircle
+import { Loader2, UserCircle, CheckCircle, XCircle, CreditCard, MessageSquare, ArrowLeft, Star, Layers, Edit3, FileText, Check, X, CalendarDays, CircleDollarSign, Share2, Link as LinkIcon, Trash2, IndianRupee, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -75,6 +75,7 @@ interface Gig {
   numberOfReports?: number;
   progressReports?: ProgressReport[];
   sharedDriveLink?: string; 
+  studentPaymentRequestPending?: boolean; // Added
 }
 
 interface Review {
@@ -90,7 +91,6 @@ interface Review {
   createdAt: Timestamp;
 }
 
-// Notification creation helper
 const createNotification = async (
     recipientUserId: string,
     message: string,
@@ -173,8 +173,11 @@ export default function ManageGigPage() {
          await addDoc(collection(db, "transactions"), transactionData);
 
           const gigDocRef = doc(db, 'gigs', gig.id);
-          await updateDoc(gigDocRef, { status: 'awaiting_payout' });
-         setGig(prev => prev ? { ...prev, status: 'awaiting_payout' } : null);
+          await updateDoc(gigDocRef, { 
+            status: 'awaiting_payout',
+            studentPaymentRequestPending: false // Reset this flag
+          });
+         setGig(prev => prev ? { ...prev, status: 'awaiting_payout', studentPaymentRequestPending: false } : null);
 
          toast({
              title: "Payment Successful!",
@@ -296,7 +299,7 @@ export default function ManageGigPage() {
 
 
    const updateApplicantStatus = async (studentId: string, newStatus: 'accepted' | 'rejected') => {
-       if (!gig || !user || !userProfile) return; // Added userProfile check
+       if (!gig || !user || !userProfile) return;
        const applicant = gig.applicants?.find(app => app.studentId === studentId);
        if (!applicant) { toast({ title: "Error", description: "Applicant not found.", variant: "destructive" }); return; }
        setUpdatingApplicantId(studentId);
@@ -324,7 +327,6 @@ export default function ManageGigPage() {
                  }
                  gigUpdateData.progressReports = newProgressReportsArray;
              }
-             // Create notification for the student
              await createNotification(
                 applicant.studentId,
                 `Congratulations! Your application for the gig "${gig.title}" has been accepted by ${userProfile?.companyName || userProfile?.username || 'the client'}.`,
@@ -395,7 +397,7 @@ export default function ManageGigPage() {
     };
 
   const handleReportReview = async (reportNumber: number, newStatus: 'approved' | 'rejected') => {
-    if (!gig || !db || !user || !userProfile) return; // Added userProfile check
+    if (!gig || !db || !user || !userProfile) return;
     if (newStatus === 'rejected' && !clientFeedbackText.trim()){
         toast({title: "Feedback Required", description: "Please provide feedback when rejecting a report.", variant: "destructive"});
         return;
@@ -438,7 +440,7 @@ export default function ManageGigPage() {
          await createNotification(
             gig.selectedStudentId,
             `Your Report #${reportNumber} for the gig "${gig.title}" has been rejected by ${userProfile?.companyName || userProfile?.username || 'the client'}. Feedback: ${clientFeedbackText.trim()}`,
-            'report_reviewed', // Still 'report_reviewed', the message content differs
+            'report_reviewed', 
             gig.id,
             gig.title,
             `/gigs/${gig.id}`,
@@ -496,7 +498,7 @@ export default function ManageGigPage() {
     setIsSavingDriveLink(true);
     try {
       const gigDocRef = doc(db, 'gigs', gig.id);
-      await updateDoc(gigDocRef, { sharedDriveLink: "" }); // Or deleteField() if preferred
+      await updateDoc(gigDocRef, { sharedDriveLink: "" }); 
       setGig(prev => prev ? { ...prev, sharedDriveLink: "" } : null);
       setDriveLinkInput("");
       toast({ title: "Drive Link Removed" });
@@ -638,7 +640,6 @@ export default function ManageGigPage() {
                                                 ))}
                                               </div>
                                             )}
-                                            {/* Fallback for old single file structure */}
                                             {!report.studentSubmission.attachments && report.studentSubmission.fileUrl && (
                                                 <Button variant="link" size="xs" asChild className="p-0 h-auto text-xs">
                                                     <a href={report.studentSubmission.fileUrl} target="_blank" rel="noopener noreferrer">
@@ -682,7 +683,6 @@ export default function ManageGigPage() {
                     </div>
                 </div>
               )}
-               {/* Shared Drive Link Section */}
                 <Card className="mt-4 glass-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-md flex items-center gap-2"><Share2 className="h-5 w-5 text-primary"/>Shared Resources</CardTitle>
@@ -862,5 +862,3 @@ export default function ManageGigPage() {
      </div>
    );
 }
-
-    

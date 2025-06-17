@@ -4,13 +4,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFirebase, type UserProfile } from '@/context/firebase-context';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp, onSnapshot, DocumentData, addDoc } from 'firebase/firestore'; // Added addDoc
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc, getDoc, serverTimestamp, onSnapshot, DocumentData, addDoc, increment } from 'firebase/firestore'; // Added increment
 import { db, storage } from '@/config/firebase';
 import { ref as storageRefFn, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon } from 'lucide-react'; // Added LinkIcon
+import { Loader2, ArrowRight, MessageSquare, Layers, CalendarDays, DollarSign, Briefcase, UploadCloud, FileText, Paperclip, Edit, Send, X as XIcon, ChevronDown, ChevronUp, Search as SearchIcon, Hourglass, Link as LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow, isBefore, addHours } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -31,7 +31,7 @@ interface Attachment {
 
 interface StudentSubmission {
   text: string;
-  attachments?: Attachment[]; // Changed from single file to array
+  attachments?: Attachment[];
   submittedAt: Timestamp;
 }
 
@@ -57,20 +57,20 @@ interface WorkGig {
   budget: number;
   currency: string;
   numberOfReports?: number;
-  paymentRequestsCount?: number;
-  lastPaymentRequestedAt?: Timestamp | null;
-  studentPaymentRequestPending?: boolean;
   status: 'in-progress' | 'awaiting_payout' | 'completed';
   progressReports?: ProgressReport[];
   effectiveStatus?: 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
   nextUpcomingDeadline?: Timestamp | null;
-  paymentRequestAvailableAt?: Timestamp | null;
   sharedDriveLink?: string; 
+  // Payment request fields
+  paymentRequestsCount?: number;
+  lastPaymentRequestedAt?: Timestamp | null;
+  studentPaymentRequestPending?: boolean;
+  paymentRequestAvailableAt?: Timestamp | null; // Client-side calculated
 }
 
 type EffectiveStatusType = 'action-required' | 'pending-review' | 'in-progress' | 'awaiting-payout' | 'completed';
 
-// Notification creation helper
 const createNotification = async (
     recipientUserId: string,
     message: string,
@@ -109,7 +109,7 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
     if (gig.status === 'completed') return 'completed';
 
     if (!gig.progressReports || gig.progressReports.length === 0 || (gig.numberOfReports === 0)) {
-        return 'in-progress';
+        return 'in-progress'; // No reports means it's just plain in-progress until payment requested
     }
     const hasRejected = gig.progressReports.some(r => r.clientStatus === 'rejected');
     if (hasRejected) return 'action-required';
@@ -123,9 +123,11 @@ const getEffectiveGigStatus = (gig: WorkGig): EffectiveStatusType => {
 
     const allReportsApproved = gig.progressReports.every(r => r.clientStatus === 'approved');
     if (allReportsApproved && gig.progressReports.length === (gig.numberOfReports || 0)) {
-        return 'in-progress';
+        // All reports are approved, so it's in-progress (awaiting payment request or final deadline)
+        return 'in-progress'; 
     }
     
+    // If not all reports are submitted or approved yet, and none are rejected/pending review, it's in-progress
     return 'in-progress';
 };
 
@@ -164,7 +166,7 @@ export default function StudentWorksPage() {
   const [currentSubmittingGigId, setCurrentSubmittingGigId] = useState<string | null>(null);
   const [currentReportNumber, setCurrentReportNumber] = useState<number | null>(null);
   const [reportText, setReportText] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // Changed to File[]
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Array<{ name: string; progress: number }>>([]);
   const [isSubmittingUnsubmit, setIsSubmittingUnsubmit] = useState<number | null>(null);
 
@@ -228,7 +230,7 @@ export default function StudentWorksPage() {
                 });
               }
             }
-
+            
             let paymentRequestAvailableAtCalc: Timestamp | null = null;
             if (gigData.lastPaymentRequestedAt && gigData.lastPaymentRequestedAt.toDate) {
                 const lastRequestDate = gigData.lastPaymentRequestedAt.toDate();
@@ -243,12 +245,12 @@ export default function StudentWorksPage() {
               clientId: gigData.clientId, clientUsername, clientCompanyName,
               deadline: gigData.deadline, budget: gigData.budget || 0, currency: gigData.currency || "INR",
               numberOfReports: numReports, status: gigData.status,
+              progressReports: completeProgressReports,
+              sharedDriveLink: gigData.sharedDriveLink || "", 
               paymentRequestsCount: gigData.paymentRequestsCount || 0,
               lastPaymentRequestedAt: gigData.lastPaymentRequestedAt || null,
               studentPaymentRequestPending: gigData.studentPaymentRequestPending || false,
-              progressReports: completeProgressReports,
               paymentRequestAvailableAt: paymentRequestAvailableAtCalc,
-              sharedDriveLink: gigData.sharedDriveLink || "", 
             } as WorkGig;
           });
 
@@ -359,7 +361,7 @@ export default function StudentWorksPage() {
     if (files) {
         const newFilesArray = Array.from(files);
         const validNewFiles = newFilesArray.filter(file => {
-            if (file.size > 5 * 1024 * 1024) { // Max 5MB
+            if (file.size > 5 * 1024 * 1024) { 
                 toast({
                     title: "File Too Large (Max 5MB)",
                     description: `"${file.name}" exceeds 5MB. For larger files, please upload to a service like Google Drive and paste the shareable link in your report description.`,
@@ -373,7 +375,7 @@ export default function StudentWorksPage() {
         setSelectedFiles(prevFiles => [...prevFiles, ...validNewFiles]);
     }
     if (fileInputRef.current) {
-        fileInputRef.current.value = ""; // Important to allow re-selecting the same file if user removes and adds again
+        fileInputRef.current.value = "";
     }
   };
 
@@ -387,7 +389,7 @@ export default function StudentWorksPage() {
     const gig = activeGigs.find(g => g.id === gigId);
     const report = gig?.progressReports?.find(r => r.reportNumber === reportNumber);
     setReportText(report?.studentSubmission?.text || "");
-    setSelectedFiles(report?.studentSubmission?.attachments ? [] : []); // Keep existing if editing, but UI won't show them for re-upload yet
+    setSelectedFiles(report?.studentSubmission?.attachments ? [] : []);
     setUploadProgress([]); 
     if (fileInputRef.current) { 
       fileInputRef.current.value = ""; 
@@ -469,18 +471,11 @@ export default function StudentWorksPage() {
 
       const reportIndex = progressReports.findIndex(r => r.reportNumber === currentReportNumber);
       
-      // Handle existing attachments if user is only editing text
       let finalAttachments: Attachment[] = uploadedAttachments;
       if (reportIndex > -1 && progressReports[reportIndex]?.studentSubmission?.attachments && uploadedAttachments.length === 0) {
           finalAttachments = progressReports[reportIndex].studentSubmission!.attachments!;
-      } else if (reportIndex > -1 && progressReports[reportIndex]?.studentSubmission?.attachments && uploadedAttachments.length > 0) {
-          // If new files are uploaded, decide if old ones should be kept or replaced.
-          // For now, let's assume new uploads replace old ones for simplicity unless specifically requested.
-          // To combine: finalAttachments = [...progressReports[reportIndex].studentSubmission.attachments, ...uploadedAttachments];
-          // To replace (current behavior): finalAttachments = uploadedAttachments;
       }
-
-
+      
       const studentSubmission: StudentSubmission = {
         text: reportText.trim(),
         submittedAt: Timestamp.now(),
@@ -528,7 +523,6 @@ export default function StudentWorksPage() {
       setUploadProgress([]);
       setReportText("");
     } catch (err: any) {
-      // General error toast if not already handled by specific upload error
       if (!(err && err.code && (err.code.startsWith('storage/')))) {
           console.error("Error submitting report:", err);
           toast({ 
@@ -582,7 +576,6 @@ export default function StudentWorksPage() {
             }
         }
 
-
         progressReports[reportIndex] = {
           ...progressReports[reportIndex],
           studentSubmission: null, 
@@ -601,8 +594,6 @@ export default function StudentWorksPage() {
                 : g
             )
         );
-
-
     } catch (error: any) {
         console.error("Error unsubmitting report:", error);
         toast({ title: "Unsubmit Failed", description: `Could not unsubmit report: ${error.message}`, variant: "destructive" });
@@ -620,7 +611,7 @@ export default function StudentWorksPage() {
     try {
         const gigDocRef = doc(db, 'gigs', paymentRequestGig.id);
         await updateDoc(gigDocRef, {
-            paymentRequestsCount: (paymentRequestGig.paymentRequestsCount || 0) + 1,
+            paymentRequestsCount: increment(1),
             lastPaymentRequestedAt: serverTimestamp(),
             studentPaymentRequestPending: true,
         });
@@ -639,14 +630,14 @@ export default function StudentWorksPage() {
         toast({ title: "Payment Requested!", description: "The client has been notified of your payment request."});
         setShowPaymentRequestDialog(false);
         setPaymentRequestGig(null);
-        // Re-fetch or update local state for the specific gig might be needed if UI relies on paymentRequestsCount immediately
+        
         const updatedGigs = activeGigs.map(gig =>
             gig.id === paymentRequestGig.id
                 ? { ...gig, 
                     paymentRequestsCount: (gig.paymentRequestsCount || 0) + 1, 
-                    lastPaymentRequestedAt: Timestamp.now(), // Approximate for UI
+                    lastPaymentRequestedAt: Timestamp.now(),
                     studentPaymentRequestPending: true,
-                    paymentRequestAvailableAt: Timestamp.fromDate(addHours(new Date(), 2)) // Approximate for UI
+                    paymentRequestAvailableAt: Timestamp.fromDate(addHours(new Date(), 2))
                   }
                 : gig
         );
@@ -842,7 +833,7 @@ export default function StudentWorksPage() {
                 <div
                   className={cn(
                     "transition-all duration-300 ease-in-out overflow-hidden",
-                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[2500px] opacity-100" // Increased max-h
+                    isCollapsed ? "max-h-0 opacity-0" : "max-h-[2500px] opacity-100"
                   )}
                 >
                   <CardContent className="space-y-3 pt-3 p-4 sm:p-6">
@@ -870,7 +861,6 @@ export default function StudentWorksPage() {
                             </a>
                         </div>
                     )}
-
 
                     {gig.numberOfReports !== undefined && gig.numberOfReports > 0 && (
                       <div className="pt-2 border-t">
@@ -998,7 +988,7 @@ export default function StudentWorksPage() {
                   <Input
                     id="reportFile"
                     type="file"
-                    multiple // Allow multiple file selection
+                    multiple
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     className="text-sm file:mr-2 file:py-1.5 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
@@ -1063,4 +1053,3 @@ export default function StudentWorksPage() {
     </div>
   );
 }
-

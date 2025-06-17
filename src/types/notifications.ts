@@ -28,16 +28,15 @@ export interface Notification {
   type: NotificationType;
   relatedGigId?: string;
   relatedGigTitle?: string;
-  relatedUserId?: string; // e.g., UID of the user who caused the notification (sender of message, applicant)
-  relatedUsername?: string; // e.g., username of relatedUser
+  relatedUserId?: string; 
+  relatedUsername?: string; 
   isRead: boolean;
   createdAt: Timestamp;
-  link?: string; // Optional direct link for the notification (e.g., to the gig, chat, or profile)
-  adminActorId?: string; // UID of the admin who performed an action (if applicable)
-  adminActorUsername?: string; // Username of the admin actor (if applicable)
+  link?: string; 
+  adminActorId?: string; 
+  adminActorUsername?: string; 
 }
 
-// Standard PushSubscriptionJSON structure from the Push API
 export interface PushSubscriptionJSON {
   endpoint: string;
   expirationTime?: number | null;
@@ -46,4 +45,3 @@ export interface PushSubscriptionJSON {
     auth: string;
   };
 }
-
