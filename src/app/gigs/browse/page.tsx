@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CalendarDays, Star, Filter as FilterIcon, X as XIcon, Settings2, Layers, IndianRupee } from 'lucide-react'; // Added Layers, IndianRupee
+import { Loader2, CalendarDays, Star, Filter as FilterIcon, X as XIcon, Settings2, Layers, IndianRupee } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { PREDEFINED_SKILLS, type Skill } from '@/lib/constants';

@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, BookmarkX, CalendarDays, DollarSign, Search, ArrowLeft, UserCircle, Layers } from 'lucide-react'; // Added Layers
+import { Loader2, BookmarkX, CalendarDays, DollarSign, Search, ArrowLeft, UserCircle, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import type { Skill } from '@/lib/constants';
@@ -29,7 +29,7 @@ interface BookmarkedGig {
   clientAvatarUrl?: string;
   createdAt: Timestamp;
   status: 'open' | 'in-progress' | 'completed' | 'closed';
-  numberOfReports?: number; // Added to show report count
+  numberOfReports?: number;
 }
 
 export default function StudentBookmarksPage() {
